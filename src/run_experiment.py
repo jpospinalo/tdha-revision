@@ -31,6 +31,13 @@ Límite conocido
     recurrentes no son deterministas. Lo garantizado son las particiones y el
     protocolo, no los decimales. Ver --deterministic.
 
+Precisión numérica
+    Todas las corridas usan float32. No hay opción de precisión mixta: activarla en
+    unas corridas y no en otras produciría una tabla final con configuraciones
+    numéricas distintas, y el ahorro de tiempo no compensa ese riesgo. Si en algún
+    momento se decide adoptarla, debe ser para el conjunto completo de experimentos
+    y relanzando todo.
+
 Ejemplos
 --------
     python run_experiment.py --site NYU --roi-set 12
@@ -237,7 +244,7 @@ def run_config(Xf, y, args, outdir, subset_id=None):
 
 # --------------------------------------------------------------------------- #
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     g = p.add_argument_group("datos")
@@ -289,7 +296,7 @@ def main():
     g.add_argument("--list-models", action="store_true")
     g.add_argument("--list-roi-sets", action="store_true")
     g.add_argument("--verbose", action="store_true")
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
     if args.list_models:
         for name in kerasmodels.available():
@@ -426,8 +433,8 @@ def main():
               "anatómico no la supera, la ventaja es de dimensionalidad, no de anatomía.")
     else:
         print("  construyendo secuencias de conectividad…", flush=True)
-        Xf = tdha_data.upper_triangle(
-            tdha_data.build_sequences(b["bold"], idx, args.window, args.step))
+        Xf = tdha_data.upper_triangle(tdha_data.build_sequences_cached(
+            args.site, b["bold"], idx, args.window, args.step, args.roi_set))
         run_config(Xf, y, args, outdir)
 
     print(f"\nResultados en {outdir}")

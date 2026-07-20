@@ -72,6 +72,8 @@ def build(n_windows, n_features, d_model=64, num_heads=4, ff_dim=128,
     x = layers.LayerNormalization(epsilon=1e-6)(x)
     x = layers.GlobalAveragePooling1D()(x)
     x = layers.Dropout(dropout)(x)
-    out = layers.Dense(1, activation="sigmoid")(x)
+    # dtype="float32" explícito: con precisión mixta (mixed_float16) la sigmoide
+    # y la pérdida deben calcularse en float32 para no perder estabilidad numérica.
+    out = layers.Dense(1, activation="sigmoid", dtype="float32")(x)
     return keras.Model(inp, out,
                        name=f"transformer_d{d_model}h{num_heads}b{num_blocks}")

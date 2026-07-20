@@ -44,7 +44,9 @@ def build(n_windows, n_features, units=128, dropout=0.0, bidirectional=False):
     core = layers.LSTM(units, dropout=dropout)
     rnn = layers.Bidirectional(core) if bidirectional else core
     inp = layers.Input(shape=(n_windows, n_features))
-    out = layers.Dense(1, activation="sigmoid")(rnn(inp))
+    # dtype="float32" explícito: con precisión mixta (mixed_float16) la sigmoide
+    # y la pérdida deben calcularse en float32 para no perder estabilidad numérica.
+    out = layers.Dense(1, activation="sigmoid", dtype="float32")(rnn(inp))
     return keras.Model(inp, out, name=f"lstm{units}{'_bi' if bidirectional else ''}")
 
 

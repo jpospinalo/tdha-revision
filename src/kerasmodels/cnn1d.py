@@ -72,5 +72,7 @@ def build(n_windows, n_features, filters=64, kernel_size=10, n_blocks=1,
          else layers.GlobalAveragePooling1D())(x)
     if dropout:
         x = layers.Dropout(dropout)(x)
-    out = layers.Dense(1, activation="sigmoid")(x)
+    # dtype="float32" explícito: con precisión mixta (mixed_float16) la sigmoide
+    # y la pérdida deben calcularse en float32 para no perder estabilidad numérica.
+    out = layers.Dense(1, activation="sigmoid", dtype="float32")(x)
     return keras.Model(inp, out, name=f"cnn1d{filters}k{kernel_size}b{n_blocks}")
