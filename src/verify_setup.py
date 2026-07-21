@@ -216,7 +216,7 @@ def check_entrenamiento():
     r = subprocess.run(
         [sys.executable, "run_experiment.py", "--site", "NYU", "--roi-set", "12",
          "--n-splits", "2", "--n-repeats", "1", "--epochs", "3", "--patience", "2",
-         "--out", "/tmp/verify_setup", "--tag", "verify", "--overwrite"],
+         "--out", "/tmp/verify_setup", "--tag", "verify"],
         cwd=REPO / "src", capture_output=True, text=True)
     if r.returncode == 0:
         ok("la corrida completa se ejecuta sin errores")
