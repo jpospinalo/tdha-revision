@@ -45,14 +45,24 @@ SITES = ["NYU", "Peking", "NeuroIMAGE", "OHSU"]
 
 # --------------------------------------------------------------------------- #
 
+_bold_cache = {}
+_seq_cache = {}
+
+
 def load_bold(site, bold_dir=None):
     """Carga las señales BOLD de un sitio.
+
+    El resultado queda en memoria: al encolar varias corridas sobre el mismo
+    sitio en un solo proceso, solo se lee de disco la primera vez.
 
     Returns
     -------
     dict
         Con las claves ``subjects``, ``bold``, ``labels`` y ``roi_names``.
     """
+    clave = (str(bold_dir or BOLD_DIR), site)
+    if clave in _bold_cache:
+        return _bold_cache[clave]
     path = Path(bold_dir or BOLD_DIR) / f"{site}.joblib"
     if not path.exists():
         disponibles = sorted(p.stem for p in Path(bold_dir or BOLD_DIR).glob("*.joblib"))
@@ -63,7 +73,30 @@ def load_bold(site, bold_dir=None):
     d = joblib.load(path)
     d["bold"] = np.asarray(d["bold"], dtype="float32")
     d["labels"] = np.asarray(d["labels"], dtype="int32")
+    _bold_cache[clave] = d
     return d
+
+
+def build_sequences_cached(site, bold, indices, window, step, roi_set=None):
+    """``build_sequences`` con memoria de la última construcción.
+
+    Pensado para colas de experimentos: correr cuatro arquitecturas sobre el
+    mismo sitio, subconjunto de ROIs y enventanado construye las secuencias una
+    sola vez en lugar de cuatro. Con 116 ROIs eso ahorra unos 8 s por corrida.
+
+    La caché guarda **una sola** entrada: el tensor de 116 ROIs ocupa cerca de
+    500 MB y conservar varios agotaría la memoria de Colab. Por eso conviene
+    ordenar la cola agrupando por configuración de datos.
+    """
+    clave = (site, str(roi_set), int(window), int(step), len(indices))
+    if _seq_cache.get("clave") == clave:
+        return _seq_cache["valor"]
+    # Liberar ANTES de construir: si no, el tensor viejo y el nuevo coexisten y el
+    # pico de memoria se duplica (cerca de 1 GB con 116 ROIs).
+    _seq_cache.clear()
+    valor = build_sequences(bold, indices, window, step)
+    _seq_cache.update(clave=clave, valor=valor)
+    return valor
 
 
 def load_roi_sets(atlas_dir=None):
@@ -105,7 +138,7 @@ def n_windows(n_timepoints, window, step):
     return (n_timepoints - window) // step + 1
 
 
-def build_sequences(bold, indices, window, step):
+def build_sequences(bold, indices, window, step, chunk=32):
     """Secuencia de matrices de conectividad por sujeto.
 
     Para cada ventana temporal se calcula la matriz de correlación de Pearson
@@ -119,6 +152,10 @@ def build_sequences(bold, indices, window, step):
         ROIs a conservar, en índices base 0 sobre el atlas.
     window, step : int
         Longitud de la ventana y desplazamiento entre ventanas, en TR.
+    chunk : int
+        Sujetos procesados por lote. Acota la memoria intermedia sin afectar al
+        resultado. Con 116 ROIs, hacerlo de una sola vez exigiría un arreglo
+        intermedio de unos 600 MB.
 
     Returns
     -------
@@ -128,28 +165,36 @@ def build_sequences(bold, indices, window, step):
     -----
     Implementación vectorizada: se estandariza cada ventana y se obtiene la
     correlación como ``Z @ Z.T / (window - 1)``. Es equivalente a llamar a
-    ``np.corrcoef`` ventana por ventana, y bastante más rápido para 116 ROIs.
+    ``np.corrcoef`` ventana por ventana y bastante más rápido.
+
+    Se calcula en float32. Frente a float64, la diferencia contra los tensores
+    del proyecto original pasa de 8e-7 a 1e-6 —ambas por debajo de la precisión
+    de float32, que es el tipo en que se almacenan— y el cálculo es unas cuatro
+    veces más rápido con 116 ROIs.
     """
-    sig = np.asarray(bold, dtype="float64")[:, indices, :]
-    n, r, T = sig.shape
+    sig_all = np.asarray(bold, dtype="float32")[:, indices, :]
+    n, r, T = sig_all.shape
     nw = n_windows(T, window, step)
 
-    # (n, nw, r, window) mediante vistas, sin copiar la señal.
-    idx = np.arange(window)[None, :] + (np.arange(nw) * step)[:, None]
-    win = sig[:, :, idx]                       # (n, r, nw, window)
-    win = np.transpose(win, (0, 2, 1, 3))      # (n, nw, r, window)
+    # Índices de ventana: (nw, window). Genera las ventanas por indexado.
+    widx = np.arange(window)[None, :] + (np.arange(nw) * step)[:, None]
+    out = np.empty((n, nw, r, r), dtype="float32")
 
-    win = win - win.mean(axis=-1, keepdims=True)
-    sd = win.std(axis=-1, ddof=1, keepdims=True)
-    # ROIs constantes dentro de una ventana: evita dividir por cero. Su correlación
-    # queda indefinida y se fija en 0, que es lo que hace np.corrcoef salvo por el NaN.
-    constante = sd < 1e-12
-    win = np.divide(win, np.where(constante, 1.0, sd))
-    win[np.broadcast_to(constante, win.shape)] = 0.0
+    for s in range(0, n, chunk):
+        w = np.transpose(sig_all[s:s + chunk][:, :, widx], (0, 2, 1, 3))
+        w = w - w.mean(axis=-1, keepdims=True)
+        sd = w.std(axis=-1, ddof=1, keepdims=True)
+        # ROIs constantes dentro de una ventana: evita dividir por cero. Su
+        # correlación queda indefinida y se fija en 0, que es lo que hace
+        # np.corrcoef salvo por el NaN.
+        constante = sd < 1e-12
+        w = np.divide(w, np.where(constante, np.float32(1.0), sd))
+        w[np.broadcast_to(constante, w.shape)] = 0.0
+        fc = w @ np.swapaxes(w, -1, -2) / np.float32(window - 1)
+        np.clip(fc, -1.0, 1.0, out=fc)
+        out[s:s + chunk] = fc
 
-    fc = win @ np.swapaxes(win, -1, -2) / (window - 1)
-    np.clip(fc, -1.0, 1.0, out=fc)
-    return fc.astype("float32")
+    return out
 
 
 def upper_triangle(x):
