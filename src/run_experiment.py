@@ -49,6 +49,7 @@ Ejemplos
 """
 
 import argparse
+import gc
 import hashlib
 import json
 import os
@@ -184,17 +185,16 @@ def evaluate(model, X, y):
 
 
 def compile_model(model, args):
+    """Compila con UNA sola métrica.
+
+    Las métricas que se reportan las calcula ``evaluate`` al final de cada pliegue,
+    no Keras durante el entrenamiento. Compilar con las ocho obligaba a actualizarlas
+    en cada lote de cada época —el AUC es especialmente caro, con 200 umbrales— para
+    después descartarlas. Se conserva ``accuracy`` porque alimenta el historial
+    opcional; el early stopping solo usa ``val_loss``.
+    """
     import keras
-    metrics = [
-        keras.metrics.BinaryAccuracy(name="accuracy"),
-        keras.metrics.Precision(name="precision"),
-        keras.metrics.Recall(name="recall"),
-        keras.metrics.AUC(name="auc"),
-        keras.metrics.TruePositives(name="true_positives"),
-        keras.metrics.TrueNegatives(name="true_negatives"),
-        keras.metrics.FalsePositives(name="false_positives"),
-        keras.metrics.FalseNegatives(name="false_negatives"),
-    ]
+    metrics = [keras.metrics.BinaryAccuracy(name="accuracy")]
     opt = {"learning_rate": args.lr}
     if args.clipnorm:
         opt["clipnorm"] = args.clipnorm
@@ -224,14 +224,24 @@ def run_config(Xf, y, args, outdir, subset_id=None):
     t0 = time.time()
 
     for fold, (tr_idx, va_idx) in enumerate(outer.split(Xf, y)):
+        # Se construye un modelo nuevo por pliegue: sin limpiar, Keras acumula
+        # grafos y funciones trazadas de los 50 modelos anteriores. El orden importa:
+        # clear_session ANTES de fijar la semilla, para que la inicialización de
+        # pesos siga siendo la misma y los resultados no cambien.
+        keras.backend.clear_session()
+        gc.collect()
         keras.utils.set_random_seed(args.seed * 1000 + fold)
         repeat = fold // args.n_splits + 1
 
         # Partición interna, SOLO sobre entrenamiento, para decidir la época.
         inner = StratifiedShuffleSplit(n_splits=1, test_size=args.inner_val_frac,
                                        random_state=args.seed + fold)
-        fit_rel, sel_rel = next(inner.split(Xf[tr_idx], y[tr_idx]))
+        # StratifiedShuffleSplit solo necesita el número de muestras y las etiquetas:
+        # pasarle Xf[tr_idx] materializaría una copia de ~220 MB con 116 ROIs, en cada
+        # uno de los 50 pliegues, para nada.
+        fit_rel, sel_rel = next(inner.split(np.zeros(len(tr_idx)), y[tr_idx]))
         fit_idx, sel_idx = tr_idx[fit_rel], tr_idx[sel_rel]
+        X_fit, X_sel = Xf[fit_idx], Xf[sel_idx]
 
         model = compile_model(
             kerasmodels.build(args.model, n_win, n_feat, **args._model_kwargs), args)
@@ -240,8 +250,8 @@ def run_config(Xf, y, args, outdir, subset_id=None):
         # INTERNA. No se usa ModelCheckpoint: sería el mismo criterio con escritura de
         # disco y nombres que pueden colisionar entre subconjuntos aleatorios.
         history = model.fit(
-            Xf[fit_idx], y[fit_idx],
-            validation_data=(Xf[sel_idx], y[sel_idx]),
+            X_fit, y[fit_idx],
+            validation_data=(X_sel, y[sel_idx]),
             epochs=args.epochs, batch_size=args.batch_size,
             class_weight=class_weight, verbose=0,
             callbacks=[EarlyStopping(monitor="val_loss", mode="min",
@@ -277,6 +287,9 @@ def run_config(Xf, y, args, outdir, subset_id=None):
             print(f"    pliegue {fold + 1:3d}/{args.n_splits * args.n_repeats}  "
                   f"train acc={m_tr['accuracy']:.4f}  val acc={m_va['accuracy']:.4f}  "
                   f"(época {best_ep}/{n_ep})", flush=True)
+
+        del model, history, X_fit, X_sel
+        gc.collect()
 
     sfx = "" if subset_id is None else f"_set{subset_id:02d}"
     pd.DataFrame(rows_train).to_csv(outdir / f"metrics_train{sfx}.csv", index=False)

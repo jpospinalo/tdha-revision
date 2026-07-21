@@ -199,7 +199,14 @@ def build_sequences(bold, indices, window, step, chunk=32):
     return out
 
 
-def build_flat_sequences(bold, indices, window, step, chunk=32):
+def _chunk_for(n_rois):
+    """Sujetos por lote. Bloques menores con muchos ROIs: el arreglo intermedio
+    crece con el cuadrado del número de regiones y con 116 ROIs medimos que 16
+    es algo más rápido que 32 o 64."""
+    return 16 if n_rois >= 100 else (32 if n_rois >= 40 else 64)
+
+
+def build_flat_sequences(bold, indices, window, step, chunk=None):
     """Secuencias de conectividad ya vectorizadas: (n, n_windows, r*(r-1)/2).
 
     Equivale a ``upper_triangle(build_sequences(...))`` pero extrae el triángulo
@@ -214,6 +221,7 @@ def build_flat_sequences(bold, indices, window, step, chunk=32):
     """
     sig_all = np.asarray(bold, dtype="float32")[:, indices, :]
     n, r, T = sig_all.shape
+    chunk = chunk or _chunk_for(r)
     nw = n_windows(T, window, step)
     iu = np.triu_indices(r, k=1)
 
