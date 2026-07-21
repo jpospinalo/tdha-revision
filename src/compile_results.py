@@ -66,6 +66,7 @@ def summarize(run_dir, cfg, suffix=""):
     if "true_negatives" in va:
         row["train_sp"] = specificity(tr).mean() * 100
         row["val_sp"] = specificity(va).mean() * 100
+    row["start_from_epoch"] = cfg.get("start_from_epoch")
     row["gap_acc"] = row.get("train_accuracy", np.nan) - row.get("val_accuracy", np.nan)
     row["epoca_media"] = va.best_epoch.mean() if "best_epoch" in va else np.nan
     return row
@@ -95,7 +96,8 @@ def check_comparability(df):
             problemas.append(f"las señales BOLD de {sitio} cambiaron entre corridas "
                              f"({len(hashes)} versiones): alguien regeneró el archivo")
     for col, etiqueta in [("seed", "semillas"), ("n_folds", "número de pliegues"),
-                          ("window", "longitud de ventana"), ("step", "paso de ventana")]:
+                          ("window", "longitud de ventana"), ("step", "paso de ventana"),
+                          ("start_from_epoch", "época mínima antes de la parada")]:
         if col in df and df[col].nunique() > 1:
             problemas.append(f"{etiqueta} distintas: {sorted(df[col].dropna().unique())}")
     if "arbol_limpio" in df and df.arbol_limpio.eq(False).any():
