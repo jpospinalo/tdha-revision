@@ -1,52 +1,46 @@
 #!/usr/bin/env python3
 """
-Clasificación TDAH vs. control a partir de conectividad funcional dinámica.
+Clasificación TDAH vs. control a partir de conectividad funcional.
 
-Una corrida = un sitio + un subconjunto de ROIs + un enventanado + una arquitectura
-+ una configuración de entrenamiento. Cada corrida escribe en su propia carpeta, cuyo
-nombre se deriva de la configuración, de modo que varias personas pueden ejecutar en
-paralelo y hacer push al mismo repositorio sin conflictos: nadie escribe nunca en un
-archivo compartido.
+La versión 2 del ejecutor mantiene la compatibilidad con los comandos históricos
+(``--window`` y ``--step`` en TR) y añade:
 
-Garantías
----------
-Particiones
-    Con la misma --seed y las mismas etiquetas, todas las configuraciones usan las
-    mismas particiones. La comparación entre subconjuntos de ROIs o entre
-    arquitecturas es pareada, lo que permite usar contrastes de medidas repetidas.
+- ventanas expresadas en segundos o por solapamiento;
+- conectividad estática y representaciones de ablación temporal;
+- ventana rectangular o gaussiana y Fisher z opcional;
+- diagnósticos de redundancia registrados en ``config.json``;
+- pesos de clase calculados exclusivamente con el subconjunto ``fit``;
+- huella de las particiones externas e internas;
+- hashes del código y de los índices ROI para trazabilidad.
 
-Selección de época sin fuga
-    Dentro de cada pliegue se aparta una fracción del entrenamiento para el early
-    stopping. El pliegue de validación externo solo se usa en la evaluación final,
-    nunca para tomar decisiones.
-
-Trazabilidad
-    El config.json guarda el hash de las señales BOLD, los parámetros de enventanado,
-    el commit de git, si el árbol estaba limpio, el usuario y las versiones del
-    entorno. Los tensores de conectividad se derivan de las señales en cada corrida,
-    así que no pueden quedar desincronizados de los parámetros que los generaron.
-
-Límite conocido
-    Las métricas NO son idénticas entre máquinas: los kernels de cuDNN para redes
-    recurrentes no son deterministas. Lo garantizado son las particiones y el
-    protocolo, no los decimales. Ver --deterministic.
-
-Precisión numérica
-    Todas las corridas usan float32. No hay opción de precisión mixta: activarla en
-    unas corridas y no en otras produciría una tabla final con configuraciones
-    numéricas distintas, y el ahorro de tiempo no compensa ese riesgo. Si en algún
-    momento se decide adoptarla, debe ser para el conjunto completo de experimentos
-    y relanzando todo.
+La selección de época sigue realizándose con una partición interna del
+entrenamiento. El pliegue externo se utiliza una sola vez para la evaluación.
+La comparación de múltiples ventanas, arquitecturas o subconjuntos debe
+preespecificarse o realizarse mediante validación anidada; el script no convierte
+una búsqueda retrospectiva sobre los pliegues externos en una estimación final
+sin sesgo.
 
 Ejemplos
 --------
+Configuración histórica::
+
     python run_experiment.py --site NYU --roi-set 12
-    python run_experiment.py --site NYU --roi-set 12 --model gru --model-arg units=64
-    python run_experiment.py --site NYU --roi-set 12 --window 40 --step 2
-    python run_experiment.py --site Peking --roi-set 18 --class-weight
-    python run_experiment.py --site NYU --roi-set 116 --random-subset 12 \\
-                             --exclude-roi-set 12 --n-random-sets 20
+
+Ventana física de 100 s y 75 % de solapamiento::
+
+    python run_experiment.py --site NYU --roi-set 12 \
+        --window-seconds 100 --overlap 0.75
+
+Ablaciones::
+
+    python run_experiment.py --site NYU --roi-set 12 --representation static
+    python run_experiment.py --site NYU --roi-set 12 \
+        --window-seconds 100 --overlap 0.75 --representation permuted
+    python run_experiment.py --site NYU --roi-set 12 \
+        --window-seconds 100 --overlap 0.75 --representation mean_std
 """
+
+from __future__ import annotations
 
 import argparse
 import gc
@@ -54,476 +48,1260 @@ import hashlib
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import RepeatedStratifiedKFold, StratifiedShuffleSplit
 
-import data as tdha_data
-import kerasmodels
+try:  # ejecución habitual: ``cd src && python run_experiment.py``
+    import data as tdha_data
+    import kerasmodels
+except ModuleNotFoundError:  # importación desde pruebas o ``python -m src...``
+    from src import data as tdha_data  # type: ignore
+    from src import kerasmodels  # type: ignore
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_DIR = REPO_ROOT / "results" / "runs"
+CONFIG_SCHEMA_VERSION = 2
+REPRESENTATIONS = ("ordered", "permuted", "mean", "mean_std", "static")
 
 
-# --------------------------------------------------------------------------- #
-# Entorno
-# --------------------------------------------------------------------------- #
+# ---------------------------------------------------------------------------
+# Entorno, hashes y utilidades
+# ---------------------------------------------------------------------------
 
-def git_info():
-    def run(*a):
+def git_info() -> dict[str, Any]:
+    def run(*args: str) -> str | None:
         try:
-            return subprocess.check_output(a, cwd=REPO_ROOT, stderr=subprocess.DEVNULL,
-                                           text=True).strip()
+            return subprocess.check_output(
+                args,
+                cwd=REPO_ROOT,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
         except Exception:
             return None
+
     status = run("git", "status", "--porcelain")
     return {
         "commit": run("git", "rev-parse", "HEAD") or "desconocido",
         "clean": (status == "") if status is not None else None,
-        "user": run("git", "config", "user.name") or os.environ.get("USER", "desconocido"),
+        "user": run("git", "config", "user.name")
+        or os.environ.get("USER", "desconocido"),
     }
 
 
-def env_info():
-    info = {"python": sys.version.split()[0], "platform": platform.platform()}
+def env_info() -> dict[str, Any]:
+    info: dict[str, Any] = {
+        "python": sys.version.split()[0],
+        "platform": platform.platform(),
+        "numpy": np.__version__,
+        "pandas": pd.__version__,
+    }
+    try:
+        import sklearn
+
+        info["scikit_learn"] = sklearn.__version__
+    except Exception as exc:  # pragma: no cover - depende del entorno
+        info["scikit_learn"] = f"no disponible ({type(exc).__name__})"
+
     try:
         import tensorflow as tf
         import keras
+
         info["tensorflow"] = tf.__version__
         info["keras"] = keras.__version__
         gpus = tf.config.list_physical_devices("GPU")
-        info["gpu"] = [tf.config.experimental.get_device_details(g).get("device_name", "?")
-                       for g in gpus] or "sin GPU"
-    except Exception as e:
-        info["tensorflow"] = f"no disponible ({type(e).__name__})"
+        info["gpu"] = [
+            tf.config.experimental.get_device_details(gpu).get("device_name", "?")
+            for gpu in gpus
+        ] or "sin GPU"
+    except Exception as exc:  # pragma: no cover - depende del entorno
+        info["tensorflow"] = f"no disponible ({type(exc).__name__})"
     return info
 
 
-def file_hash(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()[:16]
+def file_hash(path: str | Path, *, length: int = 16) -> str:
+    path = Path(path)
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()[:length]
 
 
-def arch_size(arch):
-    """Tamaño principal de la arquitectura, para el nombre de la corrida.
-
-    Toma el primer hiperparámetro numérico en el orden de la firma de la función:
-    ``units`` en lstm y gru, ``filters`` en cnn1d, ``d_model`` en transformer.
-    """
-    for v in arch.values():
-        if isinstance(v, (int, float)) and not isinstance(v, bool):
-            return str(int(v))
-    return "0"
+def indices_hash(indices: Iterable[int], *, length: int = 16) -> str:
+    array = np.ascontiguousarray(np.asarray(list(indices), dtype=np.int64))
+    return hashlib.sha256(array.tobytes()).hexdigest()[:length]
 
 
-def parse_model_args(pairs):
-    """['units=128', 'dropout=0.2'] -> {'units': 128, 'dropout': 0.2}"""
-    out = {}
-    for p in pairs or []:
-        if "=" not in p:
-            raise SystemExit(f"ERROR: --model-arg espera clave=valor, se recibió '{p}'")
-        k, v = p.split("=", 1)
-        for cast in (int, float):
-            try:
-                out[k] = cast(v)
-                break
-            except ValueError:
-                continue
+def config_hash(identity: Mapping[str, Any], *, length: int = 8) -> str:
+    payload = json.dumps(identity, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:length]
+
+
+def sanitize_component(value: Any, *, max_length: int = 48) -> str:
+    text = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value)).strip("-._")
+    return (text or "x")[:max_length]
+
+
+def parse_model_args(pairs: Sequence[str] | None) -> dict[str, Any]:
+    """Convierte ``['units=128', 'dropout=0.2']`` en un diccionario."""
+
+    output: dict[str, Any] = {}
+    for pair in pairs or []:
+        if "=" not in pair:
+            raise SystemExit(
+                f"ERROR: --model-arg espera clave=valor, se recibió {pair!r}."
+            )
+        key, raw = pair.split("=", 1)
+        key = key.strip()
+        if not key:
+            raise SystemExit("ERROR: --model-arg contiene una clave vacía.")
+        if key in output:
+            raise SystemExit(f"ERROR: --model-arg repite la clave {key!r}.")
+
+        value: Any = raw
+        lowered = raw.lower()
+        if lowered in {"true", "false"}:
+            value = lowered == "true"
         else:
-            out[k] = {"true": True, "false": False}.get(v.lower(), v)
-    return out
+            for caster in (int, float):
+                try:
+                    value = caster(raw)
+                    break
+                except ValueError:
+                    continue
+        output[key] = value
+    return output
 
 
-# --------------------------------------------------------------------------- #
-# Entrenamiento
-# --------------------------------------------------------------------------- #
+def _positive_int(name: str, value: int, *, minimum: int = 1) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+        raise SystemExit(f"ERROR: {name} debe ser entero.")
+    value = int(value)
+    if value < minimum:
+        raise SystemExit(f"ERROR: {name} debe ser >= {minimum}; se recibió {value}.")
+    return value
 
-def evaluate(model, X, y):
-    """Métricas de un modelo sobre un conjunto, con una sola pasada hacia adelante.
 
-    Sustituye a ``model.evaluate`` y ``model.predict``. Hacerlo así tiene tres
-    ventajas: evita construir y trazar dos funciones de TensorFlow por pliegue
-    —origen de los avisos de *retracing*, porque los pliegues tienen 17 o 18
-    sujetos y cada forma distinta obliga a retrazar—, es más rápido con muestras
-    de este tamaño, y el AUC pasa a ser exacto en lugar de la aproximación por
-    200 umbrales que usa la métrica de Keras.
+def _positive_float(name: str, value: float, *, allow_zero: bool = False) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float, np.number)):
+        raise SystemExit(f"ERROR: {name} debe ser numérico.")
+    value = float(value)
+    minimum_ok = value >= 0 if allow_zero else value > 0
+    if not np.isfinite(value) or not minimum_ok:
+        relation = ">= 0" if allow_zero else "> 0"
+        raise SystemExit(f"ERROR: {name} debe ser finito y {relation}.")
+    return value
 
-    Las demás métricas son idénticas a las de Keras: umbral 0,5 y las mismas
-    definiciones.
-    """
-    from sklearn.metrics import roc_auc_score
 
-    p = np.asarray(model(X, training=False)).ravel().astype("float64")
-    y = np.asarray(y).ravel()
-    eps = 1e-7
-    pc = np.clip(p, eps, 1 - eps)
-    loss = float(-np.mean(y * np.log(pc) + (1 - y) * np.log(1 - pc)))
+# ---------------------------------------------------------------------------
+# Validación cruzada y pesos de clase
+# ---------------------------------------------------------------------------
 
-    pred = (p >= 0.5).astype(int)
-    tp = int(((pred == 1) & (y == 1)).sum())
-    tn = int(((pred == 0) & (y == 0)).sum())
-    fp = int(((pred == 1) & (y == 0)).sum())
-    fn = int(((pred == 0) & (y == 1)).sum())
+def validate_training_args(args: argparse.Namespace, y: np.ndarray) -> None:
+    args.n_splits = _positive_int("--n-splits", args.n_splits, minimum=2)
+    args.n_repeats = _positive_int("--n-repeats", args.n_repeats)
+    args.batch_size = _positive_int("--batch-size", args.batch_size)
+    args.epochs = _positive_int("--epochs", args.epochs)
+    args.patience = _positive_int("--patience", args.patience, minimum=0)
+    args.start_from_epoch = _positive_int(
+        "--start-from-epoch", args.start_from_epoch, minimum=0
+    )
+    args.lr = _positive_float("--lr", args.lr)
+    if args.clipnorm is not None:
+        args.clipnorm = _positive_float("--clipnorm", args.clipnorm)
+    if not 0 < float(args.inner_val_frac) < 1:
+        raise SystemExit("ERROR: --inner-val-frac debe pertenecer a (0, 1).")
 
+    labels = np.asarray(y, dtype=np.int64)
+    values, counts = np.unique(labels, return_counts=True)
+    if set(values.tolist()) != {0, 1}:
+        raise SystemExit(
+            f"ERROR: se esperaban etiquetas binarias 0/1; se encontraron {values.tolist()}."
+        )
+    if counts.min() < args.n_splits:
+        raise SystemExit(
+            "ERROR: --n-splits excede el número de sujetos de la clase minoritaria "
+            f"({int(counts.min())})."
+        )
+
+
+def compute_class_weights(y_fit: Sequence[int]) -> dict[int, float]:
+    """Pesos balanceados calculados únicamente con el subconjunto de ajuste."""
+
+    labels = np.asarray(y_fit, dtype=np.int64).ravel()
+    counts = np.bincount(labels, minlength=2)
+    if labels.size == 0 or np.any(counts == 0):
+        raise ValueError(
+            "El subconjunto fit debe contener al menos un sujeto de cada clase."
+        )
     return {
+        class_id: float(labels.size / (2.0 * count))
+        for class_id, count in enumerate(counts)
+    }
+
+
+def build_split_plan(y: Sequence[int], args: argparse.Namespace) -> list[dict[str, Any]]:
+    """Construye una sola vez los pliegues externos e internos."""
+
+    labels = np.asarray(y, dtype=np.int32).ravel()
+    outer = RepeatedStratifiedKFold(
+        n_splits=args.n_splits,
+        n_repeats=args.n_repeats,
+        random_state=args.seed,
+    )
+    plan: list[dict[str, Any]] = []
+
+    for fold_index, (outer_train, outer_val) in enumerate(
+        outer.split(np.zeros(labels.size, dtype=np.uint8), labels)
+    ):
+        inner = StratifiedShuffleSplit(
+            n_splits=1,
+            test_size=args.inner_val_frac,
+            random_state=args.seed + fold_index,
+        )
+        try:
+            fit_rel, inner_rel = next(
+                inner.split(
+                    np.zeros(outer_train.size, dtype=np.uint8),
+                    labels[outer_train],
+                )
+            )
+        except ValueError as exc:
+            raise SystemExit(
+                "ERROR: no fue posible crear la partición interna estratificada. "
+                "Reduzca --n-splits o aumente --inner-val-frac. "
+                f"Detalle: {exc}"
+            ) from exc
+
+        fit_idx = outer_train[fit_rel]
+        inner_val_idx = outer_train[inner_rel]
+        if np.unique(labels[fit_idx]).size != 2:
+            raise SystemExit(
+                f"ERROR: el subconjunto fit del pliegue {fold_index + 1} no contiene ambas clases."
+            )
+        if np.unique(labels[inner_val_idx]).size != 2:
+            raise SystemExit(
+                f"ERROR: la validación interna del pliegue {fold_index + 1} no contiene ambas clases."
+            )
+
+        plan.append(
+            {
+                "fold": fold_index + 1,
+                "repeat": fold_index // args.n_splits + 1,
+                "outer_train": outer_train.astype(np.int64, copy=False),
+                "fit": fit_idx.astype(np.int64, copy=False),
+                "inner_val": inner_val_idx.astype(np.int64, copy=False),
+                "outer_val": outer_val.astype(np.int64, copy=False),
+            }
+        )
+    return plan
+
+
+def split_fingerprint(plan: Sequence[Mapping[str, Any]], *, length: int = 16) -> str:
+    digest = hashlib.sha256()
+    for fold in plan:
+        for name in ("fit", "inner_val", "outer_val"):
+            array = np.ascontiguousarray(np.asarray(fold[name], dtype=np.int64))
+            digest.update(name.encode("ascii"))
+            digest.update(array.size.to_bytes(8, "little"))
+            digest.update(array.tobytes())
+    return digest.hexdigest()[:length]
+
+
+# ---------------------------------------------------------------------------
+# Enventanado y representaciones
+# ---------------------------------------------------------------------------
+
+def resolve_temporal_spec(
+    args: argparse.Namespace,
+    *,
+    n_timepoints: int,
+) -> tdha_data.WindowSpec | None:
+    """Resuelve los argumentos del CLI manteniendo el legado 70/2."""
+
+    explicit_temporal = any(
+        value is not None
+        for value in (
+            args.window_tr,
+            args.window_seconds,
+            args.step_tr,
+            args.step_seconds,
+            args.overlap,
+            args.gaussian_sigma,
+        )
+    ) or args.window_shape != "rectangular"
+
+    if args.representation == "static":
+        if explicit_temporal:
+            raise SystemExit(
+                "ERROR: la representación 'static' usa toda la serie y no acepta "
+                "parámetros de ventana, paso, solapamiento o forma de ventana."
+            )
+        args.window = None
+        args.step = None
+        args.windowing_preset = "static"
+        return None
+
+    tr_seconds = (
+        _positive_float("--tr-seconds", args.tr_seconds)
+        if args.tr_seconds is not None
+        else float(tdha_data.SITE_TR_SECONDS[args.site])
+    )
+
+    window_tr = args.window_tr
+    window_seconds = args.window_seconds
+    default_window = window_tr is None and window_seconds is None
+    if default_window:
+        window_tr = 70
+
+    step_tr = args.step_tr
+    step_seconds = args.step_seconds
+    overlap = args.overlap
+    default_step = step_tr is None and step_seconds is None and overlap is None
+    if default_step:
+        if window_seconds is not None:
+            raise SystemExit(
+                "ERROR: con --window-seconds debe especificar --step, "
+                "--step-seconds o --overlap."
+            )
+        step_tr = 2  # compatibilidad con ``--window N`` del ejecutor histórico
+
+    args.windowing_preset = (
+        "legacy_70_2" if default_window and default_step else "custom"
+    )
+
+    try:
+        spec = tdha_data.resolve_window_spec(
+            tr_seconds=tr_seconds,
+            window_tr=window_tr,
+            window_seconds=window_seconds,
+            step_tr=step_tr,
+            step_seconds=step_seconds,
+            overlap=overlap,
+            shape=args.window_shape,
+            fisher_z=args.fisher_z,
+            gaussian_sigma=args.gaussian_sigma,
+        )
+        tdha_data.n_windows(n_timepoints, spec.window_tr, spec.step_tr)
+    except (TypeError, ValueError) as exc:
+        raise SystemExit(f"ERROR: configuración temporal inválida: {exc}") from exc
+
+    args.window = spec.window_tr  # claves históricas utilizadas por otros scripts
+    args.step = spec.step_tr
+    return spec
+
+
+def static_diagnostics(n_timepoints: int, tr_seconds: float) -> dict[str, Any]:
+    return {
+        "mode": "static",
+        "n_timepoints": int(n_timepoints),
+        "n_windows": 1,
+        "window_tr": int(n_timepoints),
+        "step_tr": int(n_timepoints),
+        "window_seconds": float(n_timepoints * tr_seconds),
+        "step_seconds": float(n_timepoints * tr_seconds),
+        "scan_seconds": float(n_timepoints * tr_seconds),
+        "effective_overlap": 0.0,
+        "unused_timepoints": 0,
+        "window_fraction_of_scan": 1.0,
+        "coverage_min": 1,
+        "coverage_max": 1,
+        "coverage_mean": 1.0,
+        "median_adjacent_similarity": None,
+    }
+
+
+def build_representation(
+    *,
+    site: str,
+    bold: np.ndarray,
+    labels: np.ndarray,
+    subjects: Sequence[Any],
+    indices: np.ndarray,
+    roi_key: str,
+    args: argparse.Namespace,
+    spec: tdha_data.WindowSpec | None,
+    use_cache: bool,
+) -> tuple[np.ndarray, dict[str, Any], list[str]]:
+    """Construye la entrada del modelo y los diagnósticos del enventanado."""
+
+    del labels  # La transformación no depende de la etiqueta.
+    n_timepoints = int(bold.shape[-1])
+    tr_seconds = (
+        float(args.tr_seconds)
+        if args.tr_seconds is not None
+        else float(tdha_data.SITE_TR_SECONDS[site])
+    )
+
+    if args.representation == "static":
+        if use_cache:
+            base = tdha_data.build_sequences_cached(
+                site,
+                bold,
+                indices,
+                n_timepoints,
+                n_timepoints,
+                roi_key,
+                mode="static",
+                fisher_z=args.fisher_z,
+                constant_policy=args.constant_policy,
+            )
+        else:
+            base = tdha_data.build_flat_static_connectivity(
+                bold,
+                indices,
+                fisher_z=args.fisher_z,
+                constant_policy=args.constant_policy,
+            )
+        diagnostics = static_diagnostics(n_timepoints, tr_seconds)
+        return base, diagnostics, []
+
+    if spec is None:  # salvaguarda de programación
+        raise RuntimeError("Se requiere WindowSpec para representaciones dinámicas.")
+
+    if use_cache:
+        ordered = tdha_data.build_sequences_cached(
+            site,
+            bold,
+            indices,
+            spec.window_tr,
+            spec.step_tr,
+            roi_key,
+            mode="dynamic",
+            window_shape=spec.shape,
+            gaussian_sigma=spec.gaussian_sigma,
+            fisher_z=spec.fisher_z,
+            constant_policy=args.constant_policy,
+        )
+    else:
+        ordered = tdha_data.build_flat_sequences(
+            bold,
+            indices,
+            spec.window_tr,
+            spec.step_tr,
+            window_shape=spec.shape,
+            gaussian_sigma=spec.gaussian_sigma,
+            fisher_z=spec.fisher_z,
+            constant_policy=args.constant_policy,
+        )
+
+    diagnostics = tdha_data.windowing_diagnostics(
+        n_timepoints,
+        spec.window_tr,
+        spec.step_tr,
+        tr_seconds=spec.tr_seconds,
+        sequences=ordered,
+    )
+    diagnostics["mode"] = "dynamic"
+    diagnostics["window_shape"] = spec.shape
+    diagnostics["fisher_z"] = bool(spec.fisher_z)
+    diagnostics["gaussian_sigma"] = spec.gaussian_sigma
+    warnings = tdha_data.methodological_warnings(diagnostics)
+
+    if args.representation == "ordered":
+        output = ordered
+    elif args.representation == "permuted":
+        output = tdha_data.permute_windows(
+            ordered,
+            subject_ids=subjects,
+            seed=args.representation_seed,
+        )
+    elif args.representation == "mean":
+        output = tdha_data.summarize_windows(ordered, statistics=("mean",))
+    elif args.representation == "mean_std":
+        output = tdha_data.summarize_windows(ordered, statistics=("mean", "std"))
+    else:  # pragma: no cover - argparse limita las opciones
+        raise ValueError(f"Representación desconocida: {args.representation!r}.")
+
+    return np.asarray(output, dtype=np.float32), diagnostics, warnings
+
+
+# ---------------------------------------------------------------------------
+# Entrenamiento y métricas
+# ---------------------------------------------------------------------------
+
+def evaluate(model: Any, X: np.ndarray, y: Sequence[int]) -> tuple[dict[str, float], np.ndarray]:
+    """Calcula métricas con una sola pasada hacia adelante."""
+
+    from sklearn.metrics import (
+        balanced_accuracy_score,
+        f1_score,
+        roc_auc_score,
+    )
+
+    probabilities = np.asarray(model(X, training=False)).ravel().astype(np.float64)
+    labels = np.asarray(y, dtype=np.int32).ravel()
+    epsilon = 1e-7
+    clipped = np.clip(probabilities, epsilon, 1 - epsilon)
+    loss = float(
+        -np.mean(labels * np.log(clipped) + (1 - labels) * np.log(1 - clipped))
+    )
+    prediction = (probabilities >= 0.5).astype(np.int32)
+
+    tp = int(((prediction == 1) & (labels == 1)).sum())
+    tn = int(((prediction == 0) & (labels == 0)).sum())
+    fp = int(((prediction == 1) & (labels == 0)).sum())
+    fn = int(((prediction == 0) & (labels == 1)).sum())
+
+    precision = tp / (tp + fp) if tp + fp else 0.0
+    recall = tp / (tp + fn) if tp + fn else 0.0
+    specificity = tn / (tn + fp) if tn + fp else 0.0
+
+    metrics = {
         "loss": loss,
-        "accuracy": (tp + tn) / len(y),
-        "precision": tp / (tp + fp) if tp + fp else 0.0,
-        "recall": tp / (tp + fn) if tp + fn else 0.0,
-        "auc": float(roc_auc_score(y, p)) if len(np.unique(y)) > 1 else float("nan"),
-        "true_positives": tp, "true_negatives": tn,
-        "false_positives": fp, "false_negatives": fn,
-    }, p
+        "accuracy": float((tp + tn) / labels.size),
+        "balanced_accuracy": float(balanced_accuracy_score(labels, prediction)),
+        "precision": float(precision),
+        "recall": float(recall),
+        "specificity": float(specificity),
+        "f1": float(f1_score(labels, prediction, zero_division=0)),
+        "f1_macro": float(
+            f1_score(labels, prediction, average="macro", zero_division=0)
+        ),
+        "auc": float(roc_auc_score(labels, probabilities))
+        if np.unique(labels).size > 1
+        else float("nan"),
+        "true_positives": tp,
+        "true_negatives": tn,
+        "false_positives": fp,
+        "false_negatives": fn,
+    }
+    return metrics, probabilities
 
 
-def compile_model(model, args):
-    """Compila con UNA sola métrica.
+def compile_model(model: Any, args: argparse.Namespace) -> Any:
+    """Compila con la única métrica necesaria para el historial por época."""
 
-    Las métricas que se reportan las calcula ``evaluate`` al final de cada pliegue,
-    no Keras durante el entrenamiento. Compilar con las ocho obligaba a actualizarlas
-    en cada lote de cada época —el AUC es especialmente caro, con 200 umbrales— para
-    después descartarlas. Se conserva ``accuracy`` porque alimenta el historial
-    opcional; el early stopping solo usa ``val_loss``.
-    """
     import keras
-    metrics = [keras.metrics.BinaryAccuracy(name="accuracy")]
-    opt = {"learning_rate": args.lr}
-    if args.clipnorm:
-        opt["clipnorm"] = args.clipnorm
-    model.compile(optimizer=keras.optimizers.Adam(**opt),
-                  loss="binary_crossentropy", metrics=metrics)
+
+    optimizer_args: dict[str, Any] = {"learning_rate": args.lr}
+    if args.clipnorm is not None:
+        optimizer_args["clipnorm"] = args.clipnorm
+    model.compile(
+        optimizer=keras.optimizers.Adam(**optimizer_args),
+        loss="binary_crossentropy",
+        metrics=[keras.metrics.BinaryAccuracy(name="accuracy")],
+    )
     return model
 
 
-def run_config(Xf, y, args, outdir, subset_id=None):
-    """Validación cruzada completa sobre una matriz de secuencias ya construida."""
+def run_config(
+    Xf: np.ndarray,
+    y: np.ndarray,
+    subjects: Sequence[Any],
+    args: argparse.Namespace,
+    outdir: Path,
+    split_plan: Sequence[Mapping[str, Any]],
+    subset_id: int | None = None,
+) -> dict[str, float]:
+    """Ejecuta la validación cruzada sobre una representación ya construida."""
+
     import keras
     from keras.callbacks import EarlyStopping
 
-    n_subj, n_win, n_feat = Xf.shape
-    print(f"  entrada: {n_subj} sujetos · {n_win} ventanas · {n_feat} características")
+    Xf = np.asarray(Xf, dtype=np.float32)
+    y = np.asarray(y, dtype=np.int32)
+    if Xf.ndim != 3:
+        raise ValueError("Xf debe tener forma (sujetos, ventanas, características).")
+    if Xf.shape[0] != y.size or len(subjects) != y.size:
+        raise ValueError("Xf, y y subjects deben contener el mismo número de sujetos.")
+    if not np.isfinite(Xf).all():
+        raise ValueError("La representación contiene NaN o infinitos.")
 
-    outer = RepeatedStratifiedKFold(n_splits=args.n_splits, n_repeats=args.n_repeats,
-                                    random_state=args.seed)
+    n_subjects, n_windows, n_features = Xf.shape
+    print(
+        f" entrada: {n_subjects} sujetos · {n_windows} ventanas · "
+        f"{n_features} características"
+    )
 
-    class_weight = None
-    if args.class_weight:
-        counts = np.bincount(y)
-        class_weight = {i: len(y) / (len(counts) * c) for i, c in enumerate(counts)}
-        print(f"  pesos de clase: { {k: round(v, 3) for k, v in class_weight.items()} }")
+    rows_train: list[dict[str, Any]] = []
+    rows_val: list[dict[str, Any]] = []
+    history_rows: list[dict[str, Any]] = []
+    prediction_rows: list[dict[str, Any]] = []
+    fold_rows: list[dict[str, Any]] = []
+    start_time = time.time()
 
-    rows_train, rows_val, hist_rows, pred_rows, fold_rows = [], [], [], [], []
-    t0 = time.time()
+    for fold_zero, fold_data in enumerate(split_plan):
+        outer_train = np.asarray(fold_data["outer_train"], dtype=np.int64)
+        fit_idx = np.asarray(fold_data["fit"], dtype=np.int64)
+        inner_val_idx = np.asarray(fold_data["inner_val"], dtype=np.int64)
+        outer_val_idx = np.asarray(fold_data["outer_val"], dtype=np.int64)
+        fold_number = int(fold_data["fold"])
+        repeat = int(fold_data["repeat"])
 
-    for fold, (tr_idx, va_idx) in enumerate(outer.split(Xf, y)):
-        # Se construye un modelo nuevo por pliegue: sin limpiar, Keras acumula
-        # grafos y funciones trazadas de los 50 modelos anteriores. El orden importa:
-        # clear_session ANTES de fijar la semilla, para que la inicialización de
-        # pesos siga siendo la misma y los resultados no cambien.
+        # Evita acumulación de grafos entre pliegues. La semilla se fija después
+        # de limpiar la sesión para conservar una inicialización reproducible.
         keras.backend.clear_session()
         gc.collect()
-        keras.utils.set_random_seed(args.seed * 1000 + fold)
-        repeat = fold // args.n_splits + 1
+        keras.utils.set_random_seed(args.seed * 1000 + fold_zero)
 
-        # Partición interna, SOLO sobre entrenamiento, para decidir la época.
-        inner = StratifiedShuffleSplit(n_splits=1, test_size=args.inner_val_frac,
-                                       random_state=args.seed + fold)
-        # StratifiedShuffleSplit solo necesita el número de muestras y las etiquetas:
-        # pasarle Xf[tr_idx] materializaría una copia de ~220 MB con 116 ROIs, en cada
-        # uno de los 50 pliegues, para nada.
-        fit_rel, sel_rel = next(inner.split(np.zeros(len(tr_idx)), y[tr_idx]))
-        fit_idx, sel_idx = tr_idx[fit_rel], tr_idx[sel_rel]
-        X_fit, X_sel = Xf[fit_idx], Xf[sel_idx]
+        class_weight = (
+            compute_class_weights(y[fit_idx]) if args.class_weight else None
+        )
+        if args.verbose and class_weight is not None:
+            rounded = {key: round(value, 4) for key, value in class_weight.items()}
+            print(f" pesos pliegue {fold_number}: {rounded}")
 
         model = compile_model(
-            kerasmodels.build(args.model, n_win, n_feat, **args._model_kwargs), args)
-
-        # restore_best_weights deja el modelo en su mejor época según la partición
-        # INTERNA. No se usa ModelCheckpoint: sería el mismo criterio con escritura de
-        # disco y nombres que pueden colisionar entre subconjuntos aleatorios.
-        history = model.fit(
-            X_fit, y[fit_idx],
-            validation_data=(X_sel, y[sel_idx]),
-            epochs=args.epochs, batch_size=args.batch_size,
-            class_weight=class_weight, verbose=0,
-            callbacks=[EarlyStopping(monitor="val_loss", mode="min",
-                                     patience=args.patience, min_delta=1e-5,
-                                     start_from_epoch=args.start_from_epoch,
-                                     restore_best_weights=True)],
+            kerasmodels.build(
+                args.model,
+                n_windows,
+                n_features,
+                **args._model_kwargs,
+            ),
+            args,
         )
-        n_ep = len(history.history["loss"])
-        best_ep = int(np.argmin(history.history["val_loss"])) + 1
 
-        # La validación externa se toca aquí por primera vez.
-        m_tr, _ = evaluate(model, Xf[tr_idx], y[tr_idx])
-        m_va, probs = evaluate(model, Xf[va_idx], y[va_idx])
-        meta = {"fold": fold + 1, "repeat": repeat, "n_epochs": n_ep, "best_epoch": best_ep}
-        rows_train.append({**meta, **m_tr})
-        rows_val.append({**meta, **m_va})
+        history = model.fit(
+            Xf[fit_idx],
+            y[fit_idx],
+            validation_data=(Xf[inner_val_idx], y[inner_val_idx]),
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+            class_weight=class_weight,
+            verbose=0,
+            callbacks=[
+                EarlyStopping(
+                    monitor="val_loss",
+                    mode="min",
+                    patience=args.patience,
+                    min_delta=1e-5,
+                    start_from_epoch=args.start_from_epoch,
+                    restore_best_weights=True,
+                )
+            ],
+        )
 
-        for ep, loss in enumerate(history.history["loss"]):
-            hist_rows.append({"fold": fold + 1, "repeat": repeat, "epoch": ep + 1,
-                              "loss": loss,
-                              "inner_val_loss": history.history["val_loss"][ep],
-                              "accuracy": history.history["accuracy"][ep],
-                              "inner_val_accuracy": history.history["val_accuracy"][ep]})
+        n_epochs = len(history.history["loss"])
+        best_epoch = int(np.argmin(history.history["val_loss"])) + 1
 
-        for s, p in zip(va_idx, probs):
-            pred_rows.append({"fold": fold + 1, "repeat": repeat, "subject": int(s),
-                              "y_true": int(y[s]), "y_prob": float(p)})
-        for name, idxs in [("fit", fit_idx), ("inner_val", sel_idx), ("outer_val", va_idx)]:
-            for s in idxs:
-                fold_rows.append({"fold": fold + 1, "subject": int(s), "split": name})
+        # El pliegue externo se utiliza aquí por primera vez.
+        train_metrics, _ = evaluate(model, Xf[outer_train], y[outer_train])
+        val_metrics, probabilities = evaluate(
+            model,
+            Xf[outer_val_idx],
+            y[outer_val_idx],
+        )
+
+        metadata: dict[str, Any] = {
+            "fold": fold_number,
+            "repeat": repeat,
+            "n_epochs": n_epochs,
+            "best_epoch": best_epoch,
+            "n_fit": int(fit_idx.size),
+            "n_inner_val": int(inner_val_idx.size),
+            "n_outer_val": int(outer_val_idx.size),
+            "class_weight_0": class_weight.get(0) if class_weight else None,
+            "class_weight_1": class_weight.get(1) if class_weight else None,
+        }
+        rows_train.append({**metadata, **train_metrics})
+        rows_val.append({**metadata, **val_metrics})
+
+        for epoch, loss in enumerate(history.history["loss"], start=1):
+            history_rows.append(
+                {
+                    "fold": fold_number,
+                    "repeat": repeat,
+                    "epoch": epoch,
+                    "loss": float(loss),
+                    "inner_val_loss": float(history.history["val_loss"][epoch - 1]),
+                    "accuracy": float(history.history["accuracy"][epoch - 1]),
+                    "inner_val_accuracy": float(
+                        history.history["val_accuracy"][epoch - 1]
+                    ),
+                }
+            )
+
+        for subject_index, probability in zip(outer_val_idx, probabilities):
+            prediction_rows.append(
+                {
+                    "fold": fold_number,
+                    "repeat": repeat,
+                    "subject": int(subject_index),  # compatibilidad histórica
+                    "subject_id": str(subjects[int(subject_index)]),
+                    "y_true": int(y[subject_index]),
+                    "y_prob": float(probability),
+                }
+            )
+
+        for split_name, split_indices in (
+            ("fit", fit_idx),
+            ("inner_val", inner_val_idx),
+            ("outer_val", outer_val_idx),
+        ):
+            for subject_index in split_indices:
+                fold_rows.append(
+                    {
+                        "fold": fold_number,
+                        "repeat": repeat,
+                        "subject": int(subject_index),
+                        "subject_id": str(subjects[int(subject_index)]),
+                        "split": split_name,
+                    }
+                )
 
         if args.verbose:
-            print(f"    pliegue {fold + 1:3d}/{args.n_splits * args.n_repeats}  "
-                  f"train acc={m_tr['accuracy']:.4f}  val acc={m_va['accuracy']:.4f}  "
-                  f"(época {best_ep}/{n_ep})", flush=True)
+            print(
+                f" pliegue {fold_number:3d}/{len(split_plan)} "
+                f"train acc={train_metrics['accuracy']:.4f} "
+                f"val acc={val_metrics['accuracy']:.4f} "
+                f"val F1m={val_metrics['f1_macro']:.4f} "
+                f"(época {best_epoch}/{n_epochs})",
+                flush=True,
+            )
 
-        del model, history, X_fit, X_sel
+        del model, history
         gc.collect()
 
-    sfx = "" if subset_id is None else f"_set{subset_id:02d}"
-    pd.DataFrame(rows_train).to_csv(outdir / f"metrics_train{sfx}.csv", index=False)
-    pd.DataFrame(rows_val).to_csv(outdir / f"metrics_val{sfx}.csv", index=False)
-    pd.DataFrame(pred_rows).to_csv(outdir / f"predictions_val{sfx}.csv", index=False)
-    # history y folds no se guardan por defecto. history sostiene las curvas de
-    # convergencia (comentarios 4 de R1 y 11 de R2) y folds es la evidencia de que
-    # la partición es por sujeto (comentario 6 de R2): actívelos cuando haga falta
-    # producir esas figuras o responder a esa auditoría.
-    if args.save_history:
-        pd.DataFrame(hist_rows).to_csv(outdir / f"history{sfx}.csv", index=False)
-    if args.save_folds:
-        pd.DataFrame(fold_rows).to_csv(outdir / f"folds{sfx}.csv", index=False)
+    suffix = "" if subset_id is None else f"_set{subset_id:02d}"
+    pd.DataFrame(rows_train).to_csv(
+        outdir / f"metrics_train{suffix}.csv", index=False
+    )
+    pd.DataFrame(rows_val).to_csv(outdir / f"metrics_val{suffix}.csv", index=False)
+    pd.DataFrame(history_rows).to_csv(outdir / f"history{suffix}.csv", index=False)
+    pd.DataFrame(prediction_rows).to_csv(
+        outdir / f"predictions_val{suffix}.csv", index=False
+    )
+    pd.DataFrame(fold_rows).to_csv(outdir / f"folds{suffix}.csv", index=False)
 
-    tr, va = pd.DataFrame(rows_train), pd.DataFrame(rows_val)
-    print(f"  train acc {tr.accuracy.mean() * 100:.2f} ± {tr.accuracy.std() * 100:.2f}  |  "
-          f"val acc {va.accuracy.mean() * 100:.2f} ± {va.accuracy.std() * 100:.2f}  |  "
-          f"{time.time() - t0:.0f} s")
-    return {"train_acc": float(tr.accuracy.mean()), "val_acc": float(va.accuracy.mean())}
+    train_frame = pd.DataFrame(rows_train)
+    val_frame = pd.DataFrame(rows_val)
+    elapsed = time.time() - start_time
+    print(
+        f" train acc {train_frame.accuracy.mean() * 100:.2f} ± "
+        f"{train_frame.accuracy.std() * 100:.2f} | "
+        f"val acc {val_frame.accuracy.mean() * 100:.2f} ± "
+        f"{val_frame.accuracy.std() * 100:.2f} | "
+        f"val F1m {val_frame.f1_macro.mean() * 100:.2f} ± "
+        f"{val_frame.f1_macro.std() * 100:.2f} | {elapsed:.0f} s"
+    )
+    return {
+        "train_acc": float(train_frame.accuracy.mean()),
+        "val_acc": float(val_frame.accuracy.mean()),
+        "val_f1_macro": float(val_frame.f1_macro.mean()),
+        "val_auc": float(val_frame.auc.mean()),
+    }
 
 
-# --------------------------------------------------------------------------- #
+# ---------------------------------------------------------------------------
+# CLI y configuración
+# ---------------------------------------------------------------------------
 
-def main(argv=None):
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    g = p.add_argument_group("datos")
-    g.add_argument("--site", default="NYU", choices=tdha_data.SITES)
-    g.add_argument("--roi-set", default="12",
-                   help="subconjunto definido en data/atlas/roi_sets.json: 12, 18, 39, 116")
-    g.add_argument("--window", type=int, default=70, help="longitud de ventana, en TR")
-    g.add_argument("--step", type=int, default=2, help="desplazamiento entre ventanas, en TR")
-    g.add_argument("--out", default=str(DEFAULT_OUT_DIR))
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
-    g = p.add_argument_group("arquitectura")
-    g.add_argument("--model", default="lstm",
-                   help=f"una de: {', '.join(kerasmodels.available())}")
-    g.add_argument("--model-arg", nargs="*", metavar="CLAVE=VALOR",
-                   help="hiperparámetros de la arquitectura, p. ej. units=128 dropout=0.2")
+    data_group = parser.add_argument_group("datos y representación")
+    data_group.add_argument("--site", default="NYU", choices=tdha_data.SITES)
+    data_group.add_argument(
+        "--roi-set",
+        default="12",
+        help="subconjunto definido en data/atlas/roi_sets.json: 12, 18, 39, 116",
+    )
 
-    g = p.add_argument_group("entrenamiento")
-    g.add_argument("--seed", type=int, default=42,
-                   help="fija particiones e inicialización. Usar el MISMO valor en todas "
-                        "las configuraciones que se vayan a comparar")
-    g.add_argument("--n-splits", type=int, default=10)
-    g.add_argument("--n-repeats", type=int, default=5)
-    g.add_argument("--lr", type=float, default=1e-4)
-    g.add_argument("--batch-size", type=int, default=8)
-    g.add_argument("--epochs", type=int, default=150)
-    g.add_argument("--patience", type=int, default=100)
-    g.add_argument("--clipnorm", type=float, default=None)
-    g.add_argument("--start-from-epoch", type=int, default=0,
-                   help="épocas mínimas antes de empezar a vigilar la parada. Con 0 "
-                        "(por defecto) el mínimo de la pérdida interna puede caer en la "
-                        "época 1 por ruido, y restore_best_weights devolvería un modelo "
-                        "sin entrenar: en el piloto eso ocurrió en 18 de 50 pliegues")
-    g.add_argument("--inner-val-frac", type=float, default=0.15,
-                   help="fracción del entrenamiento reservada para elegir la época")
-    g.add_argument("--class-weight", action="store_true",
-                   help="pondera clases por frecuencia; útil en sitios desbalanceados")
+    window_group = data_group.add_mutually_exclusive_group()
+    window_group.add_argument(
+        "--window",
+        dest="window_tr",
+        type=int,
+        default=None,
+        help="longitud de ventana en TR; sin argumentos se conserva 70 TR",
+    )
+    window_group.add_argument(
+        "--window-seconds",
+        type=float,
+        default=None,
+        help="longitud física de la ventana en segundos",
+    )
 
-    g = p.add_argument_group("control anatómico")
-    g.add_argument("--random-subset", type=int, default=None,
-                   help="muestrea N ROIs al azar, para separar el efecto de la selección "
-                        "anatómica del de la reducción de dimensionalidad")
-    g.add_argument("--n-random-sets", type=int, default=20)
-    g.add_argument("--exclude-roi-set", default=None,
-                   help="excluye del muestreo los ROIs de este subconjunto, p. ej. 12")
+    step_group = data_group.add_mutually_exclusive_group()
+    step_group.add_argument(
+        "--step",
+        dest="step_tr",
+        type=int,
+        default=None,
+        help="desplazamiento en TR; con --window y sin paso se conserva 2 TR",
+    )
+    step_group.add_argument(
+        "--step-seconds",
+        type=float,
+        default=None,
+        help="desplazamiento físico entre ventanas, en segundos",
+    )
+    step_group.add_argument(
+        "--overlap",
+        type=float,
+        default=None,
+        help="fracción de solapamiento en [0, 1), por ejemplo 0.75",
+    )
 
-    g = p.add_argument_group("ejecución")
-    g.add_argument("--deterministic", action="store_true",
-                   help="fuerza operaciones deterministas: dos máquinas dan cifras "
-                        "idénticas, pero las RNN pierden el camino rápido de cuDNN y la "
-                        "corrida puede tardar varias veces más")
-    g.add_argument("--tag", default=None, help="sufijo opcional para el nombre de la corrida")
-    g.add_argument("--save-history", action="store_true",
-                   help="guarda history.csv: pérdida y accuracy por época y pliegue. "
-                        "Necesario para las curvas de convergencia que piden los revisores")
-    g.add_argument("--save-folds", action="store_true",
-                   help="guarda folds.csv: los sujetos de cada partición. Es la evidencia "
-                        "auditable de que la división es por sujeto y no por ventana")
-    g.add_argument("--dry-run", action="store_true", help="valida sin entrenar")
-    g.add_argument("--list-models", action="store_true")
-    g.add_argument("--list-roi-sets", action="store_true")
-    g.add_argument("--verbose", action="store_true")
-    args = p.parse_args(argv)
+    data_group.add_argument(
+        "--tr-seconds",
+        type=float,
+        default=None,
+        help="sobrescribe explícitamente el TR documentado del sitio",
+    )
+    data_group.add_argument(
+        "--window-shape",
+        choices=("rectangular", "gaussian"),
+        default="rectangular",
+    )
+    data_group.add_argument(
+        "--gaussian-sigma",
+        type=float,
+        default=None,
+        help="sigma de la ventana gaussiana en TR; por defecto window/6",
+    )
+    data_group.add_argument("--fisher-z", action="store_true")
+    data_group.add_argument(
+        "--constant-policy",
+        choices=("zero", "raise"),
+        default="zero",
+        help="tratamiento de ROIs constantes dentro de una ventana",
+    )
+    data_group.add_argument(
+        "--representation",
+        choices=REPRESENTATIONS,
+        default="ordered",
+        help="ordered, permuted, mean, mean_std o static",
+    )
+    data_group.add_argument(
+        "--representation-seed",
+        type=int,
+        default=None,
+        help="semilla de la permutación temporal; por defecto usa --seed",
+    )
+    data_group.add_argument("--out", default=str(DEFAULT_OUT_DIR))
+
+    architecture_group = parser.add_argument_group("arquitectura")
+    architecture_group.add_argument(
+        "--model",
+        default="lstm",
+        help=f"una de: {', '.join(kerasmodels.available())}",
+    )
+    architecture_group.add_argument(
+        "--model-arg",
+        nargs="*",
+        metavar="CLAVE=VALOR",
+        help="hiperparámetros, p. ej. units=128 dropout=0.2",
+    )
+
+    training_group = parser.add_argument_group("entrenamiento")
+    training_group.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="fija particiones e inicialización; use el mismo valor al comparar",
+    )
+    training_group.add_argument("--n-splits", type=int, default=10)
+    training_group.add_argument("--n-repeats", type=int, default=5)
+    training_group.add_argument("--lr", type=float, default=1e-4)
+    training_group.add_argument("--batch-size", type=int, default=8)
+    training_group.add_argument("--epochs", type=int, default=150)
+    training_group.add_argument("--patience", type=int, default=100)
+    training_group.add_argument("--clipnorm", type=float, default=None)
+    training_group.add_argument("--start-from-epoch", type=int, default=0)
+    training_group.add_argument(
+        "--inner-val-frac",
+        type=float,
+        default=0.15,
+        help="fracción del entrenamiento externo reservada para seleccionar época",
+    )
+    training_group.add_argument(
+        "--class-weight",
+        action="store_true",
+        help="calcula pesos por pliegue usando únicamente el subconjunto fit",
+    )
+
+    anatomy_group = parser.add_argument_group("control anatómico")
+    anatomy_group.add_argument(
+        "--random-subset",
+        type=int,
+        default=None,
+        help="muestrea N ROIs dentro de --roi-set; use --roi-set 116 para todo el atlas",
+    )
+    anatomy_group.add_argument("--n-random-sets", type=int, default=20)
+    anatomy_group.add_argument("--exclude-roi-set", default=None)
+
+    execution_group = parser.add_argument_group("ejecución")
+    execution_group.add_argument("--deterministic", action="store_true")
+    execution_group.add_argument("--tag", default=None)
+    execution_group.add_argument("--overwrite", action="store_true")
+    execution_group.add_argument("--dry-run", action="store_true")
+    execution_group.add_argument("--list-models", action="store_true")
+    execution_group.add_argument("--list-roi-sets", action="store_true")
+    execution_group.add_argument("--verbose", action="store_true")
+    return parser
+
+
+def _window_identity(spec: tdha_data.WindowSpec | None) -> dict[str, Any]:
+    if spec is None:
+        return {
+            "mode": "static",
+            "window_tr": None,
+            "step_tr": None,
+            "window_seconds": None,
+            "step_seconds": None,
+            "requested_window_seconds": None,
+            "requested_step_seconds": None,
+            "requested_overlap": None,
+            "effective_overlap": None,
+            "shape": None,
+            "gaussian_sigma": None,
+        }
+    return {"mode": "dynamic", **spec.to_dict()}
+
+
+def make_run_id(
+    args: argparse.Namespace,
+    spec: tdha_data.WindowSpec | None,
+    digest: str,
+) -> str:
+    parts = [sanitize_component(args.site), f"rois{sanitize_component(args.roi_set)}"]
+    if spec is None:
+        parts.append("static")
+    else:
+        parts.append(f"w{spec.window_tr}s{spec.step_tr}")
+        if spec.shape != "rectangular":
+            parts.append(spec.shape)
+        if spec.fisher_z:
+            parts.append("fisher")
+        if args.representation != "ordered":
+            parts.append(args.representation)
+    parts.append(sanitize_component(args.model))
+    if args.random_subset:
+        parts.append(f"rand{args.random_subset}")
+    if args.tag:
+        parts.append(sanitize_component(args.tag))
+    return "_".join(parts) + f"_{digest}"
+
+
+def _code_hash(module: Any) -> str:
+    path = getattr(module, "__file__", None)
+    return file_hash(path) if path and Path(path).exists() else "desconocido"
+
+
+def write_config(path: Path, config: Mapping[str, Any]) -> None:
+    path.write_text(
+        json.dumps(config, indent=2, ensure_ascii=False, allow_nan=False),
+        encoding="utf-8",
+    )
+
+
+def main(argv: Sequence[str] | None = None) -> str | None:
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
     if args.list_models:
         for name in kerasmodels.available():
-            print(f"  {name:14s} {kerasmodels.defaults(name)}")
-        return
+            print(f" {name:14s} {kerasmodels.defaults(name)}")
+        return None
     if args.list_roi_sets:
-        for k, v in sorted(tdha_data.load_roi_sets().items(), key=lambda x: int(x[0])):
-            print(f"  {k:>4s}  {v['n']:3d} ROIs   {v['description']}")
-        return
+        for key, value in sorted(
+            tdha_data.load_roi_sets().items(), key=lambda item: int(item[0])
+        ):
+            print(f" {key:>4s} {value['n']:3d} ROIs {value['description']}")
+        return None
 
-    # Validar la arquitectura ANTES de cargar datos: un nombre mal escrito debe
-    # fallar de inmediato, y --dry-run también debe detectarlo.
     if args.model not in kerasmodels.REGISTRY:
-        raise SystemExit(f"ERROR: arquitectura '{args.model}' desconocida. "
-                         f"Disponibles: {', '.join(kerasmodels.available())}")
+        raise SystemExit(
+            f"ERROR: arquitectura {args.model!r} desconocida. "
+            f"Disponibles: {', '.join(kerasmodels.available())}"
+        )
     args._model_kwargs = parse_model_args(args.model_arg)
     kerasmodels.validate_args(args.model, args._model_kwargs)
+
+    args.seed = _positive_int("--seed", args.seed, minimum=0)
+    args.representation_seed = (
+        args.seed
+        if args.representation_seed is None
+        else _positive_int("--representation-seed", args.representation_seed, minimum=0)
+    )
+    if args.random_subset is not None:
+        args.random_subset = _positive_int("--random-subset", args.random_subset, minimum=2)
+        args.n_random_sets = _positive_int("--n-random-sets", args.n_random_sets)
+    elif args.exclude_roi_set is not None:
+        raise SystemExit("ERROR: --exclude-roi-set requiere --random-subset.")
 
     if args.deterministic:
         os.environ["TF_DETERMINISTIC_OPS"] = "1"
         try:
             import tensorflow as tf
+
             tf.config.experimental.enable_op_determinism()
-        except Exception as e:
-            print(f"  AVISO: no se pudo activar determinismo: {e}")
+        except Exception as exc:  # pragma: no cover - depende del entorno
+            print(f" AVISO: no se pudo activar determinismo: {exc}")
 
     bold_path = tdha_data.BOLD_DIR / f"{args.site}.joblib"
-    b = tdha_data.load_bold(args.site)
-    y = b["labels"]
-    idx = tdha_data.roi_indices(args.roi_set)
-    n_win = tdha_data.n_windows(b["bold"].shape[2], args.window, args.step)
+    payload = tdha_data.load_bold(args.site)
+    bold = payload["bold"]
+    labels = payload["labels"]
+    subjects = payload["subjects"]
+    roi_idx = tdha_data.roi_indices(args.roi_set)
+    roi_idx = tdha_data.validate_indices(roi_idx, bold.shape[1])
 
-    # La identidad de la corrida se deriva de todo lo que afecta al resultado. Dos
-    # personas con la misma configuración obtienen el mismo nombre de carpeta, así que
-    # la duplicación se detecta en vez de producir archivos paralelos.
-    ident = {
-        "site": args.site, "roi_set": args.roi_set,
-        "window": args.window, "step": args.step,
+    validate_training_args(args, labels)
+    spec = resolve_temporal_spec(args, n_timepoints=bold.shape[-1])
+    split_plan = build_split_plan(labels, args)
+    split_hash = split_fingerprint(split_plan)
+
+    if spec is None:
+        basic_diagnostics = static_diagnostics(
+            bold.shape[-1],
+            args.tr_seconds
+            if args.tr_seconds is not None
+            else tdha_data.SITE_TR_SECONDS[args.site],
+        )
+        basic_warnings: list[str] = []
+        n_model_windows = 1
+    else:
+        basic_diagnostics = tdha_data.windowing_diagnostics(
+            bold.shape[-1],
+            spec.window_tr,
+            spec.step_tr,
+            tr_seconds=spec.tr_seconds,
+        )
+        basic_diagnostics["mode"] = "dynamic"
+        basic_diagnostics["window_shape"] = spec.shape
+        basic_diagnostics["fisher_z"] = spec.fisher_z
+        basic_diagnostics["gaussian_sigma"] = spec.gaussian_sigma
+        basic_warnings = tdha_data.methodological_warnings(basic_diagnostics)
+        n_model_windows = (
+            1 if args.representation in {"mean", "mean_std"} else basic_diagnostics["n_windows"]
+        )
+
+    atlas_path = tdha_data.ATLAS_DIR / "roi_sets.json"
+    window_identity = _window_identity(spec)
+    identity: dict[str, Any] = {
+        "config_schema_version": CONFIG_SCHEMA_VERSION,
+        "site": args.site,
+        "roi_set": str(args.roi_set),
+        "roi_indices_hash": indices_hash(roi_idx),
+        "representation": args.representation,
+        "representation_seed": args.representation_seed
+        if args.representation == "permuted"
+        else None,
+        "windowing": window_identity,
+        "fisher_z": bool(args.fisher_z),
+        "constant_policy": args.constant_policy,
         "model": args.model,
         "arch": {**kerasmodels.defaults(args.model), **args._model_kwargs},
-        "seed": args.seed, "n_splits": args.n_splits, "n_repeats": args.n_repeats,
-        "lr": args.lr, "batch_size": args.batch_size, "epochs": args.epochs,
-        "patience": args.patience, "clipnorm": args.clipnorm,
-        "inner_val_frac": args.inner_val_frac, "class_weight": args.class_weight,
+        "seed": args.seed,
+        "split_fingerprint": split_hash,
+        "n_splits": args.n_splits,
+        "n_repeats": args.n_repeats,
+        "lr": args.lr,
+        "batch_size": args.batch_size,
+        "epochs": args.epochs,
+        "patience": args.patience,
+        "clipnorm": args.clipnorm,
+        "inner_val_frac": args.inner_val_frac,
+        "class_weight": bool(args.class_weight),
         "start_from_epoch": args.start_from_epoch,
-        "random_subset": args.random_subset, "n_random_sets": args.n_random_sets,
-        "exclude_roi_set": args.exclude_roi_set, "deterministic": args.deterministic,
+        "random_subset": args.random_subset,
+        "n_random_sets": args.n_random_sets if args.random_subset else None,
+        "exclude_roi_set": args.exclude_roi_set,
+        "deterministic": bool(args.deterministic),
         "bold_hash": file_hash(bold_path),
+        "atlas_hash": file_hash(atlas_path),
+        "data_code_hash": _code_hash(tdha_data),
+        "runner_code_hash": file_hash(__file__),
     }
-    cfg_hash = hashlib.sha256(json.dumps(ident, sort_keys=True).encode()).hexdigest()[:8]
-    # NYU_12_rois_win_70_step_2_lstm_128_ID_2136273e
-    parts = [args.site, str(args.roi_set), "rois",
-             "win", str(args.window), "step", str(args.step),
-             args.model, arch_size(ident["arch"])]
-    if args.random_subset:
-        parts.append(f"rand{args.random_subset}")
-    if args.tag:
-        parts.append(args.tag)
-    run_id = "_".join(parts) + f"_ID_{cfg_hash}"
-
+    digest = config_hash(identity)
+    run_id = make_run_id(args, spec, digest)
     git = git_info()
-    cfg = {
-        "run_id": run_id, "config_hash": cfg_hash,
-        "n_subjects": int(b["bold"].shape[0]), "n_timepoints": int(b["bold"].shape[2]),
-        "n_windows": int(n_win), "n_rois": int(len(idx)),
-        "class_balance": {int(k): int(v)
-                          for k, v in zip(*np.unique(y, return_counts=True))},
-        **ident, "git": git, "env": env_info(),
+
+    config: dict[str, Any] = {
+        "config_schema_version": CONFIG_SCHEMA_VERSION,
+        "run_id": run_id,
+        "config_hash": digest,
+        "site": args.site,
+        "roi_set": str(args.roi_set),
+        "n_subjects": int(bold.shape[0]),
+        "n_timepoints": int(bold.shape[-1]),
+        "n_rois": int(args.random_subset or roi_idx.size),
+        "n_windows": int(n_model_windows),
+        # Claves históricas que consume compile_results.py.
+        "window": spec.window_tr if spec is not None else None,
+        "step": spec.step_tr if spec is not None else None,
+        "representation": args.representation,
+        "windowing_preset": getattr(args, "windowing_preset", "static"),
+        "windowing": window_identity,
+        "windowing_diagnostics": basic_diagnostics,
+        "methodological_warnings": basic_warnings,
+        "class_balance": {
+            int(key): int(value)
+            for key, value in zip(*np.unique(labels, return_counts=True))
+        },
+        **identity,
+        "git": git,
+        "env": env_info(),
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        # Los argumentos reales, no sys.argv: al invocar main(argv) desde un
-        # notebook, sys.argv es el del kernel de Jupyter y no dice nada.
-        "command": "run_experiment.py " + " ".join(
-            argv if argv is not None else sys.argv[1:]),
+        "command": "run_experiment.py "
+        + " ".join(argv if argv is not None else sys.argv[1:]),
     }
 
     outdir = Path(args.out) / run_id
-    # El identificador se imprime ANTES de cualquier salida temprana: si la corrida ya
-    # existe, quien la invocó sigue necesitando el identificador para localizar los
-    # resultados y publicarlos.
-    print(json.dumps(cfg, indent=2, ensure_ascii=False))
-    print(f"\n  corrida: {run_id}")
+    print(json.dumps(config, indent=2, ensure_ascii=False))
+    print(f"\n corrida: {run_id}")
 
-    # Repetir una configuración REEMPLAZA la anterior: no se conservan dos versiones
-    # de lo mismo. Se limpia la carpeta para que no queden archivos sueltos de una
-    # corrida previa (por ejemplo, subconjuntos aleatorios de un barrido más largo).
-    if outdir.exists() and not args.dry_run:
-        previos = sorted(outdir.glob("*.csv")) + sorted(outdir.glob("config.json"))
-        if previos:
-            print(f"\n  Se reemplaza una corrida anterior de esta misma configuración "
-                  f"({len(previos)} archivos).\n")
-            for f in previos:
-                f.unlink()
-
+    completed = list(outdir.glob("metrics_val*.csv"))
+    if completed and not args.overwrite and not args.dry_run:
+        raise SystemExit(
+            f"\nESTA_CONFIGURACION_YA_SE_EJECUTO: {outdir}\n"
+            "Use --overwrite para repetirla o --tag para distinguirla.\n"
+        )
+    if (outdir / "config.json").exists() and not completed and not args.dry_run:
+        print(
+            "\n AVISO: existe una corrida incompleta en esta carpeta; "
+            "se rehace desde cero.\n"
+        )
     if git["clean"] is False:
-        print("\n  AVISO: el árbol de git tiene cambios sin confirmar. Esta corrida no "
-              "será reproducible por otras personas hasta que se haga commit.\n")
-    n_val = len(y) // args.n_splits
-    n_sel = int((len(y) - n_val) * args.inner_val_frac)
-    if n_val < 10 or n_sel < 12:
-        print(f"\n  AVISO: pliegues pequeños — validación externa ≈ {n_val} sujetos, "
-              f"selección de época ≈ {n_sel}. Las métricas por pliegue serán muy "
-              f"inestables. Considere reducir --n-splits.\n")
-    if n_win < 10:
-        print(f"\n  AVISO: solo {n_win} ventanas por sujeto. Con secuencias tan cortas "
-              f"apenas hay dinámica temporal que modelar. OHSU tiene 74 TR por sujeto, "
-              f"así que una ventana de 70 TR deja 3 ventanas casi idénticas.\n")
+        print(
+            "\n AVISO: el árbol de git tiene cambios sin confirmar. La corrida "
+            "queda identificada por hashes de código, pero debe hacer commit para "
+            "que otras personas puedan reconstruirla.\n"
+        )
+
+    outer_val_approx = len(labels) // args.n_splits
+    inner_val_approx = int((len(labels) - outer_val_approx) * args.inner_val_frac)
+    if outer_val_approx < 10 or inner_val_approx < 12:
+        print(
+            f"\n AVISO: pliegues pequeños — validación externa ≈ {outer_val_approx} "
+            f"sujetos, validación interna ≈ {inner_val_approx}. Las métricas por "
+            "pliegue serán inestables.\n"
+        )
+    for warning in basic_warnings:
+        print(f"\n AVISO DE ENVENTANADO: {warning}\n")
 
     if args.dry_run:
-        splits = list(RepeatedStratifiedKFold(
-            n_splits=args.n_splits, n_repeats=args.n_repeats,
-            random_state=args.seed).split(np.zeros((len(y), 1)), y))
-        h = hashlib.sha256(b"".join(v.tobytes() for _, v in splits)).hexdigest()[:12]
-        print(f"\ndry-run correcto: {len(splits)} particiones, huella {h}")
-        print("Dos corridas son comparables si coinciden su sitio, su semilla y esta huella.")
+        print(
+            f"\ndry-run correcto: {len(split_plan)} particiones completas, "
+            f"huella {split_hash}."
+        )
+        print(
+            "Dos corridas tienen particiones pareadas cuando coinciden sitio, "
+            "etiquetas, semilla, n_splits, n_repeats y esta huella."
+        )
         return run_id
 
     outdir.mkdir(parents=True, exist_ok=True)
-    (outdir / "config.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
+    # El config inicial permite identificar una corrida interrumpida.
+    write_config(outdir / "config.json", config)
 
     if args.random_subset:
-        pool = np.arange(b["bold"].shape[1])
+        # El conjunto indicado por --roi-set define explícitamente el universo
+        # de muestreo. Con --roi-set 116 se conserva el comportamiento histórico.
+        pool = roi_idx.copy()
         if args.exclude_roi_set:
-            excl = tdha_data.roi_indices(args.exclude_roi_set)
-            pool = np.setdiff1d(pool, excl)
-            print(f"  muestreando de {len(pool)} ROIs (excluidos los {len(excl)} del "
-                  f"subconjunto '{args.exclude_roi_set}')")
-        if len(pool) < args.random_subset:
-            raise SystemExit("ERROR: quedan menos ROIs disponibles que los solicitados")
+            excluded = tdha_data.roi_indices(args.exclude_roi_set)
+            pool = np.setdiff1d(pool, excluded)
+            print(
+                f" muestreando de {len(pool)} ROIs (excluidos {len(excluded)} del "
+                f"subconjunto {args.exclude_roi_set!r})"
+            )
+        if pool.size < args.random_subset:
+            raise SystemExit("ERROR: quedan menos ROIs que los solicitados.")
+
         rng = np.random.default_rng(args.seed)
-        summary = []
-        for k in range(args.n_random_sets):
-            sub = np.sort(rng.choice(pool, size=args.random_subset, replace=False))
-            print(f"\nsubconjunto {k + 1}/{args.n_random_sets}: {sub.tolist()}", flush=True)
-            Xf = tdha_data.build_flat_sequences(b["bold"], sub, args.window, args.step)
-            summary.append({"set": k + 1, "rois": sub.tolist(),
-                            **run_config(Xf, y, args, outdir, k + 1)})
-        pd.DataFrame(summary).to_csv(outdir / "random_subsets_summary.csv", index=False)
-        accs = [s["val_acc"] for s in summary]
-        print(f"\n{len(accs)} subconjuntos aleatorios de {args.random_subset} ROIs: "
-              f"val acc media {np.mean(accs) * 100:.2f}, "
-              f"rango [{min(accs) * 100:.2f}, {max(accs) * 100:.2f}]")
-        print("Compare esta distribución con la del subconjunto anatómico: si el "
-              "anatómico no la supera, la ventaja es de dimensionalidad, no de anatomía.")
+        summary: list[dict[str, Any]] = []
+        for subset_zero in range(args.n_random_sets):
+            subset = np.sort(
+                rng.choice(pool, size=args.random_subset, replace=False)
+            )
+            subset_number = subset_zero + 1
+            print(
+                f"\nsubconjunto {subset_number}/{args.n_random_sets}: "
+                f"{subset.tolist()}",
+                flush=True,
+            )
+            Xf, diagnostics, warnings = build_representation(
+                site=args.site,
+                bold=bold,
+                labels=labels,
+                subjects=subjects,
+                indices=subset,
+                roi_key=f"random_{subset_number}_{indices_hash(subset)}",
+                args=args,
+                spec=spec,
+                use_cache=False,
+            )
+            for warning in warnings:
+                print(f" AVISO DE ENVENTANADO: {warning}")
+            result = run_config(
+                Xf,
+                labels,
+                subjects,
+                args,
+                outdir,
+                split_plan,
+                subset_id=subset_number,
+            )
+            summary.append(
+                {
+                    "set": subset_number,
+                    "rois": json.dumps(subset.tolist()),
+                    "roi_indices_hash": indices_hash(subset),
+                    "n_model_windows": int(Xf.shape[1]),
+                    "n_features": int(Xf.shape[2]),
+                    "median_adjacent_similarity": diagnostics.get(
+                        "median_adjacent_similarity"
+                    ),
+                    "warnings": " | ".join(warnings),
+                    **result,
+                }
+            )
+            del Xf
+            gc.collect()
+
+        pd.DataFrame(summary).to_csv(
+            outdir / "random_subsets_summary.csv", index=False
+        )
+        config["random_subsets_summary"] = "random_subsets_summary.csv"
+        write_config(outdir / "config.json", config)
+
+        accuracies = [row["val_acc"] for row in summary]
+        print(
+            f"\n{len(accuracies)} subconjuntos aleatorios de "
+            f"{args.random_subset} ROIs: val acc media "
+            f"{np.mean(accuracies) * 100:.2f}, rango "
+            f"[{min(accuracies) * 100:.2f}, {max(accuracies) * 100:.2f}]"
+        )
     else:
-        print("  construyendo secuencias de conectividad…", flush=True)
-        Xf = tdha_data.build_sequences_cached(
-            args.site, b["bold"], idx, args.window, args.step, args.roi_set)
-        run_config(Xf, y, args, outdir)
+        print(" construyendo representación de conectividad…", flush=True)
+        Xf, diagnostics, warnings = build_representation(
+            site=args.site,
+            bold=bold,
+            labels=labels,
+            subjects=subjects,
+            indices=roi_idx,
+            roi_key=str(args.roi_set),
+            args=args,
+            spec=spec,
+            use_cache=True,
+        )
+        config["windowing_diagnostics"] = diagnostics
+        config["methodological_warnings"] = warnings
+        config["n_windows"] = int(Xf.shape[1])
+        config["n_features"] = int(Xf.shape[2])
+        config["input_shape"] = [int(Xf.shape[1]), int(Xf.shape[2])]
+        write_config(outdir / "config.json", config)
+
+        for warning in warnings:
+            print(f" AVISO DE ENVENTANADO: {warning}")
+        run_config(Xf, labels, subjects, args, outdir, split_plan)
 
     print(f"\nResultados en {outdir}")
     return run_id
