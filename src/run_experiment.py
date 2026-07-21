@@ -111,6 +111,18 @@ def file_hash(path):
     return h.hexdigest()[:16]
 
 
+def arch_size(arch):
+    """Tamaño principal de la arquitectura, para el nombre de la corrida.
+
+    Toma el primer hiperparámetro numérico en el orden de la firma de la función:
+    ``units`` en lstm y gru, ``filters`` en cnn1d, ``d_model`` en transformer.
+    """
+    for v in arch.values():
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return str(int(v))
+    return "0"
+
+
 def parse_model_args(pairs):
     """['units=128', 'dropout=0.2'] -> {'units': 128, 'dropout': 0.2}"""
     out = {}
@@ -269,9 +281,15 @@ def run_config(Xf, y, args, outdir, subset_id=None):
     sfx = "" if subset_id is None else f"_set{subset_id:02d}"
     pd.DataFrame(rows_train).to_csv(outdir / f"metrics_train{sfx}.csv", index=False)
     pd.DataFrame(rows_val).to_csv(outdir / f"metrics_val{sfx}.csv", index=False)
-    pd.DataFrame(hist_rows).to_csv(outdir / f"history{sfx}.csv", index=False)
     pd.DataFrame(pred_rows).to_csv(outdir / f"predictions_val{sfx}.csv", index=False)
-    pd.DataFrame(fold_rows).to_csv(outdir / f"folds{sfx}.csv", index=False)
+    # history y folds no se guardan por defecto. history sostiene las curvas de
+    # convergencia (comentarios 4 de R1 y 11 de R2) y folds es la evidencia de que
+    # la partición es por sujeto (comentario 6 de R2): actívelos cuando haga falta
+    # producir esas figuras o responder a esa auditoría.
+    if args.save_history:
+        pd.DataFrame(hist_rows).to_csv(outdir / f"history{sfx}.csv", index=False)
+    if args.save_folds:
+        pd.DataFrame(fold_rows).to_csv(outdir / f"folds{sfx}.csv", index=False)
 
     tr, va = pd.DataFrame(rows_train), pd.DataFrame(rows_val)
     print(f"  train acc {tr.accuracy.mean() * 100:.2f} ± {tr.accuracy.std() * 100:.2f}  |  "
@@ -334,7 +352,12 @@ def main(argv=None):
                         "idénticas, pero las RNN pierden el camino rápido de cuDNN y la "
                         "corrida puede tardar varias veces más")
     g.add_argument("--tag", default=None, help="sufijo opcional para el nombre de la corrida")
-    g.add_argument("--overwrite", action="store_true")
+    g.add_argument("--save-history", action="store_true",
+                   help="guarda history.csv: pérdida y accuracy por época y pliegue. "
+                        "Necesario para las curvas de convergencia que piden los revisores")
+    g.add_argument("--save-folds", action="store_true",
+                   help="guarda folds.csv: los sujetos de cada partición. Es la evidencia "
+                        "auditable de que la división es por sujeto y no por ventana")
     g.add_argument("--dry-run", action="store_true", help="valida sin entrenar")
     g.add_argument("--list-models", action="store_true")
     g.add_argument("--list-roi-sets", action="store_true")
@@ -390,12 +413,15 @@ def main(argv=None):
         "bold_hash": file_hash(bold_path),
     }
     cfg_hash = hashlib.sha256(json.dumps(ident, sort_keys=True).encode()).hexdigest()[:8]
-    parts = [args.site, f"rois{args.roi_set}", f"w{args.window}s{args.step}", args.model]
+    # NYU_12_rois_win_70_step_2_lstm_128_ID_2136273e
+    parts = [args.site, str(args.roi_set), "rois",
+             "win", str(args.window), "step", str(args.step),
+             args.model, arch_size(ident["arch"])]
     if args.random_subset:
         parts.append(f"rand{args.random_subset}")
     if args.tag:
         parts.append(args.tag)
-    run_id = "_".join(parts) + f"_{cfg_hash}"
+    run_id = "_".join(parts) + f"_ID_{cfg_hash}"
 
     git = git_info()
     cfg = {
@@ -419,20 +445,16 @@ def main(argv=None):
     print(json.dumps(cfg, indent=2, ensure_ascii=False))
     print(f"\n  corrida: {run_id}")
 
-    # Una corrida está completa cuando existen sus MÉTRICAS, no cuando existe su
-    # config.json: este último se escribe antes de entrenar, así que una corrida
-    # interrumpida dejaría una carpeta que parece terminada y no lo está.
-    terminadas = list(outdir.glob("metrics_val*.csv"))
-    if terminadas and not args.overwrite and not args.dry_run:
-        raise SystemExit(
-            f"\nESTA_CONFIGURACION_YA_SE_EJECUTO: {outdir}\n"
-            f"Los resultados existen y corresponden a los mismos parámetros sobre los\n"
-            f"mismos datos, así que no hace falta repetirla.\n"
-            f"Use --overwrite para volver a correrla o --tag para distinguirla.\n"
-        )
-    if (outdir / "config.json").exists() and not terminadas and not args.dry_run:
-        print("\n  AVISO: hay una corrida anterior incompleta en esta carpeta "
-              "(seguramente interrumpida). Se rehace desde cero.\n")
+    # Repetir una configuración REEMPLAZA la anterior: no se conservan dos versiones
+    # de lo mismo. Se limpia la carpeta para que no queden archivos sueltos de una
+    # corrida previa (por ejemplo, subconjuntos aleatorios de un barrido más largo).
+    if outdir.exists() and not args.dry_run:
+        previos = sorted(outdir.glob("*.csv")) + sorted(outdir.glob("config.json"))
+        if previos:
+            print(f"\n  Se reemplaza una corrida anterior de esta misma configuración "
+                  f"({len(previos)} archivos).\n")
+            for f in previos:
+                f.unlink()
 
     if git["clean"] is False:
         print("\n  AVISO: el árbol de git tiene cambios sin confirmar. Esta corrida no "
