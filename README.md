@@ -13,10 +13,13 @@ git clone https://github.com/jpospinalo/tdha-revision.git
 cd tdha-revision/src
 pip install -r ../requirements.txt
 
+python verify_setup.py                                       # comprueba el entorno
 python run_experiment.py --list-roi-sets
 python run_experiment.py --site NYU --roi-set 12 --dry-run   # valida sin entrenar
 python run_experiment.py --site NYU --roi-set 12             # una corrida completa
 python compile_results.py --site NYU --model lstm --stats
+
+python run_queue.py --site NYU --roi-set 12 18 39 116        # varias encadenadas
 ```
 
 Desde Colab, el notebook `tdha_experimentos.ipynb` hace todo lo anterior.
@@ -38,10 +41,12 @@ Desde Colab, el notebook `tdha_experimentos.ipynb` hace todo lo anterior.
 ├── src/
 │   ├── data.py               carga de señales y construcción de secuencias
 │   ├── run_experiment.py     una corrida
+│   ├── run_queue.py          varias corridas encadenadas en un solo proceso
 │   ├── compile_results.py    compilación y estadística
+│   ├── verify_setup.py       comprobación del repositorio y del entorno
 │   └── kerasmodels/          registro de arquitecturas
 ├── results/runs/             una carpeta por corrida
-└── docs/                     auditoría y notas metodológicas
+└── docs/                     auditoría, revisión metodológica y eficiencia
 ```
 
 ## Por qué se versionan las señales y no los tensores

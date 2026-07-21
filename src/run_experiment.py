@@ -372,13 +372,20 @@ def main(argv=None):
     print(json.dumps(cfg, indent=2, ensure_ascii=False))
     print(f"\n  corrida: {run_id}")
 
-    if (outdir / "config.json").exists() and not args.overwrite and not args.dry_run:
+    # Una corrida está completa cuando existen sus MÉTRICAS, no cuando existe su
+    # config.json: este último se escribe antes de entrenar, así que una corrida
+    # interrumpida dejaría una carpeta que parece terminada y no lo está.
+    terminadas = list(outdir.glob("metrics_val*.csv"))
+    if terminadas and not args.overwrite and not args.dry_run:
         raise SystemExit(
             f"\nESTA_CONFIGURACION_YA_SE_EJECUTO: {outdir}\n"
             f"Los resultados existen y corresponden a los mismos parámetros sobre los\n"
             f"mismos datos, así que no hace falta repetirla.\n"
             f"Use --overwrite para volver a correrla o --tag para distinguirla.\n"
         )
+    if (outdir / "config.json").exists() and not terminadas and not args.dry_run:
+        print("\n  AVISO: hay una corrida anterior incompleta en esta carpeta "
+              "(seguramente interrumpida). Se rehace desde cero.\n")
 
     if git["clean"] is False:
         print("\n  AVISO: el árbol de git tiene cambios sin confirmar. Esta corrida no "
@@ -401,7 +408,7 @@ def main(argv=None):
         h = hashlib.sha256(b"".join(v.tobytes() for _, v in splits)).hexdigest()[:12]
         print(f"\ndry-run correcto: {len(splits)} particiones, huella {h}")
         print("Dos corridas son comparables si coinciden su sitio, su semilla y esta huella.")
-        return
+        return run_id
 
     outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "config.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
@@ -438,6 +445,7 @@ def main(argv=None):
         run_config(Xf, y, args, outdir)
 
     print(f"\nResultados en {outdir}")
+    return run_id
 
 
 if __name__ == "__main__":
