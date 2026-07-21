@@ -133,6 +133,44 @@ def parse_model_args(pairs):
 # Entrenamiento
 # --------------------------------------------------------------------------- #
 
+def evaluate(model, X, y):
+    """Métricas de un modelo sobre un conjunto, con una sola pasada hacia adelante.
+
+    Sustituye a ``model.evaluate`` y ``model.predict``. Hacerlo así tiene tres
+    ventajas: evita construir y trazar dos funciones de TensorFlow por pliegue
+    —origen de los avisos de *retracing*, porque los pliegues tienen 17 o 18
+    sujetos y cada forma distinta obliga a retrazar—, es más rápido con muestras
+    de este tamaño, y el AUC pasa a ser exacto en lugar de la aproximación por
+    200 umbrales que usa la métrica de Keras.
+
+    Las demás métricas son idénticas a las de Keras: umbral 0,5 y las mismas
+    definiciones.
+    """
+    from sklearn.metrics import roc_auc_score
+
+    p = np.asarray(model(X, training=False)).ravel().astype("float64")
+    y = np.asarray(y).ravel()
+    eps = 1e-7
+    pc = np.clip(p, eps, 1 - eps)
+    loss = float(-np.mean(y * np.log(pc) + (1 - y) * np.log(1 - pc)))
+
+    pred = (p >= 0.5).astype(int)
+    tp = int(((pred == 1) & (y == 1)).sum())
+    tn = int(((pred == 0) & (y == 0)).sum())
+    fp = int(((pred == 1) & (y == 0)).sum())
+    fn = int(((pred == 0) & (y == 1)).sum())
+
+    return {
+        "loss": loss,
+        "accuracy": (tp + tn) / len(y),
+        "precision": tp / (tp + fp) if tp + fp else 0.0,
+        "recall": tp / (tp + fn) if tp + fn else 0.0,
+        "auc": float(roc_auc_score(y, p)) if len(np.unique(y)) > 1 else float("nan"),
+        "true_positives": tp, "true_negatives": tn,
+        "false_positives": fp, "false_negatives": fn,
+    }, p
+
+
 def compile_model(model, args):
     import keras
     metrics = [
@@ -196,14 +234,15 @@ def run_config(Xf, y, args, outdir, subset_id=None):
             class_weight=class_weight, verbose=0,
             callbacks=[EarlyStopping(monitor="val_loss", mode="min",
                                      patience=args.patience, min_delta=1e-5,
+                                     start_from_epoch=args.start_from_epoch,
                                      restore_best_weights=True)],
         )
         n_ep = len(history.history["loss"])
         best_ep = int(np.argmin(history.history["val_loss"])) + 1
 
         # La validación externa se toca aquí por primera vez.
-        m_tr = model.evaluate(Xf[tr_idx], y[tr_idx], verbose=0, return_dict=True)
-        m_va = model.evaluate(Xf[va_idx], y[va_idx], verbose=0, return_dict=True)
+        m_tr, _ = evaluate(model, Xf[tr_idx], y[tr_idx])
+        m_va, probs = evaluate(model, Xf[va_idx], y[va_idx])
         meta = {"fold": fold + 1, "repeat": repeat, "n_epochs": n_ep, "best_epoch": best_ep}
         rows_train.append({**meta, **m_tr})
         rows_val.append({**meta, **m_va})
@@ -215,7 +254,6 @@ def run_config(Xf, y, args, outdir, subset_id=None):
                               "accuracy": history.history["accuracy"][ep],
                               "inner_val_accuracy": history.history["val_accuracy"][ep]})
 
-        probs = model.predict(Xf[va_idx], verbose=0).ravel()
         for s, p in zip(va_idx, probs):
             pred_rows.append({"fold": fold + 1, "repeat": repeat, "subject": int(s),
                               "y_true": int(y[s]), "y_prob": float(p)})
@@ -272,6 +310,11 @@ def main(argv=None):
     g.add_argument("--epochs", type=int, default=150)
     g.add_argument("--patience", type=int, default=100)
     g.add_argument("--clipnorm", type=float, default=None)
+    g.add_argument("--start-from-epoch", type=int, default=0,
+                   help="épocas mínimas antes de empezar a vigilar la parada. Con 0 "
+                        "(por defecto) el mínimo de la pérdida interna puede caer en la "
+                        "época 1 por ruido, y restore_best_weights devolvería un modelo "
+                        "sin entrenar: en el piloto eso ocurrió en 18 de 50 pliegues")
     g.add_argument("--inner-val-frac", type=float, default=0.15,
                    help="fracción del entrenamiento reservada para elegir la época")
     g.add_argument("--class-weight", action="store_true",
@@ -341,6 +384,7 @@ def main(argv=None):
         "lr": args.lr, "batch_size": args.batch_size, "epochs": args.epochs,
         "patience": args.patience, "clipnorm": args.clipnorm,
         "inner_val_frac": args.inner_val_frac, "class_weight": args.class_weight,
+        "start_from_epoch": args.start_from_epoch,
         "random_subset": args.random_subset, "n_random_sets": args.n_random_sets,
         "exclude_roi_set": args.exclude_roi_set, "deterministic": args.deterministic,
         "bold_hash": file_hash(bold_path),
@@ -362,7 +406,10 @@ def main(argv=None):
                           for k, v in zip(*np.unique(y, return_counts=True))},
         **ident, "git": git, "env": env_info(),
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "command": " ".join(sys.argv),
+        # Los argumentos reales, no sys.argv: al invocar main(argv) desde un
+        # notebook, sys.argv es el del kernel de Jupyter y no dice nada.
+        "command": "run_experiment.py " + " ".join(
+            argv if argv is not None else sys.argv[1:]),
     }
 
     outdir = Path(args.out) / run_id
