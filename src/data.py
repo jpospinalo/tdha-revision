@@ -78,7 +78,9 @@ def load_bold(site, bold_dir=None):
 
 
 def build_sequences_cached(site, bold, indices, window, step, roi_set=None):
-    """``build_sequences`` con memoria de la última construcción.
+    """``build_flat_sequences`` con memoria de la última construcción.
+
+    Devuelve las secuencias ya vectorizadas, listas para el modelo.
 
     Pensado para colas de experimentos: correr cuatro arquitecturas sobre el
     mismo sitio, subconjunto de ROIs y enventanado construye las secuencias una
@@ -92,9 +94,9 @@ def build_sequences_cached(site, bold, indices, window, step, roi_set=None):
     if _seq_cache.get("clave") == clave:
         return _seq_cache["valor"]
     # Liberar ANTES de construir: si no, el tensor viejo y el nuevo coexisten y el
-    # pico de memoria se duplica (cerca de 1 GB con 116 ROIs).
+    # pico de memoria se duplica.
     _seq_cache.clear()
-    valor = build_sequences(bold, indices, window, step)
+    valor = build_flat_sequences(bold, indices, window, step)
     _seq_cache.update(clave=clave, valor=valor)
     return valor
 
@@ -193,6 +195,41 @@ def build_sequences(bold, indices, window, step, chunk=32):
         fc = w @ np.swapaxes(w, -1, -2) / np.float32(window - 1)
         np.clip(fc, -1.0, 1.0, out=fc)
         out[s:s + chunk] = fc
+
+    return out
+
+
+def build_flat_sequences(bold, indices, window, step, chunk=32):
+    """Secuencias de conectividad ya vectorizadas: (n, n_windows, r*(r-1)/2).
+
+    Equivale a ``upper_triangle(build_sequences(...))`` pero extrae el triángulo
+    dentro del bucle por lotes, sin materializar nunca el tensor simétrico completo.
+
+    Con 116 ROIs eso importa: la matriz completa ocupa 495 MB de los cuales la mitad
+    es redundante por simetría, y mantener a la vez el tensor y su triángulo llevaba
+    el pico a unos 770 MB. Así el pico queda en los ~246 MB del resultado.
+
+    Es la forma que consume el modelo, de modo que es la que conviene usar en el
+    camino normal; ``build_sequences`` se conserva para inspección y verificación.
+    """
+    sig_all = np.asarray(bold, dtype="float32")[:, indices, :]
+    n, r, T = sig_all.shape
+    nw = n_windows(T, window, step)
+    iu = np.triu_indices(r, k=1)
+
+    widx = np.arange(window)[None, :] + (np.arange(nw) * step)[:, None]
+    out = np.empty((n, nw, len(iu[0])), dtype="float32")
+
+    for s in range(0, n, chunk):
+        w = np.transpose(sig_all[s:s + chunk][:, :, widx], (0, 2, 1, 3))
+        w = w - w.mean(axis=-1, keepdims=True)
+        sd = w.std(axis=-1, ddof=1, keepdims=True)
+        constante = sd < 1e-12
+        w = np.divide(w, np.where(constante, np.float32(1.0), sd))
+        w[np.broadcast_to(constante, w.shape)] = 0.0
+        fc = w @ np.swapaxes(w, -1, -2) / np.float32(window - 1)
+        np.clip(fc, -1.0, 1.0, out=fc)
+        out[s:s + chunk] = fc[:, :, iu[0], iu[1]]
 
     return out
 

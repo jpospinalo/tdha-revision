@@ -427,8 +427,7 @@ def main(argv=None):
         for k in range(args.n_random_sets):
             sub = np.sort(rng.choice(pool, size=args.random_subset, replace=False))
             print(f"\nsubconjunto {k + 1}/{args.n_random_sets}: {sub.tolist()}", flush=True)
-            Xf = tdha_data.upper_triangle(
-                tdha_data.build_sequences(b["bold"], sub, args.window, args.step))
+            Xf = tdha_data.build_flat_sequences(b["bold"], sub, args.window, args.step)
             summary.append({"set": k + 1, "rois": sub.tolist(),
                             **run_config(Xf, y, args, outdir, k + 1)})
         pd.DataFrame(summary).to_csv(outdir / "random_subsets_summary.csv", index=False)
@@ -440,8 +439,8 @@ def main(argv=None):
               "anatómico no la supera, la ventaja es de dimensionalidad, no de anatomía.")
     else:
         print("  construyendo secuencias de conectividad…", flush=True)
-        Xf = tdha_data.upper_triangle(tdha_data.build_sequences_cached(
-            args.site, b["bold"], idx, args.window, args.step, args.roi_set))
+        Xf = tdha_data.build_sequences_cached(
+            args.site, b["bold"], idx, args.window, args.step, args.roi_set)
         run_config(Xf, y, args, outdir)
 
     print(f"\nResultados en {outdir}")
