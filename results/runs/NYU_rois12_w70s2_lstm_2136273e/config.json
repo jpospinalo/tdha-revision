@@ -1,0 +1,53 @@
+{
+  "run_id": "NYU_rois12_w70s2_lstm_2136273e",
+  "config_hash": "2136273e",
+  "n_subjects": 177,
+  "n_timepoints": 172,
+  "n_windows": 52,
+  "n_rois": 12,
+  "class_balance": {
+    "0": 87,
+    "1": 90
+  },
+  "site": "NYU",
+  "roi_set": "12",
+  "window": 70,
+  "step": 2,
+  "model": "lstm",
+  "arch": {
+    "units": 128,
+    "dropout": 0.0,
+    "bidirectional": false
+  },
+  "seed": 42,
+  "n_splits": 10,
+  "n_repeats": 5,
+  "lr": 0.0001,
+  "batch_size": 8,
+  "epochs": 150,
+  "patience": 100,
+  "clipnorm": null,
+  "inner_val_frac": 0.15,
+  "class_weight": false,
+  "random_subset": null,
+  "n_random_sets": 20,
+  "exclude_roi_set": null,
+  "deterministic": false,
+  "bold_hash": "1a8fcd6f312913f9",
+  "git": {
+    "commit": "2133fbe102b81c25a01caffb0c168dfb641c13a9",
+    "clean": true,
+    "user": "desconocido"
+  },
+  "env": {
+    "python": "3.12.13",
+    "platform": "Linux-6.6.122+-x86_64-with-glibc2.35",
+    "tensorflow": "2.20.0",
+    "keras": "3.13.2",
+    "gpu": [
+      "Tesla T4"
+    ]
+  },
+  "timestamp": "2026-07-21 00:51:58",
+  "command": "/usr/local/lib/python3.12/dist-packages/colab_kernel_launcher.py -f /root/.local/share/jupyter/runtime/kernel-833dd663-9769-4fd2-b268-0fdffa38ea58.json"
+}
