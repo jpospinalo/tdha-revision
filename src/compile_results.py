@@ -304,10 +304,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stats-metric", default="accuracy")
     parser.add_argument(
         "--stats-by",
-        choices=["roi_set", "representation"],
+        choices=["roi_set", "representation", "model"],
         default="roi_set",
-        help="dimensión a comparar de forma pareada: subconjuntos de ROIs "
-        "(por defecto) o representaciones (fija un solo roi_set)",
+        help="dimensión a comparar de forma pareada: roi_set (por defecto), "
+        "representation o model; el resto de dimensiones deben quedar fijas por filtro",
     )
     args = parser.parse_args(argv)
 
@@ -352,12 +352,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.stats:
         base = df[df["random_subset"].isna()] if "random_subset" in df else df
         group_col = args.stats_by
-        # Todo lo que no sea la dimensión a comparar debe quedar fijo.
-        fixed = ["site", "model"]
-        if group_col == "representation":
-            fixed.append("roi_set")  # comparar representaciones dentro de un mismo roi_set
-        else:
-            fixed.append("representation")  # comparar ROIs dentro de una misma representación
+        # Todo lo que no sea la dimensión a comparar debe quedar fijo (site siempre).
+        fixed = [d for d in ("site", "model", "roi_set", "representation") if d != group_col]
         for column in fixed:
             if column in base and base[column].dropna().nunique() > 1:
                 raise SystemExit(

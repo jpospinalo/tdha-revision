@@ -59,6 +59,11 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import RepeatedStratifiedKFold, StratifiedShuffleSplit
 
+# Fija el backend de Keras a TensorFlow antes de cualquier import de keras, para evitar
+# que el entorno (p. ej. Colab) intente un backend en mal estado, como una instalación
+# de JAX a medio inicializar. setdefault respeta un valor explícito del usuario.
+os.environ.setdefault("KERAS_BACKEND", "tensorflow")
+
 try:  # ejecución habitual: ``cd src && python run_experiment.py``
     import data as tdha_data
     import kerasmodels
