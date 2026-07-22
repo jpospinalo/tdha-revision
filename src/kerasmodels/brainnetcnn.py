@@ -84,7 +84,8 @@ def _make_upper_to_matrix_layer(n_rois: int):
 
 
 @register("brainnetcnn")
-def build(n_windows, n_features, e2e=32, e2n=64, dense=96, dropout=0.5, leaky=0.33):
+def build(n_windows, n_features, e2e=32, e2n=64, dense=96, dropout=0.5, leaky=0.33,
+          l2_reg=0.0, inter_dropout=0.0):
     """BrainNetCNN sobre la matriz de conectividad reconstruida.
 
     Parameters
@@ -92,17 +93,20 @@ def build(n_windows, n_features, e2e=32, e2n=64, dense=96, dropout=0.5, leaky=0.
     n_windows, n_features : int
         Forma de la secuencia de entrada. ``n_features`` debe ser el triángulo superior
         de una matriz cuadrada; con ``--representation static`` es una sola matriz.
-    e2e : int
-        Filtros de la capa edge-to-edge.
-    e2n : int
-        Filtros de la capa edge-to-node.
-    dense : int
-        Unidades de la capa node-to-graph y de la densa final previa a la salida.
+    e2e, e2n, dense : int
+        Filtros de las capas edge-to-edge, edge-to-node y node-to-graph. Los valores por
+        defecto (32/64/96) siguen al artículo original, pensado para muestras grandes;
+        con n≈177 conviene reducirlos mucho (p. ej. 4/8/8) para no sobreajustar.
     dropout : float
-        Dropout antes de la capa de salida. BrainNetCNN usa un dropout alto (0.5) porque
-        la conectividad completa es de alta dimensión y la muestra es pequeña.
+        Dropout antes de la capa de salida.
     leaky : float
         Pendiente negativa de las LeakyReLU.
+    l2_reg : float
+        Regularización L2 sobre los pesos de todas las convoluciones y la salida.
+        0.0 desactiva. Estabiliza el entrenamiento en muestras pequeñas.
+    inter_dropout : float
+        Dropout aplicado entre bloques (tras E2E y tras E2N), además del final.
+        0.0 desactiva.
 
     Returns
     -------
@@ -110,29 +114,34 @@ def build(n_windows, n_features, e2e=32, e2n=64, dense=96, dropout=0.5, leaky=0.
         Modelo sin compilar.
     """
     import keras
-    from keras import layers, ops
+    from keras import layers, ops, regularizers
 
     n_rois = _infer_n_rois(n_features)
+    reg = regularizers.l2(l2_reg) if l2_reg else None
 
     inp = layers.Input(shape=(n_windows, n_features))
     x = _make_upper_to_matrix_layer(n_rois)(inp)          # (lote, r, r, n_windows)
 
     # edge-to-edge: filtro en cruz = fila (1×r) + columna (r×1), sumados por difusión.
-    row = layers.Conv2D(e2e, (1, n_rois), padding="valid")(x)   # (lote, r, 1, e2e)
-    col = layers.Conv2D(e2e, (n_rois, 1), padding="valid")(x)   # (lote, 1, r, e2e)
+    row = layers.Conv2D(e2e, (1, n_rois), padding="valid", kernel_regularizer=reg)(x)
+    col = layers.Conv2D(e2e, (n_rois, 1), padding="valid", kernel_regularizer=reg)(x)
     x = layers.Lambda(
         lambda t: ops.add(t[0], t[1]),
         output_shape=(n_rois, n_rois, e2e),
         name="edge2edge",
     )([row, col])
     x = layers.LeakyReLU(negative_slope=leaky)(x)
+    if inter_dropout:
+        x = layers.Dropout(inter_dropout)(x)
 
     # edge-to-node: colapsa las aristas de cada nodo -> característica de nodo.
-    x = layers.Conv2D(e2n, (1, n_rois), padding="valid")(x)     # (lote, r, 1, e2n)
+    x = layers.Conv2D(e2n, (1, n_rois), padding="valid", kernel_regularizer=reg)(x)
     x = layers.LeakyReLU(negative_slope=leaky)(x)
+    if inter_dropout:
+        x = layers.Dropout(inter_dropout)(x)
 
     # node-to-graph: colapsa los nodos -> característica global del sujeto.
-    x = layers.Conv2D(dense, (n_rois, 1), padding="valid")(x)   # (lote, 1, 1, dense)
+    x = layers.Conv2D(dense, (n_rois, 1), padding="valid", kernel_regularizer=reg)(x)
     x = layers.LeakyReLU(negative_slope=leaky)(x)
 
     x = layers.Flatten()(x)
@@ -140,5 +149,6 @@ def build(n_windows, n_features, e2e=32, e2n=64, dense=96, dropout=0.5, leaky=0.
         x = layers.Dropout(dropout)(x)
     # dtype="float32" explícito: con precisión mixta (mixed_float16) la sigmoide
     # y la pérdida deben calcularse en float32 para no perder estabilidad numérica.
-    out = layers.Dense(1, activation="sigmoid", dtype="float32")(x)
+    out = layers.Dense(1, activation="sigmoid", dtype="float32",
+                       kernel_regularizer=reg)(x)
     return keras.Model(inp, out, name=f"brainnetcnn_e{e2e}n{e2n}")
