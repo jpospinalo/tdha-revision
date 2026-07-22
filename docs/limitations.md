@@ -1,81 +1,61 @@
-# Performance
+# Limitations
 
-This document summarizes the computational optimizations implemented in the current version of the pipeline.
+This document summarizes the current limitations of the experimental pipeline.
 
-The objective of these optimizations is to improve execution efficiency while preserving the methodological behavior and reproducibility of the experiments.
-
----
-
-# Design Principles
-
-Performance improvements were implemented under the following principles:
-
-- Preserve the scientific behavior of the pipeline.
-- Maintain reproducibility across executions.
-- Reduce unnecessary computations.
-- Improve scalability for large experimental batches.
-
-No optimization modifies the methodological workflow or the reported evaluation metrics.
+These limitations define the scope of the current implementation and should be considered when interpreting experimental results or extending the software.
 
 ---
 
-# Connectivity Computation
+# Experimental Scope
 
-Connectivity representations are generated only once during data preparation and subsequently reused throughout the training process.
+The pipeline has been designed and validated for resting-state fMRI ROI time series from the ADHD-200 dataset.
 
-This design avoids repeated computation of identical connectivity matrices across cross-validation folds and experimental repetitions.
-
----
-
-# Temporal Windowing
-
-Temporal windows are generated directly from the physical window specification.
-
-The implementation automatically converts window duration and overlap into samples using the corresponding repetition time (TR), avoiding redundant calculations during experiment execution.
+Although its modular design facilitates adaptation to similar datasets, compatibility with other data sources has not been explicitly validated.
 
 ---
 
-# Experimental Configuration
+# Functional Connectivity
 
-Experimental parameters are centralized in a single configuration file.
+The current implementation estimates functional connectivity using Pearson correlation.
 
-This approach simplifies experiment management, reduces manual configuration errors and ensures consistent execution across multiple experiments.
-
----
-
-# Modular Execution
-
-The pipeline separates data preparation, model training and result aggregation into independent modules.
-
-This modular design allows each stage to execute independently and prevents unnecessary repetition of processing steps.
+Alternative connectivity measures are not included in the current version of the pipeline.
 
 ---
 
-# Result Aggregation
+# Model Selection
 
-Performance metrics are computed during experiment execution and aggregated only after all repetitions have finished.
+Model selection is performed using the validation partition generated within each cross-validation iteration.
 
-This separation minimizes intermediate processing while preserving complete experiment traceability.
+The pipeline does not implement nested cross-validation.
 
 ---
 
-# Reproducible Execution
+# Hyperparameter Optimization
 
-Execution settings, experimental parameters and generated metrics are stored together with the experiment outputs.
+Experimental parameters are defined by the user through the configuration file.
 
-This organization allows experiments to be reproduced without additional manual configuration.
+The pipeline does not include automatic hyperparameter optimization or architecture search.
+
+---
+
+# Supported Models
+
+The current implementation includes the machine learning and deep learning models incorporated into this study.
+
+Additional architectures may require extending the corresponding training modules.
+
+---
+
+# Computational Requirements
+
+Dynamic functional connectivity produces a larger number of connectivity matrices than static connectivity.
+
+Consequently, execution time and memory requirements increase with the number and size of temporal windows.
 
 ---
 
 # Summary
 
-The current implementation incorporates several optimizations that improve computational efficiency while maintaining methodological consistency.
+The current implementation provides a reproducible and modular framework for evaluating static and dynamic functional connectivity representations using the experimental methodology adopted in this project.
 
-The primary optimization strategies include:
-
-- reuse of generated connectivity representations;
-- centralized experiment configuration;
-- modular execution of the experimental workflow;
-- standardized aggregation of experimental results.
-
-These optimizations improve scalability and maintainability without affecting the scientific validity of the experimental pipeline.
+The limitations described in this document define the current scope of the software and should be considered when extending the pipeline or interpreting its results.
