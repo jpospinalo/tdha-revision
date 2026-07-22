@@ -1,93 +1,27 @@
 # Performance
 
-This document summarizes the computational optimizations implemented in the current version of the pipeline.
+Computational optimizations in the pipeline. None of them changes the methodological workflow or the reported metrics.
 
-The objective of these optimizations is to improve execution efficiency while preserving the methodological behavior and reproducibility of the experiments.
+## Connectivity is built once
 
----
+Connectivity is generated during data preparation and reused across all folds and repetitions, so identical matrices are never recomputed. In `run_queue.py --in-process`, configurations that share data and windowing also reuse it through the in-memory cache. Building it is cheap anyway: from ~40 ms (12 ROIs) to ~2 s (116 ROIs).
 
-# Design Principles
+## Windowing
 
-Performance improvements were implemented under the following principles:
+Windows come straight from the physical specification, converted to samples with the site TR once, with no per-fold recomputation.
 
-- Preserve the scientific behavior of the pipeline.
-- Maintain reproducibility across executions.
-- Reduce unnecessary computations.
-- Improve scalability for large experimental batches.
+## Early stopping
 
-No optimization modifies the methodological workflow or the reported evaluation metrics.
+Training stops on the inner validation loss with `restore_best_weights`, so the best epoch is recovered whenever training stops. The default `--patience 25` cuts the epochs that run after the loss has plateaued — the dominant cost within a run. Raise it only if convergence curves show late gains.
 
----
+## Mixed precision
 
-# Connectivity Computation
+Every architecture declares a `float32` output, so the loss and sigmoid stay stable under `mixed_float16`. `--mixed-precision` enables it on GPU and speeds up the large configurations (39/116 ROIs, transformer, brainnetcnn). It only shifts the low-order digits of the metrics, so its use is recorded in `config.json`.
 
-Connectivity representations are generated only once during data preparation and subsequently reused throughout the training process.
+## Batch execution
 
-This design avoids repeated computation of identical connectivity matrices across cross-validation folds and experimental repetitions.
+`run_queue.py --in-process` runs a whole batch in one process: TensorFlow starts once instead of once per run. The default subprocess mode stays for long queues on unstable sessions, where isolating each run lets one failure stop without taking the rest down.
 
----
+## Configuration and aggregation
 
-# Temporal Windowing
-
-Temporal windows are generated directly from the physical window specification.
-
-The implementation automatically converts window duration and overlap into samples using the corresponding repetition time (TR), avoiding redundant calculations during experiment execution.
-
----
-
-# Experimental Configuration
-
-Experimental parameters are centralized in a single configuration file.
-
-This approach simplifies experiment management, reduces manual configuration errors and ensures consistent execution across multiple experiments.
-
----
-
-# Modular Execution
-
-The pipeline separates data preparation, model training and result aggregation into independent modules.
-
-This modular design allows each stage to execute independently and prevents unnecessary repetition of processing steps.
-
----
-
-# Early Stopping
-
-Training uses early stopping on the inner validation loss with `restore_best_weights`, so the best epoch is recovered regardless of when training stops. The default patience (`--patience 25`) stops folds once the validation loss has plateaued instead of always running every epoch, which is the dominant compute cost within a run. Increase it only if convergence curves show late improvements.
-
-# Mixed Precision
-
-Every architecture declares a `float32` output so the loss and sigmoid stay numerically stable, which makes the pipeline safe to run under `mixed_float16`. The optional `--mixed-precision` flag enables it on GPU and accelerates the larger configurations (39 and 116 ROIs, transformer, CNN). It changes only the low-order digits of the metrics, so whether it was used is recorded in `config.json`.
-
-# Batch Execution
-
-`run_queue.py --in-process` runs an entire batch of configurations inside a single process. TensorFlow starts once instead of once per run, and configurations that share data and windowing reuse the already-built connectivity sequences through the in-memory cache. The default subprocess mode is kept for long queues on unstable sessions, where process isolation lets a single failure stop without affecting the rest.
-
-# Result Aggregation
-
-Performance metrics are computed during experiment execution and aggregated only after all repetitions have finished.
-
-This separation minimizes intermediate processing while preserving complete experiment traceability.
-
----
-
-# Reproducible Execution
-
-Execution settings, experimental parameters and generated metrics are stored together with the experiment outputs.
-
-This organization allows experiments to be reproduced without additional manual configuration.
-
----
-
-# Summary
-
-The current implementation incorporates several optimizations that improve computational efficiency while maintaining methodological consistency.
-
-The primary optimization strategies include:
-
-- reuse of generated connectivity representations;
-- centralized experiment configuration;
-- modular execution of the experimental workflow;
-- standardized aggregation of experimental results.
-
-These optimizations improve scalability and maintainability without affecting the scientific validity of the experimental pipeline.
+Parameters live in a single configuration per run, which keeps executions consistent and errors rare. Metrics are written during the run and aggregated only after all repetitions finish.

@@ -1,143 +1,46 @@
 # Validation
 
-This document summarizes the validation and verification procedures performed on the current implementation of the pipeline.
-
-The objective is to document the aspects of the software that have been reviewed to ensure methodological consistency, reproducibility and compatibility between modules.
-
----
-
-# Validation Summary
+What has been checked in the current implementation, for consistency, reproducibility, and compatibility between modules.
 
 | Area | Status |
 |------|:------:|
-| Software architecture | ✅ |
-| Module compatibility | ✅ |
+| Module interfaces | ✅ |
 | Data processing | ✅ |
-| Functional connectivity generation | ✅ |
+| Connectivity generation | ✅ |
 | Windowing | ✅ |
 | Model training | ✅ |
 | Performance evaluation | ✅ |
 | Result aggregation | ✅ |
 | Reproducibility | ✅ |
 
----
+## Module interfaces
 
-# Software Architecture
+The outputs of `data.py → run_experiment.py`, `run_experiment.py → compile_results.py`, and `run_queue.py → run_experiment.py` match the inputs each next stage expects.
 
-The interaction between the main modules of the pipeline has been verified to ensure that data structures and execution flow remain consistent throughout the experimental process.
+## Data processing
 
-The following interfaces have been validated:
+ROI time series load correctly, subjects keep their metadata, site TRs are handled, and the resulting structures stay consistent through the pipeline.
 
-- `data.py` → `run_experiment.py`
-- `run_experiment.py` → `compile_results.py`
-- `run_queue.py` → `run_experiment.py`
+## Connectivity
 
-The exported outputs of each module are compatible with the expected inputs of the subsequent stage.
+Static produces one matrix per subject over the whole series; dynamic produces window sequences in temporal order, from physically-defined windows. Both are checked for symmetry, diagonal, and value range.
 
----
+## Windowing
 
-# Data Processing
+Seconds convert to samples correctly, overlap is applied consistently, different TRs yield equivalent physical windows, and both rectangular and Gaussian windows work.
 
-The data preparation stage has been verified to ensure that:
+## Training
 
-- ROI time series are correctly loaded.
-- Subjects preserve their associated metadata.
-- Site-specific repetition times (TR) are correctly handled.
-- Generated data structures are consistent across the pipeline.
+Partitions stay isolated; the inner partition is used only for epoch selection and the outer fold only for the final evaluation; class weights come from the training partition alone; and every registered architecture builds with a single sigmoid output.
 
----
+## Evaluation and aggregation
 
-# Functional Connectivity
+Metrics are computed and exported with their configuration, so every run is traceable. Aggregation groups only comparable runs and keeps each one tied to its configuration.
 
-Connectivity generation has been verified for both supported representations.
+## Reproducibility
 
-## Static Connectivity
+Fixed seeds, exported configuration and metadata, and a standardized output layout let a run be repeated under the same settings.
 
-The pipeline correctly generates one connectivity matrix per subject using the complete ROI time series.
+## Improvements in this version
 
-## Dynamic Connectivity
-
-The pipeline correctly generates sequences of connectivity matrices using temporal windows defined in physical time.
-
-The resulting connectivity sequences preserve temporal order and are compatible with sequential learning models.
-
----
-
-# Temporal Windowing
-
-The temporal windowing implementation has been verified to ensure that:
-
-- window duration is correctly converted from seconds to samples;
-- overlap is consistently applied;
-- different repetition times produce equivalent physical windows;
-- rectangular and Gaussian window functions are correctly supported.
-
----
-
-# Model Training
-
-The training workflow has been reviewed to verify that:
-
-- data partitions remain isolated throughout training;
-- the inner partition is used only for epoch selection, and the outer fold only for final evaluation;
-- class weights are computed using the training partition only;
-- experimental configurations are consistently applied across repetitions;
-- every registered architecture builds and produces a single sigmoid output.
-
----
-
-# Performance Evaluation
-
-The evaluation stage has been verified to ensure consistent computation and reporting of classification metrics.
-
-The generated metrics are exported together with the corresponding experimental configuration, allowing complete traceability of every experiment.
-
----
-
-# Result Aggregation
-
-The aggregation process has been verified to ensure that:
-
-- compatible experiments are grouped correctly;
-- descriptive statistics are computed consistently;
-- experimental configurations remain associated with the aggregated results.
-
----
-
-# Reproducibility
-
-The current implementation incorporates several mechanisms that improve experiment reproducibility.
-
-These include:
-
-- deterministic random seeds;
-- configuration export;
-- experiment metadata preservation;
-- standardized output structure.
-
-Together, these mechanisms allow experiments to be repeated using the same execution settings.
-
----
-
-# Validation Status
-
-The current implementation has been reviewed with respect to the software architecture, methodological consistency and experimental workflow.
-
-The validations documented in this file reflect the state of the current implementation and provide a reference for future maintenance and extension of the pipeline.
-
-# Major Improvements Implemented
-
-The current version of the pipeline incorporates the following methodological improvements:
-
-- Physical window specification based on time.
-- Site-specific repetition time support.
-- Static and dynamic connectivity representations.
-- Optional Gaussian window weighting.
-- Optional Fisher transformation.
-- Order-invariant and order-permuted representations for temporal-order controls.
-- An architecture registry with six models, including an order-invariant baseline (`deepsets`) and a topological connectivity-matrix model (`brainnetcnn`).
-- Early stopping with a shorter default patience and optional mixed precision for faster GPU runs.
-- Single-process batch execution (`run_queue.py --in-process`).
-- Centralized experimental configuration.
-- Improved experiment reproducibility.
-- Standardized result aggregation.
+Physical (time-based) windowing with site-specific TR; static and dynamic connectivity; order-invariant and order-permuted representations for temporal-order controls; an architecture registry with six models, including an order-invariant baseline (`deepsets`) and a topological matrix model (`brainnetcnn`); shorter default early-stopping patience and optional mixed precision; single-process batch execution; centralized configuration; and standardized aggregation.

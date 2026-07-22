@@ -10,8 +10,7 @@ es arbitrario: proviene de la numeración del atlas AAL116 y no de ninguna relac
 anatómica de vecindad. Una convolución 2D sobre la matriz aprendería patrones
 asociados a esa numeración, es decir, artefactos.
 
-Ese razonamiento es el mismo que aparece en el Reporte de Experimentos, y conviene
-que quede escrito aquí porque es la justificación metodológica de la arquitectura.
+Es el mismo razonamiento del Reporte de Experimentos.
 """
 
 from . import register

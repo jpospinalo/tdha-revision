@@ -1,154 +1,37 @@
 # Software Architecture
 
-This document describes the overall architecture of the ADHD-200 experimental pipeline and the interaction between its main components.
+The pipeline turns rs-fMRI ROI time series into connectivity representations and trains classifiers on them, keeping every run reproducible.
 
-The objective of the pipeline is to transform resting-state fMRI ROI time series into connectivity representations that can be used to train and evaluate machine learning and deep learning models under a reproducible experimental framework.
-
----
-
-# Pipeline Overview
-
-The pipeline is organized into four main stages:
+## Stages
 
 ```
-ADHD-200 Dataset
-        │
-        ▼
-ROI Time Series
-        │
-        ▼
-Data Preparation
-        │
-        ▼
-Connectivity Generation
-        │
-        ▼
-Model Training and Evaluation
-        │
-        ▼
-Experiment Aggregation
+ROI time series → data preparation → connectivity generation → cross-validated training → aggregation
 ```
 
-Each stage has a well-defined responsibility and communicates with the next through standardized data structures.
+Each stage consumes only the previous stage's output.
 
----
+## Modules
 
-# Pipeline Components
+**`data.py`** — loads ROI time series, builds static or dynamic connectivity, resolves the site-specific TR, cuts temporal windows from physical (seconds) specifications, and optionally applies a Fisher Z transform or Gaussian window weighting.
 
-## Data Preparation (`data.py`)
+**`run_experiment.py`** — runs one experiment: builds the cross-validation folds, trains the model, selects the epoch on an inner split, evaluates on the outer fold, and writes the per-fold metrics, `config.json`, and a derived `resumen.md`.
 
-This module is responsible for preparing the functional MRI data before model training.
+**`run_queue.py`** — expands a grid of configurations and runs them, either as one subprocess per configuration or, with `--in-process`, all in a single process.
 
-Its responsibilities include:
+**`compile_results.py`** — collects the runs under `results/runs/`, tabulates them, refuses to aggregate runs that are not comparable (different seed, split fingerprint, or BOLD hash), and runs a repeated-measures ANOVA with paired post-hoc tests.
 
-- loading ROI time series;
-- generating static or dynamic functional connectivity representations;
-- handling site-specific repetition times (TR);
-- creating temporal windows from physical window specifications;
-- applying optional preprocessing operations such as Fisher transformation and Gaussian window weighting;
-- producing the final tensors used during model training.
+**`kerasmodels/`** — the architecture registry. Each module registers a `build(n_windows, n_features, **hyperparameters)` that returns an **uncompiled** `keras.Model` with a single sigmoid output; `run_experiment.py` compiles it, so architectures carry no training hyperparameters. Registered:
 
----
+- `lstm`, `gru` — recurrent, order-sensitive.
+- `cnn1d` — 1D convolution along the window axis.
+- `transformer` — self-attention; `positional=False` makes it order-invariant.
+- `deepsets` — per-window MLP plus symmetric pooling, order-invariant by construction.
+- `brainnetcnn` — edge-to-edge / edge-to-node filters over the connectivity matrix, which it reconstructs internally from the vectorized upper triangle; meant for the static representation.
 
-## Model Training (`run_experiment.py`)
+A new module imported in `__init__.py` becomes available as `--model <name>`.
 
-This module controls the execution of a complete experiment.
+**`verify_setup.py`** — pre-flight checks after cloning: file structure, BOLD shapes, ROI-set consistency, sequence construction, cross-validation leakage, and that every architecture builds.
 
-Its responsibilities include:
+## Design
 
-- loading experimental configurations;
-- creating training and validation folds;
-- training machine learning or deep learning models;
-- selecting the best epoch using the validation set;
-- evaluating the trained model;
-- exporting metrics and experiment metadata.
-
----
-
-## Experiment Execution (`run_queue.py`)
-
-This module automates the execution of multiple experiments.
-
-It generates combinations of experimental configurations and sequentially executes the corresponding training runs while preserving a consistent experimental structure.
-
----
-
-## Result Aggregation (`compile_results.py`)
-
-This module consolidates the results produced by multiple experiments.
-
-It computes descriptive statistics across repetitions and exports aggregated summaries that facilitate comparison between experimental configurations. It also refuses to aggregate runs that are not comparable (different seeds, split fingerprints, or BOLD hashes) and provides repeated-measures ANOVA with paired post-hoc tests.
-
----
-
-## Model Registry (`kerasmodels/`)
-
-This package holds the neural architectures as a registry. Each module registers a `build(n_windows, n_features, **hyperparameters)` function that returns an **uncompiled** `keras.Model` with a single sigmoid output. Compilation (optimizer, learning rate, loss, metrics) is performed by `run_experiment.py`, so architectures stay decoupled from training hyperparameters.
-
-The registered architectures are:
-
-- `lstm`, `gru` — recurrent models over the window sequence (order-sensitive).
-- `cnn1d` — 1D convolution along the time (window) axis.
-- `transformer` — self-attention encoder, with an optional learned positional encoding (`positional=False` turns it into an order-invariant set model).
-- `deepsets` — a shared per-window MLP followed by symmetric pooling; order-invariant by construction.
-- `brainnetcnn` — topological convolution over the connectivity matrix (edge-to-edge, edge-to-node, node-to-graph filters); reconstructs the symmetric matrix internally from the vectorized upper triangle, intended for the static representation.
-
-New architectures are added by dropping a module in the package and importing it in `__init__.py`; they become available as `--model <name>` without touching any other file.
-
----
-
-## Environment Verification (`verify_setup.py`)
-
-This module checks the repository and environment before any experiment: file structure, BOLD payloads and shapes, ROI-set consistency, sequence construction, cross-validation partitions (leakage checks), and that every registered architecture builds. It is meant to run right after cloning.
-
----
-
-# Design Principles
-
-The implementation follows several design principles.
-
-## Modular organization
-
-Each component performs a single well-defined task, reducing dependencies between modules.
-
-## Reproducibility
-
-Experimental configurations are stored together with the generated results, allowing experiments to be reproduced.
-
-## Extensibility
-
-New connectivity representations, preprocessing strategies, models or evaluation metrics can be incorporated without modifying the overall workflow.
-
-## Dataset independence
-
-Although the current implementation targets the ADHD-200 dataset, the processing pipeline is sufficiently modular to support datasets with equivalent ROI time series.
-
----
-
-# Information Flow
-
-The complete workflow can be summarized as:
-
-```
-ROI Time Series
-      │
-      ▼
-Connectivity Generation
-      │
-      ▼
-Feature Representation
-      │
-      ▼
-Cross Validation
-      │
-      ▼
-Model Training
-      │
-      ▼
-Performance Evaluation
-      │
-      ▼
-Result Aggregation
-```
-
-Each stage consumes only the outputs generated by the previous stage, ensuring a clear separation of responsibilities throughout the pipeline.
+Each module does one thing and hands standardized structures to the next, so a connectivity measure, representation, model, or metric can be swapped without touching the rest. Every run stores its full configuration next to its results — that is what makes runs reproducible and portable to other datasets with equivalent ROI time series.
