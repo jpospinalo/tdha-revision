@@ -238,6 +238,18 @@ def check_modelos(full):
         except Exception as e:
             fail(f"{name}: {type(e).__name__}: {e}")
 
+    # Variante regularizada de BrainNetCNN (capacidad reducida + L2 + BatchNorm):
+    # se construye aparte porque los defaults no la ejercitan.
+    try:
+        m = kerasmodels.build(
+            "brainnetcnn", 1, 66,
+            e2e=4, e2n=8, dense=8, dropout=0.7, l2_reg=0.05,
+            inter_dropout=0.4, batchnorm=True,
+        )
+        ok(f"brainnetcnn regularizado + BatchNorm: {m.count_params():,} parámetros")
+    except Exception as e:
+        fail(f"brainnetcnn regularizado + BatchNorm: {type(e).__name__}: {e}")
+
 
 def check_entrenamiento():
     seccion("Prueba de entrenamiento (2 pliegues, 3 épocas)")
