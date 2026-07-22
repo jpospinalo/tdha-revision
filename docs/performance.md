@@ -51,6 +51,18 @@ This modular design allows each stage to execute independently and prevents unne
 
 ---
 
+# Early Stopping
+
+Training uses early stopping on the inner validation loss with `restore_best_weights`, so the best epoch is recovered regardless of when training stops. The default patience (`--patience 25`) stops folds once the validation loss has plateaued instead of always running every epoch, which is the dominant compute cost within a run. Increase it only if convergence curves show late improvements.
+
+# Mixed Precision
+
+Every architecture declares a `float32` output so the loss and sigmoid stay numerically stable, which makes the pipeline safe to run under `mixed_float16`. The optional `--mixed-precision` flag enables it on GPU and accelerates the larger configurations (39 and 116 ROIs, transformer, CNN). It changes only the low-order digits of the metrics, so whether it was used is recorded in `config.json`.
+
+# Batch Execution
+
+`run_queue.py --in-process` runs an entire batch of configurations inside a single process. TensorFlow starts once instead of once per run, and configurations that share data and windowing reuse the already-built connectivity sequences through the in-memory cache. The default subprocess mode is kept for long queues on unstable sessions, where process isolation lets a single failure stop without affecting the rest.
+
 # Result Aggregation
 
 Performance metrics are computed during experiment execution and aggregated only after all repetitions have finished.

@@ -12,13 +12,6 @@ asociados a esa numeración, es decir, artefactos.
 
 Ese razonamiento es el mismo que aparece en el Reporte de Experimentos, y conviene
 que quede escrito aquí porque es la justificación metodológica de la arquitectura.
-
-Relación con ``cnn.py``
------------------------
-``kerasmodels/cnn.py`` implementa una CNN **2D** sobre matrices estáticas de 18×18,
-con la forma de entrada fija en el propio código. No es compatible con el flujo de
-secuencias de ``run_experiment.py`` y por eso no está registrada. Se conserva sin
-cambios para no romper el código que la use.
 """
 
 from . import register

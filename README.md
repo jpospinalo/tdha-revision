@@ -19,7 +19,7 @@ python run_experiment.py --site NYU --roi-set 12 --dry-run   # valida sin entren
 python run_experiment.py --site NYU --roi-set 12             # una corrida completa
 python compile_results.py --site NYU --model lstm --stats
 
-python run_queue.py --site NYU --roi-set 12 18 39 116        # varias encadenadas
+python run_queue.py --sites NYU --roi-sets 12 18 39 116      # varias encadenadas
 ```
 
 Desde Colab, el notebook `tdha_experimentos.ipynb` hace todo lo anterior.

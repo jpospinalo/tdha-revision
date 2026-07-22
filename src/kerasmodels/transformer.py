@@ -11,6 +11,13 @@ tamaño de la muestra.
 Se usa codificación posicional **aprendida** (una capa Embedding sobre el índice de
 ventana) en lugar de sinusoidal: las secuencias son cortas y de longitud fija dentro
 de cada sitio, así que no hace falta que la codificación extrapole.
+
+El orden de las ventanas en reposo es en buena medida intercambiable, así que la
+codificación posicional puede memorizar ruido específico de posición con muestras
+pequeñas. Con ``positional=False`` se omite y el modelo se comporta como un modelo de
+conjuntos (atención + *pooling* por promedio), invariante al orden. Conviene contrastar
+ambas variantes; si la representación ``permuted`` iguala a ``ordered``, la variante sin
+posición es la adecuada.
 """
 
 from . import register
@@ -18,7 +25,7 @@ from . import register
 
 @register("transformer")
 def build(n_windows, n_features, d_model=64, num_heads=4, ff_dim=128,
-          num_blocks=1, dropout=0.1):
+          num_blocks=1, dropout=0.1, positional=True):
     """Codificador Transformer con agregación por promedio.
 
     Parameters
@@ -37,6 +44,10 @@ def build(n_windows, n_features, d_model=64, num_heads=4, ff_dim=128,
         Bloques apilados.
     dropout : float
         Dropout en la atención, la red de avance y antes de la salida.
+    positional : bool
+        Si es True (por defecto), suma una codificación posicional aprendida y el
+        modelo es sensible al orden de las ventanas. Con False se omite y el modelo
+        es invariante al orden (atención sobre un conjunto de ventanas).
 
     Returns
     -------
@@ -51,10 +62,11 @@ def build(n_windows, n_features, d_model=64, num_heads=4, ff_dim=128,
 
     inp = layers.Input(shape=(n_windows, n_features))
     x = layers.Dense(d_model)(inp)
-    pos = layers.Embedding(input_dim=n_windows, output_dim=d_model)(
-        ops.arange(0, n_windows, dtype="int32")
-    )
-    x = x + pos
+    if positional:
+        pos = layers.Embedding(input_dim=n_windows, output_dim=d_model)(
+            ops.arange(0, n_windows, dtype="int32")
+        )
+        x = x + pos
 
     for _ in range(num_blocks):
         # Pre-normalización: más estable que post-norm con pocos datos.
@@ -75,5 +87,6 @@ def build(n_windows, n_features, d_model=64, num_heads=4, ff_dim=128,
     # dtype="float32" explícito: con precisión mixta (mixed_float16) la sigmoide
     # y la pérdida deben calcularse en float32 para no perder estabilidad numérica.
     out = layers.Dense(1, activation="sigmoid", dtype="float32")(x)
+    suffix = "" if positional else "_nopos"
     return keras.Model(inp, out,
-                       name=f"transformer_d{d_model}h{num_heads}b{num_blocks}")
+                       name=f"transformer_d{d_model}h{num_heads}b{num_blocks}{suffix}")

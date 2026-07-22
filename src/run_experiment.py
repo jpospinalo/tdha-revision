@@ -910,7 +910,12 @@ def build_parser() -> argparse.ArgumentParser:
     training_group.add_argument("--lr", type=float, default=1e-4)
     training_group.add_argument("--batch-size", type=int, default=8)
     training_group.add_argument("--epochs", type=int, default=150)
-    training_group.add_argument("--patience", type=int, default=100)
+    training_group.add_argument(
+        "--patience",
+        type=int,
+        default=25,
+        help="épocas sin mejora antes de parar; restore_best_weights recupera la mejor",
+    )
     training_group.add_argument("--clipnorm", type=float, default=None)
     training_group.add_argument("--start-from-epoch", type=int, default=0)
     training_group.add_argument(
@@ -937,6 +942,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     execution_group = parser.add_argument_group("ejecución")
     execution_group.add_argument("--deterministic", action="store_true")
+    execution_group.add_argument(
+        "--mixed-precision",
+        action="store_true",
+        help="activa mixed_float16 en GPU; acelera las configuraciones grandes "
+        "(39/116 ROIs, transformer, cnn1d). Cambia los decimales de las métricas.",
+    )
     execution_group.add_argument("--tag", default=None)
     execution_group.add_argument("--overwrite", action="store_true")
     execution_group.add_argument("--dry-run", action="store_true")
@@ -1044,6 +1055,24 @@ def main(argv: Sequence[str] | None = None) -> str | None:
         except Exception as exc:  # pragma: no cover - depende del entorno
             print(f" AVISO: no se pudo activar determinismo: {exc}")
 
+    if args.mixed_precision:
+        # Debe fijarse antes de construir cualquier modelo. La salida de cada
+        # arquitectura ya declara dtype="float32", así que la pérdida y la sigmoide
+        # se mantienen estables; solo cambia la acumulación interna en float16.
+        try:
+            import keras
+            import tensorflow as tf
+
+            if tf.config.list_physical_devices("GPU"):
+                keras.mixed_precision.set_global_policy("mixed_float16")
+                print(" precisión mixta activada (mixed_float16).")
+            else:
+                print(" AVISO: --mixed-precision ignorado; no hay GPU disponible.")
+                args.mixed_precision = False
+        except Exception as exc:  # pragma: no cover - depende del entorno
+            print(f" AVISO: no se pudo activar precisión mixta: {exc}")
+            args.mixed_precision = False
+
     bold_path = tdha_data.BOLD_DIR / f"{args.site}.joblib"
     payload = tdha_data.load_bold(args.site)
     bold = payload["bold"]
@@ -1114,6 +1143,7 @@ def main(argv: Sequence[str] | None = None) -> str | None:
         "n_random_sets": args.n_random_sets if args.random_subset else None,
         "exclude_roi_set": args.exclude_roi_set,
         "deterministic": bool(args.deterministic),
+        "mixed_precision": bool(args.mixed_precision),
         "bold_hash": file_hash(bold_path),
         "atlas_hash": file_hash(atlas_path),
         "data_code_hash": _code_hash(tdha_data),

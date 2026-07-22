@@ -15,6 +15,8 @@ The documents describe the current implementation only. Historical development d
 | `validation.md` | Record of the validations and verification procedures performed on the current implementation. |
 | `performance.md` | Computational optimizations implemented to improve execution efficiency. |
 | `limitations.md` | Current methodological and technical limitations of the project. |
+| `auditoria-metricas.md` | Audit of the manuscript figures against the versioned results. |
+| `modificaciones_eventanado.md` | Integration notes for the windowing changes. |
 
 ## Intended Audience
 
