@@ -154,3 +154,4 @@ from . import gru       # noqa: E402,F401
 from . import cnn1d     # noqa: E402,F401
 from . import transformer  # noqa: E402,F401
 from . import deepsets  # noqa: E402,F401
+from . import brainnetcnn  # noqa: E402,F401

@@ -24,9 +24,7 @@ Alternative connectivity measures are not included in the current version of the
 
 # Model Selection
 
-Model selection is performed using the validation partition generated within each cross-validation iteration.
-
-The pipeline does not implement nested cross-validation.
+Epoch selection (early stopping) is performed on an inner partition held out from each outer training fold, and the outer fold is used only for final evaluation. This nesting isolates epoch selection from the test data, but the pipeline does not implement a full nested cross-validation for hyperparameter or architecture search: hyperparameters are fixed by the user, not tuned on an inner loop.
 
 ---
 
@@ -40,9 +38,9 @@ The pipeline does not include automatic hyperparameter optimization or architect
 
 # Supported Models
 
-The current implementation includes the machine learning and deep learning models incorporated into this study.
+The current implementation registers six architectures: `lstm`, `gru`, `cnn1d`, `transformer`, `deepsets` and `brainnetcnn`. All consume the vectorized connectivity representation and return a single sigmoid output; `brainnetcnn` reconstructs the connectivity matrix internally.
 
-Additional architectures may require extending the corresponding training modules.
+Additional architectures can be registered in `kerasmodels/` without modifying the training modules, provided they follow the same build contract.
 
 ---
 

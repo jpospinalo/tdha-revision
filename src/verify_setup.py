@@ -189,7 +189,7 @@ def check_modelos(full):
     import kerasmodels
 
     disponibles = kerasmodels.available()
-    esperadas = {"lstm", "gru", "cnn1d", "transformer"}
+    esperadas = {"lstm", "gru", "cnn1d", "transformer", "deepsets", "brainnetcnn"}
     faltan = esperadas - set(disponibles)
     (fail if faltan else ok)(
         f"registradas: {', '.join(disponibles)}" + (f" — faltan {faltan}" if faltan else ""))

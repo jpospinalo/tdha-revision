@@ -77,7 +77,29 @@ It generates combinations of experimental configurations and sequentially execut
 
 This module consolidates the results produced by multiple experiments.
 
-It computes descriptive statistics across repetitions and exports aggregated summaries that facilitate comparison between experimental configurations.
+It computes descriptive statistics across repetitions and exports aggregated summaries that facilitate comparison between experimental configurations. It also refuses to aggregate runs that are not comparable (different seeds, split fingerprints, or BOLD hashes) and provides repeated-measures ANOVA with paired post-hoc tests.
+
+---
+
+## Model Registry (`kerasmodels/`)
+
+This package holds the neural architectures as a registry. Each module registers a `build(n_windows, n_features, **hyperparameters)` function that returns an **uncompiled** `keras.Model` with a single sigmoid output. Compilation (optimizer, learning rate, loss, metrics) is performed by `run_experiment.py`, so architectures stay decoupled from training hyperparameters.
+
+The registered architectures are:
+
+- `lstm`, `gru` — recurrent models over the window sequence (order-sensitive).
+- `cnn1d` — 1D convolution along the time (window) axis.
+- `transformer` — self-attention encoder, with an optional learned positional encoding (`positional=False` turns it into an order-invariant set model).
+- `deepsets` — a shared per-window MLP followed by symmetric pooling; order-invariant by construction.
+- `brainnetcnn` — topological convolution over the connectivity matrix (edge-to-edge, edge-to-node, node-to-graph filters); reconstructs the symmetric matrix internally from the vectorized upper triangle, intended for the static representation.
+
+New architectures are added by dropping a module in the package and importing it in `__init__.py`; they become available as `--model <name>` without touching any other file.
+
+---
+
+## Environment Verification (`verify_setup.py`)
+
+This module checks the repository and environment before any experiment: file structure, BOLD payloads and shapes, ROI-set consistency, sequence construction, cross-validation partitions (leakage checks), and that every registered architecture builds. It is meant to run right after cloning.
 
 ---
 

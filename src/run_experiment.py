@@ -1011,6 +1011,116 @@ def write_config(path: Path, config: Mapping[str, Any]) -> None:
     )
 
 
+def _mean_sd_pct(series: "pd.Series") -> str:
+    mean = float(series.mean()) * 100
+    sd = float(series.std(ddof=1)) * 100 if series.notna().sum() > 1 else float("nan")
+    return f"{mean:.2f} ± {sd:.2f} %"
+
+
+def write_run_summary(
+    outdir: Path,
+    config: Mapping[str, Any],
+    *,
+    suffix: str = "",
+    is_random: bool = False,
+) -> None:
+    """Escribe un resumen legible de la corrida, derivado del config.
+
+    Es una vista humana para hojear ``results/runs`` sin leer el ``config.json``
+    completo; NO es una fuente de verdad: se regenera a partir de él.
+    """
+
+    arch = config.get("arch") or {}
+    arch_str = ", ".join(f"{k}={v}" for k, v in arch.items()) or "(por defecto)"
+    balance = config.get("class_balance") or {}
+    control = balance.get(0, balance.get("0", "?"))
+    tdah = balance.get(1, balance.get("1", "?"))
+
+    window = config.get("windowing") or {}
+    representation = config.get("representation")
+    if representation == "static" or window.get("mode") == "static":
+        ventana = "estática — una matriz sobre toda la serie, sin ventanas"
+    else:
+        overlap = window.get("effective_overlap")
+        overlap_str = f"{overlap:.0%}" if isinstance(overlap, (int, float)) else "?"
+        ventana = (
+            f"{window.get('window_tr')} TR / {window.get('window_seconds')} s · "
+            f"paso {window.get('step_tr')} TR / {window.get('step_seconds')} s · "
+            f"solape {overlap_str} · {config.get('n_windows')} ventanas · "
+            f"{window.get('shape', 'rectangular')}"
+        )
+
+    n_eval = int(config.get("n_splits", 0)) * int(config.get("n_repeats", 0))
+    lines = [
+        f"# {config.get('run_id')}",
+        "",
+        f"Vista legible generada desde `config.json` (la fuente de verdad). "
+        f"Timestamp: {config.get('timestamp')}.",
+        "",
+        "## Configuración",
+        "",
+        f"- **Sitio**: {config.get('site')} · **ROIs**: {config.get('roi_set')} "
+        f"(n={config.get('n_rois')}) · **Sujetos**: {config.get('n_subjects')} "
+        f"(control/TDAH: {control}/{tdah})",
+        f"- **Modelo**: `{config.get('model')}` — {arch_str}",
+        f"- **Representación**: {representation} · **Ventana**: {ventana}",
+        f"- **Fisher z**: {'sí' if config.get('fisher_z') else 'no'} · "
+        f"**Precisión mixta**: {'sí' if config.get('mixed_precision') else 'no'}",
+        f"- **Validación**: {config.get('n_splits')}×{config.get('n_repeats')} = "
+        f"{n_eval} evaluaciones externas · semilla {config.get('seed')} · "
+        f"class_weight: {'sí' if config.get('class_weight') else 'no'}",
+        f"- **Entrenamiento**: lr={config.get('lr')}, batch={config.get('batch_size')}, "
+        f"epochs={config.get('epochs')}, patience={config.get('patience')}",
+        "",
+    ]
+
+    if is_random:
+        lines += [
+            "## Resultados",
+            "",
+            f"Corrida de subconjuntos aleatorios: {config.get('n_random_sets')} conjuntos "
+            f"de {config.get('random_subset')} ROIs. Ver `random_subsets_summary.csv`.",
+            "",
+        ]
+    else:
+        val_path = outdir / f"metrics_val{suffix}.csv"
+        if val_path.exists():
+            val = pd.read_csv(val_path)
+            lines.append(
+                f"## Resultados — validación externa (media ± sd sobre {len(val)} pliegues)"
+            )
+            lines.append("")
+            for label, col in [
+                ("Accuracy", "accuracy"),
+                ("F1-macro", "f1_macro"),
+                ("AUC", "auc"),
+                ("Balanced acc.", "balanced_accuracy"),
+            ]:
+                if col in val:
+                    lines.append(f"- **{label}**: {_mean_sd_pct(val[col])}")
+            train_path = outdir / f"metrics_train{suffix}.csv"
+            if train_path.exists():
+                train = pd.read_csv(train_path)
+                if "accuracy" in val and "accuracy" in train:
+                    gap = (train["accuracy"].mean() - val["accuracy"].mean()) * 100
+                    lines.append(f"- **Brecha train−val (accuracy)**: {gap:.2f} pp")
+            if "best_epoch" in val:
+                lines.append(
+                    f"- **Época elegida (mediana)**: {val['best_epoch'].median():.0f}"
+                )
+            lines.append("")
+
+    lines += [
+        "## Reproducir",
+        "",
+        "```",
+        str(config.get("command", "")),
+        "```",
+        "",
+    ]
+    (outdir / f"resumen{suffix}.md").write_text("\n".join(lines), encoding="utf-8")
+
+
 def main(argv: Sequence[str] | None = None) -> str | None:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -1301,6 +1411,7 @@ def main(argv: Sequence[str] | None = None) -> str | None:
         )
         config["random_subsets_summary"] = "random_subsets_summary.csv"
         write_config(outdir / "config.json", config)
+        write_run_summary(outdir, config, is_random=True)
 
         accuracies = [row["val_acc"] for row in summary]
         print(
@@ -1332,6 +1443,7 @@ def main(argv: Sequence[str] | None = None) -> str | None:
         for warning in warnings:
             print(f" AVISO DE ENVENTANADO: {warning}")
         run_config(Xf, labels, subjects, args, outdir, split_plan)
+        write_run_summary(outdir, config)
 
     print(f"\nResultados en {outdir}")
     return run_id

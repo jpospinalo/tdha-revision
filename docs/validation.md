@@ -79,9 +79,10 @@ The temporal windowing implementation has been verified to ensure that:
 The training workflow has been reviewed to verify that:
 
 - data partitions remain isolated throughout training;
-- validation data are used exclusively for model selection;
+- the inner partition is used only for epoch selection, and the outer fold only for final evaluation;
 - class weights are computed using the training partition only;
-- experimental configurations are consistently applied across repetitions.
+- experimental configurations are consistently applied across repetitions;
+- every registered architecture builds and produces a single sigmoid output.
 
 ---
 
@@ -133,6 +134,10 @@ The current version of the pipeline incorporates the following methodological im
 - Static and dynamic connectivity representations.
 - Optional Gaussian window weighting.
 - Optional Fisher transformation.
+- Order-invariant and order-permuted representations for temporal-order controls.
+- An architecture registry with six models, including an order-invariant baseline (`deepsets`) and a topological connectivity-matrix model (`brainnetcnn`).
+- Early stopping with a shorter default patience and optional mixed precision for faster GPU runs.
+- Single-process batch execution (`run_queue.py --in-process`).
 - Centralized experimental configuration.
 - Improved experiment reproducibility.
 - Standardized result aggregation.
