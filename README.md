@@ -162,10 +162,12 @@ y `brainnetcnn`. Las tres últimas son útiles cuando el orden temporal no aport
 matriz de conectividad con filtros topológicos (edge-to-edge / edge-to-node), pensado para
 la representación estática.
 
-Representaciones (`--representation`): `ordered` (secuencia dinámica), `static` (una sola
-matriz sobre toda la serie), `mean` / `mean_std` (resúmenes invariantes al orden) y
-`permuted` (ventanas barajadas, control para saber si el orden discrimina). Si `ordered` y
-`permuted` rinden igual, conviene preferir los modelos invariantes al orden.
+Representaciones (`--representation`): `ordered` (secuencia dinámica), `static` (una matriz
+Pearson sobre toda la serie), `partial` (correlación parcial regularizada Ledoit-Wolf, una
+matriz por sujeto), `hybrid` (estática + media/desviación/cambio de las ventanas), `mean` /
+`mean_std` (resúmenes invariantes al orden) y `permuted` (ventanas barajadas, control para
+saber si el orden discrimina). Si `ordered` y `permuted` rinden igual, conviene preferir los
+modelos y representaciones invariantes al orden.
 
 Eficiencia: `--mixed-precision` acelera los modelos grandes (39/116 ROIs, transformer,
 brainnetcnn) en GPU; `run_queue.py --in-process` corre un lote sin reiniciar TensorFlow

@@ -648,6 +648,89 @@ def build_flat_static_connectivity(
     )
 
 
+def build_flat_partial_connectivity(
+    bold: Any,
+    indices: Iterable[int],
+    chunk: int | None = None,
+    *,
+    fisher_z: bool = False,
+    constant_policy: ConstantPolicy = "zero",
+) -> np.ndarray:
+    """Correlación parcial regularizada (Ledoit-Wolf) por sujeto, ``(n, 1, r*(r-1)/2)``.
+
+    Estima la covarianza con shrinkage de Ledoit-Wolf sobre toda la serie de cada
+    sujeto, obtiene la matriz de precisión y la convierte en correlación parcial. El
+    shrinkage garantiza una matriz bien condicionada aunque haya menos puntos temporales
+    que ROIs (p. ej. OHSU: 74 TR, 116 ROIs). El cálculo es por sujeto, así que no
+    introduce dependencia entre sujetos ni fuga entre particiones.
+    """
+
+    from sklearn.covariance import LedoitWolf  # dependencia perezosa
+
+    if constant_policy not in ("zero", "raise"):
+        raise ValueError("constant_policy debe ser 'zero' o 'raise'.")
+
+    arr = validate_bold_array(bold, check_finite=False)
+    idx = validate_indices(indices, arr.shape[1])
+    selected = np.asarray(arr, dtype=np.float64)[:, idx, :]
+    if not np.isfinite(selected).all():
+        raise ValueError("Las señales seleccionadas contienen NaN o valores infinitos.")
+
+    n, r, _ = selected.shape
+    iu = np.triu_indices(r, k=1)
+    out = np.empty((n, 1, len(iu[0])), dtype=np.float32)
+    constant_total = 0
+
+    for subject in range(n):
+        series = selected[subject].T  # (tiempo, ROI)
+        constant = series.std(axis=0, ddof=1) < float(_CONSTANT_EPS)
+        constant_total += int(constant.sum())
+        precision = LedoitWolf().fit(series).precision_
+        scale = np.sqrt(np.clip(np.diag(precision), 1e-12, None))
+        partial = -precision / np.outer(scale, scale)
+        vec = partial[iu[0], iu[1]].astype(np.float64)
+        if constant.any():  # una conexión con un ROI constante no está definida
+            vec[constant[iu[0]] | constant[iu[1]]] = 0.0
+        np.clip(vec, -1.0, 1.0, out=vec)
+        if fisher_z:
+            np.clip(vec, -float(_FISHER_LIMIT), float(_FISHER_LIMIT), out=vec)
+            np.arctanh(vec, out=vec)
+        out[subject, 0] = vec.astype(np.float32)
+
+    if constant_total and constant_policy == "raise":
+        raise ValueError(
+            f"Se encontraron {constant_total} ROIs constantes al estimar la precisión."
+        )
+    return out
+
+
+def hybrid_summary(sequences: Any, static: Any) -> np.ndarray:
+    """Conectividad estática combinada con estadísticos invariantes al orden.
+
+    Concatena, por conexión: la conectividad estática, y la media, la desviación estándar
+    y el cambio medio absoluto entre ventanas consecutivas de la secuencia dinámica.
+    Salida ``(n, 1, 4*r*(r-1)/2)``. No asume que el orden de las ventanas informe.
+    """
+
+    seq = np.asarray(sequences, dtype=np.float32)
+    st = np.asarray(static, dtype=np.float32)
+    if seq.ndim != 3:
+        raise ValueError("sequences debe tener forma (sujetos, ventanas, características).")
+    if st.ndim != 3 or st.shape[0] != seq.shape[0] or st.shape[1] != 1:
+        raise ValueError("static debe tener forma (sujetos, 1, características).")
+    if st.shape[2] != seq.shape[2]:
+        raise ValueError("static y sequences deben compartir el número de características.")
+
+    mean = seq.mean(axis=1)
+    std = seq.std(axis=1, ddof=0)
+    if seq.shape[1] > 1:
+        delta = np.abs(np.diff(seq, axis=1)).mean(axis=1)
+    else:
+        delta = np.zeros_like(mean)
+    combined = np.concatenate([st[:, 0, :], mean, std, delta], axis=-1)
+    return combined[:, None, :].astype(np.float32)
+
+
 def build_connectivity(
     bold: Any,
     indices: Iterable[int],
@@ -948,12 +1031,14 @@ __all__ = [
     "SITE_TR_SECONDS",
     "WindowSpec",
     "build_connectivity",
+    "build_flat_partial_connectivity",
     "build_flat_sequences",
     "build_flat_static_connectivity",
     "build_sequences",
     "build_sequences_cached",
     "build_static_connectivity",
     "clear_caches",
+    "hybrid_summary",
     "load_bold",
     "load_roi_sets",
     "methodological_warnings",

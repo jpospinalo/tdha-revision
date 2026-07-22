@@ -70,7 +70,7 @@ except ModuleNotFoundError:  # importación desde pruebas o ``python -m src...``
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_DIR = REPO_ROOT / "results" / "runs"
 CONFIG_SCHEMA_VERSION = 2
-REPRESENTATIONS = ("ordered", "permuted", "mean", "mean_std", "static")
+REPRESENTATIONS = ("ordered", "permuted", "mean", "mean_std", "static", "partial", "hybrid")
 
 
 # ---------------------------------------------------------------------------
@@ -341,11 +341,11 @@ def resolve_temporal_spec(
         )
     ) or args.window_shape != "rectangular"
 
-    if args.representation == "static":
+    if args.representation in ("static", "partial"):
         if explicit_temporal:
             raise SystemExit(
-                "ERROR: la representación 'static' usa toda la serie y no acepta "
-                "parámetros de ventana, paso, solapamiento o forma de ventana."
+                f"ERROR: la representación '{args.representation}' usa toda la serie y no "
+                "acepta parámetros de ventana, paso, solapamiento o forma de ventana."
             )
         args.window = None
         args.step = None
@@ -466,6 +466,17 @@ def build_representation(
         diagnostics = static_diagnostics(n_timepoints, tr_seconds)
         return base, diagnostics, []
 
+    if args.representation == "partial":
+        base = tdha_data.build_flat_partial_connectivity(
+            bold,
+            indices,
+            fisher_z=args.fisher_z,
+            constant_policy=args.constant_policy,
+        )
+        diagnostics = static_diagnostics(n_timepoints, tr_seconds)
+        diagnostics["connectivity"] = "partial_ledoit_wolf"
+        return base, diagnostics, []
+
     if spec is None:  # salvaguarda de programación
         raise RuntimeError("Se requiere WindowSpec para representaciones dinámicas.")
 
@@ -520,6 +531,14 @@ def build_representation(
         output = tdha_data.summarize_windows(ordered, statistics=("mean",))
     elif args.representation == "mean_std":
         output = tdha_data.summarize_windows(ordered, statistics=("mean", "std"))
+    elif args.representation == "hybrid":
+        static_flat = tdha_data.build_flat_static_connectivity(
+            bold,
+            indices,
+            fisher_z=spec.fisher_z,
+            constant_policy=args.constant_policy,
+        )
+        output = tdha_data.hybrid_summary(ordered, static_flat)
     else:  # pragma: no cover - argparse limita las opciones
         raise ValueError(f"Representación desconocida: {args.representation!r}.")
 
@@ -982,7 +1001,8 @@ def make_run_id(
 ) -> str:
     parts = [sanitize_component(args.site), f"rois{sanitize_component(args.roi_set)}"]
     if spec is None:
-        parts.append("static")
+        # 'static' o 'partial': ambos usan toda la serie (sin ventana).
+        parts.append(sanitize_component(args.representation))
     else:
         parts.append(f"w{spec.window_tr}s{spec.step_tr}")
         if spec.shape != "rectangular":
@@ -1218,7 +1238,9 @@ def main(argv: Sequence[str] | None = None) -> str | None:
         basic_diagnostics["gaussian_sigma"] = spec.gaussian_sigma
         basic_warnings = tdha_data.methodological_warnings(basic_diagnostics)
         n_model_windows = (
-            1 if args.representation in {"mean", "mean_std"} else basic_diagnostics["n_windows"]
+            1
+            if args.representation in {"mean", "mean_std", "hybrid"}
+            else basic_diagnostics["n_windows"]
         )
 
     atlas_path = tdha_data.ATLAS_DIR / "roi_sets.json"

@@ -157,6 +157,35 @@ def check_secuencias():
         (ok if tri.shape == exp_tri else fail)(f"      triángulo superior {tri.shape}")
 
 
+def check_representaciones():
+    seccion("Representaciones adicionales")
+    import numpy as np
+    sys.path.insert(0, str(REPO / "src"))
+    import data as D
+
+    b = D.load_bold("NYU")
+    idx = D.roi_indices("18")
+    r = len(idx)
+    F = r * (r - 1) // 2
+    n = b["bold"].shape[0]
+
+    P = D.build_flat_partial_connectivity(b["bold"], idx)
+    prob = []
+    if P.shape != (n, 1, F):
+        prob.append(f"forma {P.shape}")
+    if not np.isfinite(P).all():
+        prob.append("valores no finitos")
+    if float(np.abs(P).max()) > 1.0001:
+        prob.append("fuera de [-1, 1]")
+    (fail if prob else ok)(
+        f"partial (Ledoit-Wolf): {P.shape}" + (f" — {', '.join(prob)}" if prob else ""))
+
+    seq = D.build_flat_sequences(b["bold"], idx, 60, 6)
+    H = D.hybrid_summary(seq, D.build_flat_static_connectivity(b["bold"], idx))
+    okH = H.shape == (n, 1, 4 * F) and bool(np.isfinite(H).all())
+    (ok if okH else fail)(f"hybrid: {H.shape} (4×{F})" + ("" if okH else " — forma o valores inválidos"))
+
+
 def check_particiones():
     seccion("Particiones de validación cruzada")
     import numpy as np
@@ -241,6 +270,7 @@ def main():
         check_datos()
         check_roi_sets()
         check_secuencias()
+        check_representaciones()
         check_particiones()
         check_modelos(args.full)
         if args.full:

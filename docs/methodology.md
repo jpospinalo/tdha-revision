@@ -21,7 +21,9 @@ From the dynamic sequence, `--representation` selects what the model receives:
 - `ordered` — the windows in real temporal order (the sequence itself).
 - `permuted` — the same windows shuffled within each subject. A control: if `ordered` and `permuted` score the same, temporal order carries no signal.
 - `mean` / `mean_std` — order-invariant summaries (mean, or mean concatenated with per-connection standard deviation).
-- `static` — a single matrix over the whole series, no windowing.
+- `static` — a single Pearson matrix over the whole series, no windowing.
+- `partial` — a single regularized partial-correlation matrix (Ledoit-Wolf shrinkage) over the whole series; isolates direct connections and stays well-conditioned when timepoints < ROIs.
+- `hybrid` — static connectivity concatenated per connection with the mean, standard deviation, and mean absolute change of the windows; order-invariant.
 
 `permuted`, `mean`, and `mean_std` exist to test whether the ordering of resting-state windows contributes signal, which decides whether order-sensitive architectures (recurrent, positional transformer) are worth using over order-invariant ones (`deepsets`, transformer without positional encoding, `static`).
 

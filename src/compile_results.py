@@ -92,7 +92,7 @@ def summarize(run_dir: Path, cfg: dict[str, Any], suffix: str = "") -> dict[str,
     d = _diagnostics(cfg)
     git = cfg.get("git") if isinstance(cfg.get("git"), dict) else {}
     representation = cfg.get("representation") or ("static" if cfg.get("window") is None else "ordered")
-    mode = "static" if representation == "static" else "dynamic"
+    mode = "static" if representation in ("static", "partial") else "dynamic"
 
     row: dict[str, Any] = {
         "run_id": str(cfg.get("run_id", run_dir.name)) + suffix,
@@ -302,6 +302,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strict", action="store_true", help="fallar ante corridas incompletas o archivos inválidos")
     parser.add_argument("--stats", action="store_true")
     parser.add_argument("--stats-metric", default="accuracy")
+    parser.add_argument(
+        "--stats-by",
+        choices=["roi_set", "representation"],
+        default="roi_set",
+        help="dimensión a comparar de forma pareada: subconjuntos de ROIs "
+        "(por defecto) o representaciones (fija un solo roi_set)",
+    )
     args = parser.parse_args(argv)
 
     df = collect(args.root, strict=args.strict)
@@ -344,13 +351,28 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.stats:
         base = df[df["random_subset"].isna()] if "random_subset" in df else df
-        if base["site"].nunique() != 1 or base["model"].nunique() != 1:
-            raise SystemExit("Para --stats filtre un solo sitio y modelo.")
+        group_col = args.stats_by
+        # Todo lo que no sea la dimensión a comparar debe quedar fijo.
+        fixed = ["site", "model"]
+        if group_col == "representation":
+            fixed.append("roi_set")  # comparar representaciones dentro de un mismo roi_set
+        else:
+            fixed.append("representation")  # comparar ROIs dentro de una misma representación
+        for column in fixed:
+            if column in base and base[column].dropna().nunique() > 1:
+                raise SystemExit(
+                    f"Para --stats por {group_col}, filtre un solo {column} "
+                    f"(hay {base[column].nunique()}: use --{column.replace('_', '-')})."
+                )
         if "split_fingerprint" in base and base["split_fingerprint"].dropna().nunique() > 1:
             raise SystemExit("Las corridas no comparten la misma huella de particiones.")
-        runs = {row.roi_set: row.base_run_id for _, row in base.sort_values("n_rois").iterrows()}
+        order = "n_rois" if group_col == "roi_set" else group_col
+        runs = {
+            row[group_col]: row.base_run_id
+            for _, row in base.sort_values(order).iterrows()
+        }
         if len(runs) < 2:
-            raise SystemExit("Se requieren al menos dos subconjuntos ROI.")
+            raise SystemExit(f"Se requieren al menos dos valores de {group_col}.")
         paired_stats(args.root, runs, args.stats_metric)
     return 0
 

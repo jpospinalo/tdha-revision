@@ -48,7 +48,7 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
-REPRESENTATIONS = ("ordered", "permuted", "mean", "mean_std", "static")
+REPRESENTATIONS = ("ordered", "permuted", "mean", "mean_std", "static", "partial", "hybrid")
 WINDOW_SHAPES = ("rectangular", "gaussian")
 
 
@@ -157,12 +157,12 @@ def build_arg_lists(args: argparse.Namespace, passthrough: Sequence[str]) -> lis
         if model:
             exp += ["--model", str(model)]
 
-        is_static = rep == "static"
+        sin_ventana = rep in ("static", "partial")
         if rep:
             exp += ["--representation", rep]
 
-        # La representación estática usa toda la serie: no lleva parámetros de ventana.
-        if not is_static:
+        # 'static' y 'partial' usan toda la serie: no llevan parámetros de ventana.
+        if not sin_ventana:
             if w_s is not None:
                 exp += ["--window-seconds", str(w_s)]
             if w_tr is not None:
