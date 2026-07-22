@@ -85,7 +85,7 @@ def _make_upper_to_matrix_layer(n_rois: int):
 
 @register("brainnetcnn")
 def build(n_windows, n_features, e2e=32, e2n=64, dense=96, dropout=0.5, leaky=0.33,
-          l2_reg=0.0, inter_dropout=0.0):
+          l2_reg=0.0, inter_dropout=0.0, batchnorm=False):
     """BrainNetCNN sobre la matriz de conectividad reconstruida.
 
     Parameters
@@ -107,6 +107,10 @@ def build(n_windows, n_features, e2e=32, e2n=64, dense=96, dropout=0.5, leaky=0.
     inter_dropout : float
         Dropout aplicado entre bloques (tras E2E y tras E2N), además del final.
         0.0 desactiva.
+    batchnorm : bool
+        Si es True, añade BatchNormalization tras cada convolución, antes de la
+        activación. Estabiliza el entrenamiento con capacidad reducida y regularización
+        fuerte, y evita el colapso a una sola clase en muestras pequeñas.
 
     Returns
     -------
@@ -119,6 +123,12 @@ def build(n_windows, n_features, e2e=32, e2n=64, dense=96, dropout=0.5, leaky=0.
     n_rois = _infer_n_rois(n_features)
     reg = regularizers.l2(l2_reg) if l2_reg else None
 
+    def activate(z):
+        # BatchNorm opcional antes de la activación (variante para muestra pequeña).
+        if batchnorm:
+            z = layers.BatchNormalization()(z)
+        return layers.LeakyReLU(negative_slope=leaky)(z)
+
     inp = layers.Input(shape=(n_windows, n_features))
     x = _make_upper_to_matrix_layer(n_rois)(inp)          # (lote, r, r, n_windows)
 
@@ -130,19 +140,19 @@ def build(n_windows, n_features, e2e=32, e2n=64, dense=96, dropout=0.5, leaky=0.
         output_shape=(n_rois, n_rois, e2e),
         name="edge2edge",
     )([row, col])
-    x = layers.LeakyReLU(negative_slope=leaky)(x)
+    x = activate(x)
     if inter_dropout:
         x = layers.Dropout(inter_dropout)(x)
 
     # edge-to-node: colapsa las aristas de cada nodo -> característica de nodo.
     x = layers.Conv2D(e2n, (1, n_rois), padding="valid", kernel_regularizer=reg)(x)
-    x = layers.LeakyReLU(negative_slope=leaky)(x)
+    x = activate(x)
     if inter_dropout:
         x = layers.Dropout(inter_dropout)(x)
 
     # node-to-graph: colapsa los nodos -> característica global del sujeto.
     x = layers.Conv2D(dense, (n_rois, 1), padding="valid", kernel_regularizer=reg)(x)
-    x = layers.LeakyReLU(negative_slope=leaky)(x)
+    x = activate(x)
 
     x = layers.Flatten()(x)
     if dropout:
