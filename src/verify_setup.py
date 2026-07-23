@@ -185,6 +185,12 @@ def check_representaciones():
     okH = H.shape == (n, 1, 4 * F) and bool(np.isfinite(H).all())
     (ok if okH else fail)(f"hybrid: {H.shape} (4×{F})" + ("" if okH else " — forma o valores inválidos"))
 
+    MV = D.build_flat_multiview(b["bold"], idx)
+    okMV = MV.shape == (n, 2, F) and bool(np.isfinite(MV).all())
+    (ok if okMV else fail)(
+        f"multiview (Pearson+parcial): {MV.shape} (2 canales)"
+        + ("" if okMV else " — forma o valores inválidos"))
+
 
 def check_particiones():
     seccion("Particiones de validación cruzada")

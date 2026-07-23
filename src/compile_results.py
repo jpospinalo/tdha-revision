@@ -92,7 +92,7 @@ def summarize(run_dir: Path, cfg: dict[str, Any], suffix: str = "") -> dict[str,
     d = _diagnostics(cfg)
     git = cfg.get("git") if isinstance(cfg.get("git"), dict) else {}
     representation = cfg.get("representation") or ("static" if cfg.get("window") is None else "ordered")
-    mode = "static" if representation in ("static", "partial") else "dynamic"
+    mode = "static" if representation in ("static", "partial", "multiview") else "dynamic"
 
     row: dict[str, Any] = {
         "run_id": str(cfg.get("run_id", run_dir.name)) + suffix,

@@ -48,7 +48,9 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
-REPRESENTATIONS = ("ordered", "permuted", "mean", "mean_std", "static", "partial", "hybrid")
+REPRESENTATIONS = (
+    "ordered", "permuted", "mean", "mean_std", "static", "partial", "hybrid", "multiview",
+)
 WINDOW_SHAPES = ("rectangular", "gaussian")
 
 
@@ -157,7 +159,7 @@ def build_arg_lists(args: argparse.Namespace, passthrough: Sequence[str]) -> lis
         if model:
             exp += ["--model", str(model)]
 
-        sin_ventana = rep in ("static", "partial")
+        sin_ventana = rep in ("static", "partial", "multiview")
         if rep:
             exp += ["--representation", rep]
 

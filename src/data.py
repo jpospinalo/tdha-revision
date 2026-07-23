@@ -731,6 +731,33 @@ def hybrid_summary(sequences: Any, static: Any) -> np.ndarray:
     return combined[:, None, :].astype(np.float32)
 
 
+def build_flat_multiview(
+    bold: Any,
+    indices: Iterable[int],
+    chunk: int | None = None,
+    *,
+    fisher_z: bool = False,
+    constant_policy: ConstantPolicy = "zero",
+) -> np.ndarray:
+    """Apila varias matrices de conectividad como canales: ``(n, k, r*(r-1)/2)``.
+
+    Cada "ventana" es una vista distinta de la misma serie completa: canal 0 la
+    correlación de Pearson y canal 1 la correlación parcial regularizada (Ledoit-Wolf).
+    Pensada para BrainNetCNN, cuya capa de reconstrucción trata el eje de ventanas como
+    canales de entrada, de modo que los filtros aprenden de ambas matrices a la vez.
+    Todas las vistas comparten el número de características (mismo r), así que se apilan
+    sin normalización adicional (ambas están en [-1, 1]).
+    """
+
+    pearson = build_flat_static_connectivity(
+        bold, indices, chunk=chunk, fisher_z=fisher_z, constant_policy=constant_policy
+    )
+    partial = build_flat_partial_connectivity(
+        bold, indices, chunk=chunk, fisher_z=fisher_z, constant_policy=constant_policy
+    )
+    return np.concatenate([pearson, partial], axis=1).astype(np.float32)
+
+
 def build_connectivity(
     bold: Any,
     indices: Iterable[int],
@@ -1031,6 +1058,7 @@ __all__ = [
     "SITE_TR_SECONDS",
     "WindowSpec",
     "build_connectivity",
+    "build_flat_multiview",
     "build_flat_partial_connectivity",
     "build_flat_sequences",
     "build_flat_static_connectivity",

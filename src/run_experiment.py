@@ -75,7 +75,9 @@ except ModuleNotFoundError:  # importación desde pruebas o ``python -m src...``
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_DIR = REPO_ROOT / "results" / "runs"
 CONFIG_SCHEMA_VERSION = 2
-REPRESENTATIONS = ("ordered", "permuted", "mean", "mean_std", "static", "partial", "hybrid")
+REPRESENTATIONS = (
+    "ordered", "permuted", "mean", "mean_std", "static", "partial", "hybrid", "multiview",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +348,7 @@ def resolve_temporal_spec(
         )
     ) or args.window_shape != "rectangular"
 
-    if args.representation in ("static", "partial"):
+    if args.representation in ("static", "partial", "multiview"):
         if explicit_temporal:
             raise SystemExit(
                 f"ERROR: la representación '{args.representation}' usa toda la serie y no "
@@ -480,6 +482,18 @@ def build_representation(
         )
         diagnostics = static_diagnostics(n_timepoints, tr_seconds)
         diagnostics["connectivity"] = "partial_ledoit_wolf"
+        return base, diagnostics, []
+
+    if args.representation == "multiview":
+        base = tdha_data.build_flat_multiview(
+            bold,
+            indices,
+            fisher_z=args.fisher_z,
+            constant_policy=args.constant_policy,
+        )
+        diagnostics = static_diagnostics(n_timepoints, tr_seconds)
+        diagnostics["connectivity"] = "pearson+partial_multiview"
+        diagnostics["n_channels"] = int(base.shape[1])
         return base, diagnostics, []
 
     if spec is None:  # salvaguarda de programación
@@ -1237,7 +1251,8 @@ def main(argv: Sequence[str] | None = None) -> str | None:
             else tdha_data.SITE_TR_SECONDS[args.site],
         )
         basic_warnings: list[str] = []
-        n_model_windows = 1
+        # 'multiview' apila 2 matrices (Pearson + parcial) como canales.
+        n_model_windows = 2 if args.representation == "multiview" else 1
     else:
         basic_diagnostics = tdha_data.windowing_diagnostics(
             bold.shape[-1],
