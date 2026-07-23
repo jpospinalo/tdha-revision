@@ -604,9 +604,17 @@ def evaluate(model: Any, X: np.ndarray, y: Sequence[int]) -> tuple[dict[str, flo
 
 
 def compile_model(model: Any, args: argparse.Namespace) -> Any:
-    """Compila con la única métrica necesaria para el historial por época."""
+    """Compila con las métricas necesarias para el historial por época."""
 
     import keras
+    from keras import ops
+
+    def bce(y_true, y_pred):
+        # Entropía cruzada SIN el término de regularización, para que el early stopping
+        # no siga a la penalización L2 (que baja al encoger los pesos). Alinea el rango
+        # de las etiquetas (batch,) con la salida (batch, 1).
+        y_true = ops.reshape(ops.cast(y_true, y_pred.dtype), ops.shape(y_pred))
+        return keras.losses.binary_crossentropy(y_true, y_pred)
 
     optimizer_args: dict[str, Any] = {"learning_rate": args.lr}
     if args.clipnorm is not None:
@@ -614,12 +622,7 @@ def compile_model(model: Any, args: argparse.Namespace) -> Any:
     model.compile(
         optimizer=keras.optimizers.Adam(**optimizer_args),
         loss="binary_crossentropy",
-        # 'bce' es la entropía cruzada SIN el término de regularización, para que el
-        # early stopping no siga a la penalización L2 (que baja al encoger los pesos).
-        metrics=[
-            keras.metrics.BinaryAccuracy(name="accuracy"),
-            keras.metrics.BinaryCrossentropy(name="bce"),
-        ],
+        metrics=[keras.metrics.BinaryAccuracy(name="accuracy"), bce],
     )
     return model
 
