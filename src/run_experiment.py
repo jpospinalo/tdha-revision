@@ -614,7 +614,12 @@ def compile_model(model: Any, args: argparse.Namespace) -> Any:
     model.compile(
         optimizer=keras.optimizers.Adam(**optimizer_args),
         loss="binary_crossentropy",
-        metrics=[keras.metrics.BinaryAccuracy(name="accuracy")],
+        # 'bce' es la entropía cruzada SIN el término de regularización, para que el
+        # early stopping no siga a la penalización L2 (que baja al encoger los pesos).
+        metrics=[
+            keras.metrics.BinaryAccuracy(name="accuracy"),
+            keras.metrics.BinaryCrossentropy(name="bce"),
+        ],
     )
     return model
 
@@ -696,7 +701,7 @@ def run_config(
             verbose=0,
             callbacks=[
                 EarlyStopping(
-                    monitor="val_loss",
+                    monitor="val_bce",
                     mode="min",
                     patience=args.patience,
                     min_delta=1e-5,
@@ -707,7 +712,7 @@ def run_config(
         )
 
         n_epochs = len(history.history["loss"])
-        best_epoch = int(np.argmin(history.history["val_loss"])) + 1
+        best_epoch = int(np.argmin(history.history["val_bce"])) + 1
 
         # El pliegue externo se utiliza aquí por primera vez.
         train_metrics, _ = evaluate(model, Xf[outer_train], y[outer_train])
