@@ -391,7 +391,10 @@ def paired_stats(root: str | Path, runs: dict[Any, str], metric: str = "accuracy
         pd.DataFrame({"value": v, "group": str(k), "fold": np.arange(1, len(v) + 1)})
         for k, v in values.items()
     ], ignore_index=True)
-    print("\nANOVA de medidas repetidas:\n")
+    print("\nANOVA de medidas repetidas (EXPLORATORIO — trata cada pliegue como "
+          "observación independiente y NO corrige la dependencia entre pliegues de "
+          "una k-fold repetida; no participa en el veredicto de significancia, que "
+          "usa el t-test corregido de Nadeau-Bengio más abajo):\n")
     print(AnovaRM(long, "value", "fold", within=["group"]).fit())
 
     rows = []
@@ -448,6 +451,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", help="CSV detallado por corrida")
     parser.add_argument("--aggregate-out", help="CSV agregado por configuración metodológica")
     parser.add_argument("--strict", action="store_true", help="fallar ante corridas incompletas o archivos inválidos")
+    parser.add_argument(
+        "--strict-comparability", action="store_true",
+        help="fallar (en vez de solo avisar) si check_comparability() detecta "
+        "incompatibilidades entre las corridas seleccionadas (seeds, hashes, árbol sucio, "
+        "configuraciones duplicadas)",
+    )
     parser.add_argument("--stats", action="store_true")
     parser.add_argument("--stats-metric", default="accuracy")
     parser.add_argument(
@@ -485,6 +494,10 @@ def main(argv: list[str] | None = None) -> int:
         print("\nAVISOS DE COMPARABILIDAD")
         for problem in problems:
             print(f"  · {problem}")
+        if args.strict_comparability:
+            raise SystemExit(
+                "Comparación abortada (--strict-comparability): " + "; ".join(problems)
+            )
     else:
         print("\nLas corridas seleccionadas son compatibles para comparación pareada.")
 

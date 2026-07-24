@@ -83,9 +83,13 @@ compartido. Si alguien repite una configuración idéntica, el script lo adviert
 lugar de sobrescribir.
 
 **Comparaciones pareadas.** Con la misma `--seed` y las mismas etiquetas, todas las
-configuraciones usan exactamente las mismas particiones. Eso permite usar ANOVA de
-medidas repetidas y contrastes pareados, con bastante más potencia que sus equivalentes
-para muestras independientes.
+configuraciones usan exactamente las mismas particiones. Eso permite contrastes
+pareados con bastante más potencia que sus equivalentes para muestras independientes.
+El veredicto de significancia usa un t-test remuestreado con corrección de
+Nadeau-Bengio (corrige por que los pliegues de una k-fold repetida no son
+observaciones independientes) más corrección de Holm entre contrastes. `--stats`
+también imprime un ANOVA de medidas repetidas y un t-test pareado ingenuo, pero
+ambos quedan etiquetados como exploratorios/de referencia, no como el veredicto.
 
 **Sin fuga en la selección de época.** Dentro de cada pliegue se aparta un 15 % del
 entrenamiento para el early stopping. El pliegue de validación externo solo se usa en
@@ -93,8 +97,10 @@ la evaluación final, nunca para decidir nada.
 
 **Trazabilidad.** Cada `config.json` guarda el hash de las señales, los parámetros de
 enventanado, el commit de git, si el árbol estaba limpio, el usuario y las versiones de
-Python, TensorFlow y GPU. `compile_results.py` usa esa información para negarse a
-agregar corridas que no sean comparables.
+Python, TensorFlow y GPU. `compile_results.py` usa esa información para avisar cuando
+las corridas seleccionadas no son comparables (semilla, huella de particiones, hashes
+de datos/código distintos, árbol sucio, configuraciones duplicadas); con
+`--strict-comparability` esos avisos abortan la ejecución en vez de solo imprimirse.
 
 ### Reproducibilidad: qué se garantiza y qué no
 
