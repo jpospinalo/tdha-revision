@@ -77,6 +77,63 @@ def _pct(value: float, metric: str) -> float:
     return value if metric == "loss" else value * 100.0
 
 
+# Métricas OOF que no son pérdidas se expresan en porcentaje, igual que el resto de
+# la tabla; log_loss y brier se dejan en su escala natural.
+OOF_METRICS = ("auc", "f1_macro", "balanced_accuracy", "log_loss", "brier")
+OOF_LOSS_METRICS = frozenset({"log_loss", "brier"})
+
+
+def oof_metrics_per_repetition(predictions: pd.DataFrame) -> pd.DataFrame | None:
+    """Métricas out-of-fold agrupando las predicciones de cada repetición.
+
+    En un ``RepeatedStratifiedKFold`` cada repetición cubre a todos los sujetos
+    exactamente una vez: cada sujeto aparece en la validación externa de un único
+    pliegue dentro de la repetición. Agrupar los pliegues de una repetición reconstruye
+    una predicción out-of-fold para toda la muestra, y repetir el proceso por cada
+    repetición da varias estimaciones sobre las que calcular media y dispersión.
+
+    Esto es más estable y menos sesgado que promediar métricas calculadas pliegue a
+    pliegue: el AUC o el F1 de un pliegue con ~18 sujetos es muy ruidoso, mientras que
+    el de la muestra completa (agrupada) tiene mucha menos varianza de muestreo.
+
+    Devuelve una fila por repetición con AUC, F1 macro, exactitud balanceada, log-loss
+    y Brier, o ``None`` si el archivo de predicciones no tiene el formato esperado.
+    """
+
+    needed = {"repeat", "y_true", "y_prob"}
+    if predictions is None or predictions.empty or not needed.issubset(predictions.columns):
+        return None
+    from sklearn.metrics import (
+        balanced_accuracy_score,
+        brier_score_loss,
+        f1_score,
+        log_loss,
+        roc_auc_score,
+    )
+
+    rows: list[dict[str, Any]] = []
+    for repeat, group in predictions.groupby("repeat"):
+        y = pd.to_numeric(group["y_true"], errors="coerce").to_numpy()
+        p = pd.to_numeric(group["y_prob"], errors="coerce").to_numpy()
+        mask = np.isfinite(y) & np.isfinite(p)
+        y = y[mask].astype(int)
+        p = p[mask].astype(float)
+        if y.size == 0:
+            continue
+        pred = (p >= 0.5).astype(int)
+        both_classes = np.unique(y).size > 1
+        rows.append({
+            "repeat": int(repeat),
+            "n": int(y.size),
+            "auc": float(roc_auc_score(y, p)) if both_classes else float("nan"),
+            "f1_macro": float(f1_score(y, pred, average="macro", zero_division=0)),
+            "balanced_accuracy": float(balanced_accuracy_score(y, pred)),
+            "log_loss": float(log_loss(y, np.clip(p, 1e-7, 1 - 1e-7), labels=[0, 1])),
+            "brier": float(brier_score_loss(y, p)),
+        })
+    return pd.DataFrame(rows) if rows else None
+
+
 def summarize(run_dir: Path, cfg: dict[str, Any], suffix: str = "") -> dict[str, Any] | None:
     val_path = run_dir / f"metrics_val{suffix}.csv"
     train_path = run_dir / f"metrics_train{suffix}.csv"
@@ -162,6 +219,24 @@ def summarize(run_dir: Path, cfg: dict[str, Any], suffix: str = "") -> dict[str,
         row["gap_acc"] = row["train_accuracy_mean"] - row["val_accuracy_mean"]
     row["epoca_media"] = float(val["best_epoch"].mean()) if "best_epoch" in val else np.nan
     row["epoca_sd"] = _safe_std(pd.to_numeric(val["best_epoch"], errors="coerce")) if "best_epoch" in val else np.nan
+
+    # Métricas OOF por repetición (revisión 3.3): estimación agrupada, menos ruidosa
+    # que promediar métricas pliegue a pliegue. Aditivo: si no hay predicciones OOF la
+    # fila conserva exactamente las mismas columnas de antes.
+    pred_path = run_dir / f"predictions_val{suffix}.csv"
+    if pred_path.exists():
+        try:
+            predictions = pd.read_csv(pred_path)
+        except (OSError, pd.errors.ParserError):
+            predictions = None
+        oof = oof_metrics_per_repetition(predictions)
+        if oof is not None and not oof.empty:
+            row["oof_n_repeats"] = int(len(oof))
+            for metric in OOF_METRICS:
+                series = pd.to_numeric(oof[metric], errors="coerce")
+                scale_as = "loss" if metric in OOF_LOSS_METRICS else metric
+                row[f"oof_{metric}_mean"] = _pct(float(series.mean()), scale_as)
+                row[f"oof_{metric}_sd"] = _pct(_safe_std(series), scale_as)
     return row
 
 
@@ -228,7 +303,10 @@ def methodological_group_columns(df: pd.DataFrame) -> list[str]:
 
 def aggregate_table(df: pd.DataFrame, group_by: Iterable[str] | None = None) -> pd.DataFrame:
     groups = list(group_by or methodological_group_columns(df))
-    metric_cols = [c for c in df.columns if c.startswith("val_") and c.endswith("_mean")]
+    metric_cols = [
+        c for c in df.columns
+        if c.endswith("_mean") and (c.startswith("val_") or c.startswith("oof_"))
+    ]
     if not groups or not metric_cols:
         return pd.DataFrame()
     aggregations: dict[str, list[str]] = {c: ["mean", "std", "min", "max", "median"] for c in metric_cols}
@@ -239,20 +317,75 @@ def aggregate_table(df: pd.DataFrame, group_by: Iterable[str] | None = None) -> 
     return counts.merge(result, on=groups, how="left")
 
 
+def corrected_resampled_ttest(
+    a: np.ndarray, b: np.ndarray, n_splits: int
+) -> tuple[float, float]:
+    """t-test remuestreado corregido de Nadeau & Bengio (2003) para k-fold repetido.
+
+    Los pliegues de una validación cruzada repetida **no** son independientes: sus
+    conjuntos de entrenamiento se solapan fuertemente, de modo que la varianza de las
+    diferencias entre modelos está subestimada. Un t-test pareado ingenuo que trate los
+    ``n_splits × n_repeats`` pliegues como observaciones independientes produce
+    p-valores demasiado optimistas (error tipo I inflado).
+
+    La corrección reemplaza ``s²/J`` por ``s²·(1/J + ρ/(1-ρ))``, con
+    ``ρ = 1/n_splits`` la proporción de datos en validación en cada pliegue. Con ``J``
+    pliegues y ``df = J − 1`` grados de libertad.
+
+    Devuelve el estadístico t corregido y su p-valor a dos colas.
+    """
+
+    diff = np.asarray(a, dtype=float) - np.asarray(b, dtype=float)
+    n_folds = diff.size
+    if n_folds < 2 or n_splits < 2:
+        return float("nan"), float("nan")
+    mean = float(diff.mean())
+    var = float(diff.var(ddof=1))
+    if var == 0.0:
+        return (float("inf") if mean else 0.0), (0.0 if mean else 1.0)
+    rho = 1.0 / n_splits
+    corrected_var = var * (1.0 / n_folds + rho / (1.0 - rho))
+    t = mean / math.sqrt(corrected_var)
+    from scipy import stats
+
+    p = float(2.0 * stats.t.sf(abs(t), df=n_folds - 1))
+    return t, p
+
+
+def _infer_n_splits(frame: pd.DataFrame) -> int | None:
+    """Deduce k (pliegues por repetición) a partir de la columna ``repeat``."""
+
+    if "repeat" not in frame or frame["repeat"].dropna().empty:
+        return None
+    n_repeats = int(frame["repeat"].nunique())
+    if n_repeats == 0 or len(frame) % n_repeats != 0:
+        return None
+    return len(frame) // n_repeats
+
+
 def paired_stats(root: str | Path, runs: dict[Any, str], metric: str = "accuracy") -> None:
     from scipy import stats
     from statsmodels.stats.anova import AnovaRM
     from statsmodels.stats.multitest import multipletests
 
     values: dict[Any, np.ndarray] = {}
+    splits: set[int] = set()
     for key, run_id in runs.items():
         frame = pd.read_csv(Path(root) / run_id / "metrics_val.csv").sort_values("fold")
         if metric not in frame:
             raise ValueError(f"La métrica {metric!r} no existe en {run_id}.")
         values[key] = frame[metric].to_numpy(dtype=float)
+        k = _infer_n_splits(frame)
+        if k is not None:
+            splits.add(k)
     lengths = {k: len(v) for k, v in values.items()}
     if len(set(lengths.values())) > 1:
         raise ValueError(f"Número de pliegues distinto entre corridas: {lengths}")
+
+    n_splits = splits.pop() if len(splits) == 1 else None
+    if len(splits) > 1:
+        print("\nAVISO: las corridas usan distinto n_splits; se omite la corrección "
+              "de Nadeau-Bengio (requiere el mismo k).")
 
     long = pd.concat([
         pd.DataFrame({"value": v, "group": str(k), "fold": np.arange(1, len(v) + 1)})
@@ -268,13 +401,28 @@ def paired_stats(root: str | Path, runs: dict[Any, str], metric: str = "accuracy
             _, p_w = stats.wilcoxon(values[a], values[b])
         except ValueError:
             p_w = np.nan
-        rows.append({"grupo_1": a, "grupo_2": b,
-                     "dif_pp": (values[b].mean() - values[a].mean()) * 100,
-                     "p_t_pareada": p_t, "p_wilcoxon": p_w})
+        entry = {"grupo_1": a, "grupo_2": b,
+                 "dif_pp": (values[b].mean() - values[a].mean()) * 100,
+                 "p_t_pareada": p_t, "p_wilcoxon": p_w}
+        if n_splits is not None:
+            _, p_nb = corrected_resampled_ttest(values[a], values[b], n_splits)
+            entry["p_nadeau_bengio"] = p_nb
+        rows.append(entry)
     result = pd.DataFrame(rows)
-    result["p_holm"] = multipletests(result["p_t_pareada"], method="holm")[1]
+
+    # La corrección de Holm y el veredicto de significancia se aplican sobre el
+    # p-valor corregido (Nadeau-Bengio) cuando está disponible, porque el t-test
+    # ingenuo sobre pliegues correlacionados sobreestima la significancia. Se conserva
+    # ``p_t_pareada`` en la tabla solo como referencia.
+    base_p = "p_nadeau_bengio" if "p_nadeau_bengio" in result else "p_t_pareada"
+    result["p_holm"] = multipletests(result[base_p], method="holm")[1]
     result["significativo"] = result["p_holm"] < 0.05
-    print("\nContrastes pareados con corrección de Holm:\n")
+    if n_splits is not None:
+        print(f"\nContrastes pareados (corrección de varianza Nadeau-Bengio, k={n_splits}, "
+              f"Holm sobre {base_p}):\n")
+    else:
+        print("\nContrastes pareados con corrección de Holm "
+              "(sin Nadeau-Bengio: no se pudo deducir k):\n")
     print(result.round(4).to_string(index=False))
 
 
@@ -323,7 +471,8 @@ def main(argv: list[str] | None = None) -> int:
         "run_id", "site", "roi_set", "model", "representation", "window_seconds",
         "window_tr", "step_tr", "effective_overlap", "window_shape", "fisher_z",
         "n_folds", "n_windows", "val_accuracy_mean", "val_accuracy_sd",
-        "val_f1_macro_mean", "val_auc_mean", "gap_acc", "commit",
+        "val_f1_macro_mean", "val_auc_mean", "oof_auc_mean", "oof_f1_macro_mean",
+        "gap_acc", "commit",
     ]
     print(df[[c for c in display_cols if c in df]].round(4).to_string(index=False))
 
