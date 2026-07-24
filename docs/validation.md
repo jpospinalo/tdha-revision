@@ -23,7 +23,7 @@ ROI time series load correctly, subjects keep their metadata, site TRs are handl
 
 ## Connectivity
 
-Static produces one matrix per subject over the whole series; dynamic produces window sequences in temporal order, from physically-defined windows. Both are checked for symmetry, diagonal, and value range.
+Static produces one matrix per subject over the whole series; dynamic produces window sequences in temporal order, from physically-defined windows. Both are checked for symmetry, diagonal, and value range. The Ledoit-Wolf shrinkage estimators (`partial`, `shrunk`) are checked in `verify_setup.py` for shape, finiteness, and range, same as the Pearson-based ones.
 
 ## Windowing
 
@@ -43,4 +43,4 @@ Fixed seeds, exported configuration and metadata, and a standardized output layo
 
 ## Improvements in this version
 
-Physical (time-based) windowing with site-specific TR; static and dynamic connectivity; order-invariant and order-permuted representations for temporal-order controls; an architecture registry with six models, including an order-invariant baseline (`deepsets`) and a topological matrix model (`brainnetcnn`); shorter default early-stopping patience and optional mixed precision; single-process batch execution; centralized configuration; and standardized aggregation.
+Physical (time-based) windowing with site-specific TR; static and dynamic connectivity; order-invariant and order-permuted representations for temporal-order controls; two Ledoit-Wolf shrinkage connectivity estimators (`partial`, `shrunk`) alongside raw Pearson; an architecture registry with six models, including an order-invariant baseline (`deepsets`) and a topological matrix model (`brainnetcnn`); shorter default early-stopping patience and optional mixed precision; single-process batch execution; centralized configuration; standardized aggregation; per-repetition out-of-fold metrics; and a Nadeau-Bengio corrected paired significance test for repeated k-fold comparisons.

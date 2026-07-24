@@ -11,8 +11,9 @@ Los argumentos coinciden con los de ``run_experiment.py``: el enventanado se def
 en segundos (``--window-seconds`` / ``--step-seconds`` u ``--overlap``) o en TR
 (``--window-tr`` / ``--step-tr``), pero no en ambas unidades a la vez. La
 representación usa los mismos nombres que el ejecutor (``ordered``, ``permuted``,
-``mean``, ``mean_std``, ``static``); con ``static`` se omiten los parámetros de
-ventana automáticamente.
+``mean``, ``mean_std``, ``static``, ``partial``, ``shrunk``, ``hybrid``); con
+``static``, ``partial`` y ``shrunk`` se omiten los parámetros de ventana
+automáticamente (usan toda la serie, sin ventanas).
 
 Cualquier argumento no reconocido se reenvía tal cual a ``run_experiment.py`` (por
 ejemplo ``--n-splits 5`` o ``--class-weight``), aplicándose a todas las corridas.
@@ -48,7 +49,7 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
-REPRESENTATIONS = ("ordered", "permuted", "mean", "mean_std", "static", "partial", "hybrid")
+REPRESENTATIONS = ("ordered", "permuted", "mean", "mean_std", "static", "partial", "shrunk", "hybrid")
 WINDOW_SHAPES = ("rectangular", "gaussian")
 
 
@@ -157,11 +158,11 @@ def build_arg_lists(args: argparse.Namespace, passthrough: Sequence[str]) -> lis
         if model:
             exp += ["--model", str(model)]
 
-        sin_ventana = rep in ("static", "partial")
+        sin_ventana = rep in ("static", "partial", "shrunk")
         if rep:
             exp += ["--representation", rep]
 
-        # 'static' y 'partial' usan toda la serie: no llevan parámetros de ventana.
+        # 'static', 'partial' y 'shrunk' usan toda la serie: no llevan parámetros de ventana.
         if not sin_ventana:
             if w_s is not None:
                 exp += ["--window-seconds", str(w_s)]

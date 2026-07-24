@@ -180,6 +180,17 @@ def check_representaciones():
     (fail if prob else ok)(
         f"partial (Ledoit-Wolf): {P.shape}" + (f" — {', '.join(prob)}" if prob else ""))
 
+    S = D.build_flat_shrunk_connectivity(b["bold"], idx)
+    prob = []
+    if S.shape != (n, 1, F):
+        prob.append(f"forma {S.shape}")
+    if not np.isfinite(S).all():
+        prob.append("valores no finitos")
+    if float(np.abs(S).max()) > 1.0001:
+        prob.append("fuera de [-1, 1]")
+    (fail if prob else ok)(
+        f"shrunk (Ledoit-Wolf): {S.shape}" + (f" — {', '.join(prob)}" if prob else ""))
+
     seq = D.build_flat_sequences(b["bold"], idx, 60, 6)
     H = D.hybrid_summary(seq, D.build_flat_static_connectivity(b["bold"], idx))
     okH = H.shape == (n, 1, 4 * F) and bool(np.isfinite(H).all())

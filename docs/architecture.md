@@ -18,7 +18,7 @@ Each stage consumes only the previous stage's output.
 
 **`run_queue.py`** — expands a grid of configurations and runs them, either as one subprocess per configuration or, with `--in-process`, all in a single process.
 
-**`compile_results.py`** — collects the runs under `results/runs/`, tabulates them, refuses to aggregate runs that are not comparable (different seed, split fingerprint, or BOLD hash), and runs a repeated-measures ANOVA with paired post-hoc tests.
+**`compile_results.py`** — collects the runs under `results/runs/`, tabulates them, refuses to aggregate runs that are not comparable (different seed, split fingerprint, or BOLD hash), and computes per-repetition out-of-fold metrics (pooling each repetition's fold predictions before scoring AUC/F1/balanced-accuracy/log-loss/Brier — less noisy than averaging per-fold metrics). Paired comparisons run a repeated-measures ANOVA plus post-hoc tests corrected two ways: Holm across contrasts, and a Nadeau-Bengio corrected resampled t-test that accounts for the folds of a repeated k-fold not being independent (their training sets overlap), which a naive paired t-test ignores.
 
 **`kerasmodels/`** — the architecture registry. Each module registers a `build(n_windows, n_features, **hyperparameters)` that returns an **uncompiled** `keras.Model` with a single sigmoid output; `run_experiment.py` compiles it, so architectures carry no training hyperparameters. Registered:
 
@@ -26,7 +26,7 @@ Each stage consumes only the previous stage's output.
 - `cnn1d` — 1D convolution along the window axis.
 - `transformer` — self-attention; `positional=False` makes it order-invariant.
 - `deepsets` — per-window MLP plus symmetric pooling, order-invariant by construction.
-- `brainnetcnn` — edge-to-edge / edge-to-node filters over the connectivity matrix, which it reconstructs internally from the vectorized upper triangle; meant for the static representation.
+- `brainnetcnn` — edge-to-edge / edge-to-node filters over the connectivity matrix, which it reconstructs internally from the vectorized upper triangle. Works with any single-matrix representation (`static`, `partial`, `shrunk`, `mean`) and with `ordered`/`permuted` (windows as channels); incompatible with `mean_std` and `hybrid` (see `limitations.md`).
 
 A new module imported in `__init__.py` becomes available as `--model <name>`.
 

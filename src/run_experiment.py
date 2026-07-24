@@ -70,7 +70,7 @@ except ModuleNotFoundError:  # importación desde pruebas o ``python -m src...``
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_DIR = REPO_ROOT / "results" / "runs"
 CONFIG_SCHEMA_VERSION = 2
-REPRESENTATIONS = ("ordered", "permuted", "mean", "mean_std", "static", "partial", "hybrid")
+REPRESENTATIONS = ("ordered", "permuted", "mean", "mean_std", "static", "partial", "shrunk", "hybrid")
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +341,7 @@ def resolve_temporal_spec(
         )
     ) or args.window_shape != "rectangular"
 
-    if args.representation in ("static", "partial"):
+    if args.representation in ("static", "partial", "shrunk"):
         if explicit_temporal:
             raise SystemExit(
                 f"ERROR: la representación '{args.representation}' usa toda la serie y no "
@@ -475,6 +475,17 @@ def build_representation(
         )
         diagnostics = static_diagnostics(n_timepoints, tr_seconds)
         diagnostics["connectivity"] = "partial_ledoit_wolf"
+        return base, diagnostics, []
+
+    if args.representation == "shrunk":
+        base = tdha_data.build_flat_shrunk_connectivity(
+            bold,
+            indices,
+            fisher_z=args.fisher_z,
+            constant_policy=args.constant_policy,
+        )
+        diagnostics = static_diagnostics(n_timepoints, tr_seconds)
+        diagnostics["connectivity"] = "shrunk_ledoit_wolf"
         return base, diagnostics, []
 
     if spec is None:  # salvaguarda de programación

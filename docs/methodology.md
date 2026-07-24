@@ -12,7 +12,7 @@ ADHD-200 preprocessed rs-fMRI ROI time series. Each subject is a multivariate si
 
 **Dynamic** — the series is cut into overlapping windows, one connectivity matrix per window, giving a sequence that keeps temporal information.
 
-Connectivity is estimated as the Pearson correlation between ROIs within each window, with an optional Fisher Z transform afterwards.
+Connectivity is estimated as the Pearson correlation between ROIs within each window, with an optional Fisher Z transform afterwards. Two full-series representations (`partial`, `shrunk`) replace the raw sample correlation with a Ledoit-Wolf shrinkage estimate instead: Dadi et al. (2019, *Benchmarking functional connectome-based predictive models for resting-state fMRI*, >240 pipelines evaluated) find that raw sample correlation is the weakest connectivity estimator for prediction, and that shrinkage regularization improves on it — more so as the number of ROIs grows relative to the number of timepoints, since sample correlation's estimation variance grows with that ratio. Their strongest performer, tangent-space parametrization, is not implemented here yet.
 
 ## Model input representations
 
@@ -23,7 +23,17 @@ From the dynamic sequence, `--representation` selects what the model receives:
 - `mean` / `mean_std` — order-invariant summaries (mean, or mean concatenated with per-connection standard deviation).
 - `static` — a single Pearson matrix over the whole series, no windowing.
 - `partial` — a single regularized partial-correlation matrix (Ledoit-Wolf shrinkage) over the whole series; isolates direct connections and stays well-conditioned when timepoints < ROIs.
+- `shrunk` — a single regularized *full*-correlation matrix (Ledoit-Wolf shrinkage) over the whole series; same question as `static`, more stable estimate.
 - `hybrid` — static connectivity concatenated per connection with the mean, standard deviation, and mean absolute change of the windows; order-invariant.
+
+`static`, `partial`, `shrunk`, and `mean` all produce one matrix (or matrix-equivalent
+vector) per subject and are interchangeable as `brainnetcnn` input. `ordered` and
+`permuted` also work with `brainnetcnn`, but it treats their windows as fixed input
+channels, not as a modeled sequence — the first layer learns one weight per window, with
+no recurrence or attention across them, so it does not exploit temporal order even when
+fed a dynamic representation. `mean_std` and `hybrid` concatenate multiple statistics
+per connection and cannot be reshaped back into a square matrix, so they only work with
+vector models (`lstm`, `gru`, `cnn1d`, `transformer`, `deepsets`).
 
 `permuted`, `mean`, and `mean_std` exist to test whether the ordering of resting-state windows contributes signal, which decides whether order-sensitive architectures (recurrent, positional transformer) are worth using over order-invariant ones (`deepsets`, transformer without positional encoding, `static`).
 
@@ -50,3 +60,19 @@ Each outer fold is split again to keep epoch selection honest:
 ## Evaluation and reproducibility
 
 Classification metrics are computed per repetition, stored per run, and aggregated afterwards. Reproducibility rests on fixed seeds (identical partitions across machines), the configuration and metadata exported with every run, and a standardized output layout.
+
+`compile_results.py` reports two views of validation performance. Per-fold mean±sd
+(`val_*_mean`/`val_*_sd`) averages the metric computed on each outer fold separately —
+noisy when folds are small (e.g. ~18 subjects per fold at `n_splits=10`). Per-repetition
+out-of-fold metrics (`oof_*_mean`/`oof_*_sd`) instead pool every fold's predictions
+within a repetition — in a `RepeatedStratifiedKFold`, each repetition's folds partition
+the whole sample exactly once — and score AUC, F1-macro, balanced accuracy, log-loss,
+and Brier on that pooled repetition before averaging across repetitions. This is less
+sensitive to individual small-fold sampling variance.
+
+Paired comparisons (`--stats`) additionally correct the resampled t-test for the fact
+that folds from a repeated k-fold are not independent observations — their training sets
+overlap heavily, which a naive paired t-test ignores and which inflates its significance
+(Nadeau & Bengio, 2003). The corrected variance estimate is used for the Holm-corrected
+significance verdict; the naive paired p-value is kept in the output only as a
+reference.

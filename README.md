@@ -46,7 +46,9 @@ Desde Colab, el notebook `tdha_experimentos.ipynb` hace todo lo anterior.
 │   ├── verify_setup.py       comprobación del repositorio y del entorno
 │   └── kerasmodels/          registro de arquitecturas
 ├── results/runs/             una carpeta por corrida
-└── docs/                     auditoría, revisión metodológica y eficiencia
+└── docs/                     arquitectura, metodología, validación, límites y eficiencia
+                               del pipeline actual; además, auditoría histórica de un
+                               manuscrito anterior (docs/auditoria-metricas.md)
 ```
 
 ## Por qué se versionan las señales y no los tensores
@@ -159,15 +161,22 @@ Arquitecturas registradas (`--model`): `lstm`, `gru`, `cnn1d`, `transformer`, `d
 y `brainnetcnn`. Las tres últimas son útiles cuando el orden temporal no aporta señal:
 `deepsets` es invariante al orden por construcción, `transformer` admite
 `--model-arg positional=false` (modelo de conjuntos), y `brainnetcnn` opera sobre la
-matriz de conectividad con filtros topológicos (edge-to-edge / edge-to-node), pensado para
-la representación estática.
+matriz de conectividad con filtros topológicos (edge-to-edge / edge-to-node).
+
+`brainnetcnn` sirve con cualquier representación de una sola matriz por sujeto
+(`static`, `partial`, `shrunk`, `mean`) y con `ordered`/`permuted` (trata cada ventana
+como un canal fijo, sin modelar su orden temporal). **No** sirve con `mean_std` ni
+`hybrid`: ambas duplican o multiplican las características por conexión y el resultado
+ya no corresponde al triángulo superior de una matriz cuadrada.
 
 Representaciones (`--representation`): `ordered` (secuencia dinámica), `static` (una matriz
 Pearson sobre toda la serie), `partial` (correlación parcial regularizada Ledoit-Wolf, una
-matriz por sujeto), `hybrid` (estática + media/desviación/cambio de las ventanas), `mean` /
-`mean_std` (resúmenes invariantes al orden) y `permuted` (ventanas barajadas, control para
-saber si el orden discrimina). Si `ordered` y `permuted` rinden igual, conviene preferir los
-modelos y representaciones invariantes al orden.
+matriz por sujeto), `shrunk` (correlación completa regularizada Ledoit-Wolf, misma
+pregunta que `static` pero más estable con series cortas o muchos ROIs — ver
+`docs/methodology.md`), `hybrid` (estática + media/desviación/cambio de las ventanas),
+`mean` / `mean_std` (resúmenes invariantes al orden) y `permuted` (ventanas barajadas,
+control para saber si el orden discrimina). Si `ordered` y `permuted` rinden igual,
+conviene preferir los modelos y representaciones invariantes al orden.
 
 Eficiencia: `--mixed-precision` acelera los modelos grandes (39/116 ROIs, transformer,
 brainnetcnn) en GPU; `run_queue.py --in-process` corre un lote sin reiniciar TensorFlow
@@ -213,5 +222,18 @@ el atlas AAL116, los nombres y una descripción. Los índices se validan al carg
 
 ## Documentación adicional
 
-`docs/` contiene la auditoría de las cifras del manuscrito frente a los resultados
-versionados, y la revisión metodológica del pipeline anterior.
+`docs/` describe el pipeline actual — no es solo para quien lo lea, también es el
+contexto que un asistente de IA debería cargar antes de tocar el código, así que se
+mantiene sincronizado con `src/` en cada cambio:
+
+- `architecture.md` — módulos, responsabilidades, flujo de datos.
+- `methodology.md` — qué representaciones de conectividad existen, por qué, y cómo se
+  evalúa (incluye las métricas OOF por repetición y la corrección de Nadeau-Bengio en
+  `compile_results.py`).
+- `validation.md` — qué se verificó y con qué alcance.
+- `limitations.md` — qué falta o no está probado (representaciones, compatibilidad de
+  modelos, movimiento no filtrado por ATHENA).
+- `performance.md` — optimizaciones computacionales, sin efecto en las métricas.
+- `auditoria-metricas.md` — auditoría histórica de las cifras de un manuscrito anterior
+  frente a los resultados versionados; es un documento de un punto en el tiempo, no se
+  actualiza con cambios posteriores del pipeline.
