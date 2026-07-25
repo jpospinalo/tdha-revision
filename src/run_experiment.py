@@ -69,7 +69,7 @@ except ModuleNotFoundError:  # importación desde pruebas o ``python -m src...``
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_DIR = REPO_ROOT / "results" / "runs"
-CONFIG_SCHEMA_VERSION = 3
+CONFIG_SCHEMA_VERSION = 4
 REPRESENTATIONS = (
     "ordered", "permuted", "mean", "mean_std", "static", "partial", "shrunk", "hybrid",
     "ordered_scaled", "permuted_scaled", "tangent",
@@ -225,6 +225,11 @@ def validate_training_args(args: argparse.Namespace, y: np.ndarray) -> None:
     args.start_from_epoch = _positive_int(
         "--start-from-epoch", args.start_from_epoch, minimum=0
     )
+    if args.start_from_epoch >= args.epochs:
+        raise SystemExit(
+            "ERROR: --start-from-epoch debe ser menor que --epochs para que "
+            "EarlyStopping observe al menos una época."
+        )
     args.lr = _positive_float("--lr", args.lr)
     if args.clipnorm is not None:
         args.clipnorm = _positive_float("--clipnorm", args.clipnorm)
@@ -890,6 +895,22 @@ def run_config(
         # modelo siempre produce (lote, 1) (una sola neurona sigmoide). El resto del
         # código sigue usando y[...] en 1D (evaluate(), class_weight, predictions_val):
         # este reshape es local a la llamada de fit, no muta 'y'.
+        # Se conserva la instancia (no se construye inline en la lista) porque,
+        # tras fit(), es la única fuente de verdad de qué época quedó restaurada:
+        # np.argmin(serie) NO es equivalente a lo que decide EarlyStopping cuando
+        # min_delta > 0 o start_from_epoch > 0 (_is_improvement() exige superar al
+        # mejor valor trackeado por más de min_delta, es un proceso secuencial, no
+        # el mínimo global; start_from_epoch además excluye directamente de esa
+        # contabilidad las primeras épocas). Reconstruirlo con argmin puede señalar
+        # una época/valor que EarlyStopping nunca aceptó como mejora.
+        early_stopping = EarlyStopping(
+            monitor=args.early_stopping_monitor,
+            mode="min",
+            patience=args.patience,
+            min_delta=args.early_stopping_min_delta,
+            start_from_epoch=args.start_from_epoch,
+            restore_best_weights=True,
+        )
         history = model.fit(
             Xf_fold[fit_idx],
             y[fit_idx].reshape(-1, 1),
@@ -901,16 +922,7 @@ def run_config(
             batch_size=args.batch_size,
             class_weight=class_weight,
             verbose=0,
-            callbacks=[
-                EarlyStopping(
-                    monitor=args.early_stopping_monitor,
-                    mode="min",
-                    patience=args.patience,
-                    min_delta=args.early_stopping_min_delta,
-                    start_from_epoch=args.start_from_epoch,
-                    restore_best_weights=True,
-                )
-            ],
+            callbacks=[early_stopping],
         )
 
         n_epochs = len(history.history["loss"])
@@ -932,11 +944,36 @@ def run_config(
                 f"history.history['{args.early_stopping_monitor}'] contiene "
                 "valores no finitos."
             )
-        # best_epoch/best_monitor_value deben coincidir con la serie que observa
-        # el propio callback: si el monitor es val_bce, no se recalculan desde
-        # val_loss (serían inconsistentes con qué pesos restauró EarlyStopping).
-        best_epoch = int(np.argmin(monitor_values)) + 1
-        best_monitor_value = float(monitor_values[best_epoch - 1])
+        if early_stopping.best is None:
+            raise RuntimeError(
+                "EarlyStopping no llegó a observar ninguna época; revise "
+                "--start-from-epoch y --epochs."
+            )
+        # Numeración humana desde 1; early_stopping.best_epoch es el índice
+        # 0-based de la época cuyos pesos quedaron efectivamente restaurados.
+        best_epoch = int(early_stopping.best_epoch) + 1
+        best_monitor_value = float(early_stopping.best)
+        recorded_value = float(monitor_values[best_epoch - 1])
+        if not np.isclose(recorded_value, best_monitor_value, rtol=1e-6, atol=1e-8):
+            raise RuntimeError(
+                f"Inconsistencia interna: history.history['{args.early_stopping_monitor}']"
+                f"[{best_epoch - 1}]={recorded_value} no coincide con "
+                f"early_stopping.best={best_monitor_value} para el pliegue {fold_number}."
+            )
+
+        # Prueba no circular de qué pesos quedaron restaurados: NO se deriva de
+        # best_epoch/best_monitor_value (eso sería la misma fuente dos veces).
+        # Se vuelve a evaluar el modelo YA restaurado sobre inner_val con una
+        # pasada hacia adelante (sin entrenar) y se compara contra el metadato.
+        restored_eval = model.evaluate(
+            Xf_fold[inner_val_idx],
+            y[inner_val_idx].reshape(-1, 1),
+            batch_size=args.batch_size,
+            verbose=0,
+            return_dict=True,
+        )
+        restored_key = "loss" if args.early_stopping_monitor == "val_loss" else "bce"
+        restored_monitor_value = float(restored_eval[restored_key])
 
         # El pliegue externo se utiliza aquí por primera vez.
         train_metrics, _ = evaluate(model, Xf_fold[outer_train], y[outer_train])
@@ -953,6 +990,7 @@ def run_config(
             "best_epoch": best_epoch,
             "early_stopping_monitor": args.early_stopping_monitor,
             "best_monitor_value": best_monitor_value,
+            "restored_monitor_value": restored_monitor_value,
             "n_fit": int(fit_idx.size),
             "n_inner_val": int(inner_val_idx.size),
             "n_outer_val": int(outer_val_idx.size),
@@ -1542,10 +1580,25 @@ def main(argv: Sequence[str] | None = None) -> str | None:
     run_id = make_run_id(args, spec, digest)
     git = git_info()
 
+    # Firma para el A/B formal de early stopping: identity completa MENOS
+    # early_stopping_monitor. Dos corridas con la misma early_stopping_ab_hash
+    # son idénticas en todo lo demás (ventana, arquitectura, hiperparámetros,
+    # semilla, particiones, hashes de datos/código, min_delta...) y solo
+    # difieren en qué serie observó EarlyStopping — la comparación pareada por
+    # monitor en compile_results.py exige que coincida, en vez de confiar en
+    # una lista fija de columnas que puede quedarse corta. No se calcula sobre
+    # 'identity' ya mutado ni participa en config_hash/run_id: es un campo
+    # derivado adicional, para no cambiar la identidad principal de la corrida.
+    early_stopping_ab_hash = config_hash(
+        {k: v for k, v in identity.items() if k != "early_stopping_monitor"},
+        length=16,
+    )
+
     config: dict[str, Any] = {
         "config_schema_version": CONFIG_SCHEMA_VERSION,
         "run_id": run_id,
         "config_hash": digest,
+        "early_stopping_ab_hash": early_stopping_ab_hash,
         "site": args.site,
         "roi_set": str(args.roi_set),
         "n_subjects": int(bold.shape[0]),

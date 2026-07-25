@@ -18,6 +18,8 @@ Training stops on the inner validation series chosen by `--early-stopping-monito
 
 Recording the extra `bce`/`val_bce` metric adds a second scalar computation per batch alongside the existing `accuracy` metric — negligible next to the forward/backward pass itself, and it does not change what `model.fit` optimizes.
 
+Right after `fit()`, with the best weights already restored, `run_config()` runs one extra `model.evaluate()` pass over `inner_val` to produce `restored_monitor_value` — a non-circular check that the recorded `best_monitor_value` actually matches what the restored weights produce (see `methodology.md`'s "Early-stopping monitor"). This is one forward pass, no backward pass, over `inner_val` (≈15% of the outer-training subjects) — small next to the epochs already run for that fold, but not free: it happens once per fold per run, so it scales the same way training does.
+
 ## Mixed precision
 
 Every architecture declares a `float32` output, so the loss and sigmoid stay stable under `mixed_float16`. `--mixed-precision` enables it on GPU and speeds up the large configurations (39/116 ROIs, transformer, brainnetcnn). It only shifts the low-order digits of the metrics, so its use is recorded in `config.json`.

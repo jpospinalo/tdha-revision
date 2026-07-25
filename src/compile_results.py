@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 """Compila corridas de ``results/runs`` del proyecto TDHA.
 
-Compatible con configuraciones históricas y con el esquema v3 de
+Compatible con configuraciones históricas y con el esquema v4 de
 ``run_experiment.py``: representación estática/dinámica, ventanas en TR o
 segundos, solapamiento, Fisher z, ventanas gaussianas, y el monitor de
-early stopping (``val_loss``/``val_bce``, esquema v3; ausente en v1/v2 se
-interpreta como ``val_loss`` con ``min_delta=1e-5``).
+early stopping (``val_loss``/``val_bce``; ausente en v1/v2 se interpreta como
+``val_loss`` con ``min_delta=1e-5``). Los esquemas 1-3 calculaban ``best_epoch``
+como el mínimo global de la serie monitoreada (``np.argmin``), que no siempre
+coincide con la época cuyos pesos restauró ``EarlyStopping`` cuando
+``min_delta > 0`` o ``start_from_epoch > 0`` — sus métricas externas siguen
+siendo válidas (se calcularon sobre los pesos ya restaurados por Keras), pero
+``best_epoch``/``best_monitor_value`` de esas corridas son un metadato
+aproximado, no una reconstrucción exacta, y no participan en la comparación
+A/B formal por ``early_stopping_monitor`` (requiere esquema 4 y
+``early_stopping_ab_hash``).
 """
 from __future__ import annotations
 
@@ -25,6 +33,7 @@ COUNT_COLUMNS = {"true_positives", "true_negatives", "false_positives", "false_n
 META_COLUMNS = {
     "fold", "repeat", "n_epochs", "best_epoch", "n_fit", "n_inner_val",
     "n_outer_val", "class_weight_0", "class_weight_1", "best_monitor_value",
+    "restored_monitor_value",
 }
 PREFERRED_METRICS = [
     "loss", "accuracy", "balanced_accuracy", "precision", "recall",
@@ -194,6 +203,9 @@ def summarize(run_dir: Path, cfg: dict[str, Any], suffix: str = "") -> dict[str,
         # existiera (monitor fijo en val_loss, min_delta fijo en 1e-5).
         "early_stopping_monitor": cfg.get("early_stopping_monitor", "val_loss"),
         "early_stopping_min_delta": cfg.get("early_stopping_min_delta", 1e-5),
+        # None en esquemas < 4: esas corridas no pueden participar en el A/B
+        # formal por monitor (ver check_comparability_ab() / --stats-by).
+        "early_stopping_ab_hash": cfg.get("early_stopping_ab_hash"),
         "bold_hash": cfg.get("bold_hash"),
         "atlas_hash": cfg.get("atlas_hash"),
         "roi_indices_hash": cfg.get("roi_indices_hash"),
@@ -296,6 +308,55 @@ def check_comparability(df: pd.DataFrame) -> list[str]:
     if df.duplicated(subset=[c for c in ["config_hash", "subset_suffix"] if c in df], keep=False).any():
         problems.append("se detectaron configuraciones duplicadas")
     return problems
+
+
+def _check_early_stopping_ab(base: pd.DataFrame) -> None:
+    """Guardas específicas de ``--stats-by early_stopping_monitor``.
+
+    ``fixed`` en ``main()`` ya iguala site/model/roi_set/representation/seed/
+    n_splits/n_repeats, y ``split_fingerprint`` se verifica aparte — pero eso
+    deja sin fijar la ventana, los hiperparámetros de arquitectura, lr, batch,
+    epochs, patience, min_delta, class_weight, fisher_z, o los hashes de datos/
+    código: dos corridas podrían diferir en cualquiera de esos ejes y aun así
+    pasar ese filtro. ``early_stopping_ab_hash`` (identity completa del
+    esquema 4 menos ``early_stopping_monitor``) es la única garantía de que
+    "idénticas salvo el monitor" es realmente cierto, no una lista de columnas
+    que puede quedarse corta.
+    """
+
+    schema = pd.to_numeric(base.get("config_schema_version"), errors="coerce")
+    if schema.isna().any() or (schema < 4).any():
+        offending = base.loc[schema.isna() | (schema < 4), "base_run_id"].tolist()
+        raise SystemExit(
+            "La comparación A/B formal por early_stopping_monitor exige "
+            "config_schema_version >= 4 en todas las corridas (best_epoch de "
+            f"esquemas anteriores no reconstruye lo que restauró EarlyStopping): {offending}"
+        )
+
+    if "early_stopping_ab_hash" not in base or base["early_stopping_ab_hash"].isna().any():
+        missing = (
+            base.loc[base["early_stopping_ab_hash"].isna(), "base_run_id"].tolist()
+            if "early_stopping_ab_hash" in base else base["base_run_id"].tolist()
+        )
+        raise SystemExit(
+            f"Falta early_stopping_ab_hash en: {missing}. No se puede confirmar que las "
+            "corridas sean idénticas salvo el monitor."
+        )
+    ab_hashes = set(base["early_stopping_ab_hash"].dropna())
+    if len(ab_hashes) != 1:
+        raise SystemExit(
+            f"Las corridas seleccionadas tienen {len(ab_hashes)} valores distintos de "
+            "early_stopping_ab_hash: no son idénticas salvo el monitor de early stopping "
+            "(difieren en ventana, arquitectura, hiperparámetros, min_delta, o hashes de "
+            "datos/código). Ajuste los filtros hasta dejar solo el par comparable."
+        )
+
+    monitors = set(base["early_stopping_monitor"].dropna())
+    if monitors != {"val_loss", "val_bce"}:
+        raise SystemExit(
+            "La comparación A/B formal requiere exactamente los monitores "
+            f"'val_loss' y 'val_bce'; se encontraron: {sorted(monitors)}."
+        )
 
 
 def methodological_group_columns(df: pd.DataFrame) -> list[str]:
@@ -573,6 +634,24 @@ def main(argv: list[str] | None = None) -> int:
                 )
         if "split_fingerprint" in base and base["split_fingerprint"].dropna().nunique() > 1:
             raise SystemExit("Las corridas no comparten la misma huella de particiones.")
+
+        if group_col == "early_stopping_monitor":
+            _check_early_stopping_ab(base)
+
+        # Antes de construir 'runs': si hay dos corridas con el mismo valor de
+        # group_col, la comprensión de diccionario de abajo se quedaría
+        # silenciosamente con la última y compararía menos pares de los que el
+        # usuario cree, sin avisar. Se detecta y aborta explícitamente.
+        dup_mask = base[group_col].duplicated(keep=False)
+        if dup_mask.any():
+            dup_values = sorted(base.loc[dup_mask, group_col].dropna().unique().tolist())
+            dup_ids = base.loc[dup_mask, "base_run_id"].tolist()
+            raise SystemExit(
+                f"Hay más de una corrida para el/los mismo(s) valor(es) de {group_col} "
+                f"{dup_values}: {dup_ids}. Filtre hasta dejar una sola corrida por valor "
+                "antes de comparar (--stats necesita exactamente un run_id por grupo)."
+            )
+
         order = "n_rois" if group_col == "roi_set" else group_col
         runs = {
             row[group_col]: row.base_run_id

@@ -368,60 +368,89 @@ def check_entrenamiento():
         for linea in r.stdout.splitlines():
             if "val acc" in linea:
                 print(f"      {linea.strip()}")
+        # Sin --early-stopping-monitor: debe comportarse como si se hubiera
+        # pasado val_loss explícito (regresión, ver docs/architecture.md).
+        run_dirs = sorted(Path("/tmp/verify_setup").iterdir()) if Path("/tmp/verify_setup").exists() else []
+        if run_dirs:
+            try:
+                cfg = json.loads((run_dirs[-1] / "config.json").read_text(encoding="utf-8"))
+                if cfg.get("early_stopping_monitor") == "val_loss":
+                    ok("sin --early-stopping-monitor, la corrida queda como val_loss")
+                else:
+                    fail(f"sin --early-stopping-monitor, quedó como {cfg.get('early_stopping_monitor')!r}")
+            except Exception as e:
+                fail(f"no se pudo leer config.json de la corrida de humo: {e}")
     else:
         fail("la corrida falló")
         print((r.stdout + r.stderr)[-1500:])
 
-    check_entrenamiento_val_bce()
+    check_early_stopping_ab()
 
 
-def check_entrenamiento_val_bce():
-    """Corrida corta con --early-stopping-monitor val_bce, auditando los artefactos
-    (no solo el código de salida): esquema 3, columnas bce/inner_val_bce, ausencia de
-    NaN/inf, best_epoch/best_monitor_value reconstruidos desde inner_val_bce, y
-    cobertura completa de la validación externa. Usa un directorio propio bajo /tmp,
-    nunca results/runs.
+def _run_early_stopping_smoke(outdir: Path, monitor: str) -> Path | None:
+    """Corrida corta con BrainNetCNN, subproceso (no --in-process), en un
+    directorio propio que se limpia antes de correr para que --full sea
+    repetible. Devuelve la carpeta de la corrida o None si falló.
     """
-    seccion("Prueba de entrenamiento con --early-stopping-monitor val_bce")
     import shutil
     import subprocess
 
-    import numpy as np
-    import pandas as pd
-
-    outdir = Path("/tmp/verify_setup_val_bce")
     if outdir.exists():
         shutil.rmtree(outdir)
     r = subprocess.run(
         [sys.executable, "run_experiment.py", "--site", "NYU", "--roi-set", "12",
-         "--n-splits", "2", "--n-repeats", "1", "--epochs", "3", "--patience", "2",
-         "--early-stopping-monitor", "val_bce", "--early-stopping-min-delta", "1e-5",
-         "--out", str(outdir), "--tag", "verify_bce"],
+         "--model", "brainnetcnn", "--representation", "ordered",
+         "--window-seconds", "120", "--step-seconds", "12",
+         "--model-arg", "e2e=4", "e2n=8", "dense=8", "dropout=0.7", "leaky=0.33",
+         "l2_reg=0.05", "inter_dropout=0.6",
+         "--batch-size", "32", "--lr", "0.0001",
+         "--n-splits", "2", "--n-repeats", "1", "--epochs", "4", "--patience", "2",
+         "--seed", "42", "--deterministic",
+         "--early-stopping-monitor", monitor, "--early-stopping-min-delta", "1e-5",
+         "--out", str(outdir), "--tag", f"verify_{monitor}", "--overwrite"],
         cwd=REPO / "src", capture_output=True, text=True)
     if r.returncode != 0:
-        fail("la corrida con --early-stopping-monitor val_bce falló")
+        fail(f"la corrida con --early-stopping-monitor {monitor} falló")
         print((r.stdout + r.stderr)[-1500:])
-        return
-    ok("la corrida con --early-stopping-monitor val_bce se ejecuta sin errores")
+        return None
+    ok(f"la corrida con --early-stopping-monitor {monitor} se ejecuta sin errores")
 
     run_dirs = [p for p in outdir.iterdir() if p.is_dir()] if outdir.exists() else []
     if len(run_dirs) != 1:
         fail(f"se esperaba exactamente 1 carpeta de corrida en {outdir}, hay {len(run_dirs)}")
-        return
-    run_dir = run_dirs[0]
+        return None
+    return run_dirs[0]
+
+
+def _audit_early_stopping_artifacts(run_dir: Path, monitor: str):
+    """Audita una corrida (config.json/history.csv/metrics_val.csv/predictions_val.csv/
+    folds.csv) SIN volver a asumir que la época correcta es el mínimo global de la
+    serie monitoreada — esa era la comprobación circular que este chequeo reemplaza
+    (ver docs/methodology.md, 'Early-stopping monitor'). Se limita a verificar que
+    los metadatos son internamente consistentes y están respaldados por la
+    reevaluación no circular (`restored_monitor_value`). Devuelve el config.json
+    leído, o None si algo esencial faltó.
+    """
+    import numpy as np
+    import pandas as pd
 
     try:
         cfg = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
     except Exception as e:
         fail(f"no se pudo leer config.json: {type(e).__name__}: {e}")
-        return
+        return None
+
     prob = []
-    if cfg.get("config_schema_version") != 3:
-        prob.append(f"config_schema_version={cfg.get('config_schema_version')!r}, se esperaba 3")
-    if cfg.get("early_stopping_monitor") != "val_bce":
-        prob.append(f"early_stopping_monitor={cfg.get('early_stopping_monitor')!r}, se esperaba 'val_bce'")
+    if cfg.get("config_schema_version") != 4:
+        prob.append(f"config_schema_version={cfg.get('config_schema_version')!r}, se esperaba 4")
+    if cfg.get("early_stopping_monitor") != monitor:
+        prob.append(f"early_stopping_monitor={cfg.get('early_stopping_monitor')!r}, se esperaba {monitor!r}")
+    if cfg.get("early_stopping_min_delta") != 1e-5:
+        prob.append(f"early_stopping_min_delta={cfg.get('early_stopping_min_delta')!r}, se esperaba 1e-5")
+    if not cfg.get("early_stopping_ab_hash"):
+        prob.append("falta early_stopping_ab_hash")
     (fail if prob else ok)(
-        "config.json: config_schema_version=3 y monitor solicitado"
+        f"{monitor}: config.json (esquema 4, monitor, min_delta, ab_hash)"
         + (f" — {'; '.join(prob)}" if prob else "")
     )
 
@@ -429,53 +458,67 @@ def check_entrenamiento_val_bce():
         hist = pd.read_csv(run_dir / "history.csv")
         val = pd.read_csv(run_dir / "metrics_val.csv")
         pred = pd.read_csv(run_dir / "predictions_val.csv")
+        folds = pd.read_csv(run_dir / "folds.csv")
     except Exception as e:
-        fail(f"no se pudieron leer los artefactos de la corrida: {type(e).__name__}: {e}")
-        return
+        fail(f"{monitor}: no se pudieron leer los artefactos: {type(e).__name__}: {e}")
+        return cfg
 
-    prob = [c for c in ("bce", "inner_val_bce") if c not in hist.columns]
+    prob = [c for c in ("bce", "inner_val_bce", "loss", "inner_val_loss") if c not in hist.columns]
+    if hist.empty:
+        prob.append("history.csv está vacío")
     (fail if prob else ok)(
-        "history.csv contiene bce/inner_val_bce" + (f" — faltan {prob}" if prob else "")
+        f"{monitor}: history.csv no vacío, con bce/inner_val_bce/loss/inner_val_loss"
+        + (f" — {prob}" if prob else "")
     )
 
     numeric_hist = hist.select_dtypes(include=[np.number]).to_numpy()
     if numeric_hist.size == 0 or not np.isfinite(numeric_hist).all():
-        fail("history.csv contiene valores no finitos o está vacío")
+        fail(f"{monitor}: history.csv contiene valores no finitos")
     else:
-        ok("history.csv sin NaN/inf")
+        ok(f"{monitor}: history.csv sin NaN/inf")
 
-    prob = [c for c in ("early_stopping_monitor", "best_monitor_value") if c not in val.columns]
+    prob = [c for c in ("early_stopping_monitor", "best_monitor_value", "restored_monitor_value")
+            if c not in val.columns]
     (fail if prob else ok)(
-        "metrics_val.csv contiene early_stopping_monitor/best_monitor_value"
-        + (f" — faltan {prob}" if prob else "")
+        f"{monitor}: metrics_val.csv contiene early_stopping_monitor/best_monitor_value/"
+        "restored_monitor_value" + (f" — faltan {prob}" if prob else "")
     )
 
-    # best_epoch/best_monitor_value deben coincidir con el mínimo de inner_val_bce
-    # de ESE pliegue en history.csv — no con val_loss ni con ningún otro monitor.
+    # Consistencia interna: best_epoch dentro de rango, valor registrado en
+    # history.csv coincide con best_monitor_value, y restored_monitor_value (la
+    # reevaluación posterior a fit(), no derivada de best_epoch) también coincide
+    # — esta última es la prueba no circular de qué pesos quedaron restaurados.
     prob = []
+    inner_col = "inner_val_loss" if monitor == "val_loss" else "inner_val_bce"
     for _, row in val.iterrows():
-        fold_hist = hist[
-            (hist["fold"] == row["fold"]) & (hist["repeat"] == row["repeat"])
-        ].sort_values("epoch")
+        fold_v, repeat_v = row["fold"], row["repeat"]
+        fold_hist = hist[(hist["fold"] == fold_v) & (hist["repeat"] == repeat_v)].sort_values("epoch")
         if fold_hist.empty:
-            prob.append(f"pliegue f{row['fold']}/r{row['repeat']}: sin filas en history.csv")
+            prob.append(f"f{fold_v}r{repeat_v}: sin filas en history.csv")
             continue
-        series = fold_hist["inner_val_bce"].to_numpy()
-        expected_epoch = int(np.argmin(series)) + 1
-        if int(row["best_epoch"]) != expected_epoch:
+        n_epochs_fold = int(row["n_epochs"])
+        best_epoch = int(row["best_epoch"])
+        if not (1 <= best_epoch <= n_epochs_fold):
+            prob.append(f"f{fold_v}r{repeat_v}: best_epoch={best_epoch} fuera de [1,{n_epochs_fold}]")
+            continue
+        recorded = fold_hist.loc[fold_hist["epoch"] == best_epoch, inner_col]
+        if recorded.empty:
+            prob.append(f"f{fold_v}r{repeat_v}: no hay fila de history.csv para epoch={best_epoch}")
+            continue
+        if abs(float(recorded.iloc[0]) - float(row["best_monitor_value"])) > 1e-6:
             prob.append(
-                f"pliegue f{row['fold']}/r{row['repeat']}: best_epoch={row['best_epoch']}, "
-                f"se esperaba {expected_epoch} (mínimo de inner_val_bce)"
+                f"f{fold_v}r{repeat_v}: history[{inner_col}][{best_epoch}]={float(recorded.iloc[0])} "
+                f"!= best_monitor_value={row['best_monitor_value']}"
             )
-            continue
-        expected_value = float(series[expected_epoch - 1])
-        if abs(float(row["best_monitor_value"]) - expected_value) > 1e-6:
+        if not np.isfinite(row["restored_monitor_value"]):
+            prob.append(f"f{fold_v}r{repeat_v}: restored_monitor_value no finito")
+        elif abs(float(row["restored_monitor_value"]) - float(row["best_monitor_value"])) > 1e-4:
             prob.append(
-                f"pliegue f{row['fold']}/r{row['repeat']}: best_monitor_value="
-                f"{row['best_monitor_value']}, se esperaba {expected_value}"
+                f"f{fold_v}r{repeat_v}: restored_monitor_value={row['restored_monitor_value']} "
+                f"se aleja de best_monitor_value={row['best_monitor_value']} (pesos no consistentes)"
             )
     (fail if prob else ok)(
-        "best_epoch/best_monitor_value coinciden con el mínimo de inner_val_bce por pliegue"
+        f"{monitor}: best_epoch en rango, y best_monitor_value/restored_monitor_value consistentes"
         + (f" — {'; '.join(prob)}" if prob else "")
     )
 
@@ -488,12 +531,64 @@ def check_entrenamiento_val_bce():
             prob.append(f"repetición {repeat}: {n_dup} subject_id duplicados en outer_val")
         if n_subjects is not None and group["subject_id"].nunique() != n_subjects:
             prob.append(
-                f"repetición {repeat}: {group['subject_id'].nunique()} sujetos evaluados, "
+                f"repetición {repeat}: {group['subject_id'].nunique()} sujetos, "
                 f"se esperaban {n_subjects}"
             )
     (fail if prob else ok)(
-        "validación externa cubre cada sujeto exactamente una vez por repetición"
+        f"{monitor}: validación externa cubre cada sujeto exactamente una vez por repetición"
         + (f" — {'; '.join(prob)}" if prob else "")
+    )
+
+    # Sin sujetos compartidos entre fit/inner_val/outer_val dentro de un mismo pliegue.
+    prob = []
+    for (fold_v, repeat_v), g in folds.groupby(["fold", "repeat"]):
+        sets = {s: set(g.loc[g["split"] == s, "subject_id"]) for s in ("fit", "inner_val", "outer_val")}
+        if sets["fit"] & sets["inner_val"]:
+            prob.append(f"f{fold_v}r{repeat_v}: fit∩inner_val no vacío")
+        if sets["fit"] & sets["outer_val"]:
+            prob.append(f"f{fold_v}r{repeat_v}: fit∩outer_val no vacío")
+        if sets["inner_val"] & sets["outer_val"]:
+            prob.append(f"f{fold_v}r{repeat_v}: inner_val∩outer_val no vacío")
+    (fail if prob else ok)(
+        f"{monitor}: sin sujetos compartidos entre fit/inner_val/outer_val"
+        + (f" — {'; '.join(prob)}" if prob else "")
+    )
+
+    return cfg
+
+
+def check_early_stopping_ab():
+    """Dos corridas cortas con BrainNetCNN, idénticas salvo el monitor
+    (val_loss / val_bce), auditadas simétricamente y sin usar np.argmin como
+    oráculo de qué época restauró EarlyStopping (ver methodology.md).
+    """
+    seccion("Comparación val_loss / val_bce con BrainNetCNN (esquema 4)")
+
+    outdir_loss = Path("/tmp/verify_setup_early_stopping_val_loss")
+    outdir_bce = Path("/tmp/verify_setup_early_stopping_val_bce")
+
+    run_loss = _run_early_stopping_smoke(outdir_loss, "val_loss")
+    run_bce = _run_early_stopping_smoke(outdir_bce, "val_bce")
+    if run_loss is None or run_bce is None:
+        return
+
+    cfg_loss = _audit_early_stopping_artifacts(run_loss, "val_loss")
+    cfg_bce = _audit_early_stopping_artifacts(run_bce, "val_bce")
+    if cfg_loss is None or cfg_bce is None:
+        return
+
+    prob = []
+    if cfg_loss.get("split_fingerprint") != cfg_bce.get("split_fingerprint"):
+        prob.append("split_fingerprint distinto entre las dos corridas")
+    if cfg_loss.get("config_hash") == cfg_bce.get("config_hash"):
+        prob.append("config_hash igual entre las dos corridas (debería diferir por el monitor)")
+    if cfg_loss.get("early_stopping_ab_hash") != cfg_bce.get("early_stopping_ab_hash"):
+        prob.append(
+            "early_stopping_ab_hash distinto: las corridas no quedaron idénticas salvo el monitor"
+        )
+    (fail if prob else ok)(
+        "las dos corridas comparten split_fingerprint/early_stopping_ab_hash y "
+        "difieren en config_hash" + (f" — {'; '.join(prob)}" if prob else "")
     )
 
 

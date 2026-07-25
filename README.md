@@ -106,12 +106,17 @@ restaurar: `val_loss` (por defecto) es la pérdida total de Keras — BCE más l
 penalizaciones L2 de la arquitectura; `val_bce` es solo la entropía cruzada binaria
 predictiva, registrada como métrica separada (`bce`/`val_bce` en `history.csv`) sin
 participar del objetivo de optimización. `--early-stopping-min-delta` (por defecto
-`1e-5`) fija la mejora mínima exigida. Ambos quedan en la identidad de la
-configuración: dos corridas idénticas salvo el monitor tienen `config_hash`/`run_id`
-distintos, y se pueden comparar de forma pareada con
-`compile_results.py --stats --stats-by early_stopping_monitor`. Cambiar el monitor no
-cambia el objetivo de entrenamiento (sigue siendo `binary_crossentropy` + L2); solo
-cambia qué época se selecciona.
+`1e-5`) fija la mejora mínima exigida. `best_epoch`/`best_monitor_value` se leen de la
+propia instancia de `EarlyStopping` tras `fit()`, no del mínimo global de la serie (con
+`min_delta > 0` o `--start-from-epoch > 0` no son lo mismo), y quedan corroborados por
+una reevaluación posterior independiente del modelo ya restaurado (`restored_monitor_value`).
+El monitor y su `min_delta` quedan en la identidad de la configuración: dos corridas
+idénticas salvo el monitor tienen `config_hash`/`run_id` distintos, pero comparten
+`early_stopping_ab_hash` (la identidad completa sin el monitor) — eso es lo que exige
+`compile_results.py --stats --stats-by early_stopping_monitor` antes de compararlas
+de forma pareada, junto con `config_schema_version >= 4`. Cambiar el monitor no cambia
+el objetivo de entrenamiento (sigue siendo `binary_crossentropy` + L2); solo cambia qué
+época se selecciona.
 
 **Trazabilidad.** Cada `config.json` guarda el hash de las señales BOLD (`bold_hash`), el
 hash del atlas (`atlas_hash`), hashes del código de datos y del runner
