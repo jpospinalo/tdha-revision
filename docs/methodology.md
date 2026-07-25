@@ -79,11 +79,13 @@ Repeated stratified cross-validation. Architectures (`lstm`, `gru`, `cnn1d`, `tr
 
 Each outer fold is split again to keep epoch selection honest:
 
-- an inner partition of the outer training set is held out to pick the epoch by early stopping on its loss;
+- an inner partition of the outer training set is held out to pick the epoch by early stopping;
 - the model trains on the rest, with class weights computed only from it;
 - the outer fold is touched **once**, for the final evaluation.
 
 `restore_best_weights` returns the best inner-validation epoch. This nesting is for epoch selection only — it is not a nested cross-validation for hyperparameter search.
+
+**Early-stopping monitor.** `--early-stopping-monitor` chooses which inner-validation series `EarlyStopping` watches: `val_loss` (default) is Keras's total loss — binary cross-entropy plus every architecture's L2 penalties; `val_bce` is only the predictive binary cross-entropy, exposed as a separate metric (`bce`/`val_bce`, via `keras.metrics.BinaryCrossentropy`) that plays no role in the optimized objective, which stays `binary_crossentropy` plus L2 regardless of the monitor. `--early-stopping-min-delta` (default `1e-5`) sets the minimum required improvement; both were hardcoded before this option existed and default to the same values, so omitting the flag reproduces the historical behavior exactly. Neither monitor ever reads `outer_val` — both are computed purely on `inner_val`. The monitor and its `min_delta` are part of the run's identity (`config_hash`/`run_id` change with them), so `compile_results.py --stats --stats-by early_stopping_monitor` can pair two otherwise-identical runs and test whether the choice of monitor changes outcomes — that comparison is a methodological hypothesis to verify, not an assumption; `val_loss` remains the default until it is.
 
 ## Evaluation and reproducibility
 

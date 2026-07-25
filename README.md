@@ -100,6 +100,19 @@ silencio.
 entrenamiento para el early stopping. El pliegue de validación externo solo se usa en
 la evaluación final, nunca para decidir nada.
 
+**Monitor de early stopping configurable.** `--early-stopping-monitor` elige qué serie
+de validación interna observa `EarlyStopping` para detener el entrenamiento y qué punto
+restaurar: `val_loss` (por defecto) es la pérdida total de Keras — BCE más las
+penalizaciones L2 de la arquitectura; `val_bce` es solo la entropía cruzada binaria
+predictiva, registrada como métrica separada (`bce`/`val_bce` en `history.csv`) sin
+participar del objetivo de optimización. `--early-stopping-min-delta` (por defecto
+`1e-5`) fija la mejora mínima exigida. Ambos quedan en la identidad de la
+configuración: dos corridas idénticas salvo el monitor tienen `config_hash`/`run_id`
+distintos, y se pueden comparar de forma pareada con
+`compile_results.py --stats --stats-by early_stopping_monitor`. Cambiar el monitor no
+cambia el objetivo de entrenamiento (sigue siendo `binary_crossentropy` + L2); solo
+cambia qué época se selecciona.
+
 **Trazabilidad.** Cada `config.json` guarda el hash de las señales BOLD (`bold_hash`), el
 hash del atlas (`atlas_hash`), hashes del código de datos y del runner
 (`data_code_hash`, `runner_code_hash`), los parámetros de enventanado, el commit de

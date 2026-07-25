@@ -372,6 +372,130 @@ def check_entrenamiento():
         fail("la corrida falló")
         print((r.stdout + r.stderr)[-1500:])
 
+    check_entrenamiento_val_bce()
+
+
+def check_entrenamiento_val_bce():
+    """Corrida corta con --early-stopping-monitor val_bce, auditando los artefactos
+    (no solo el código de salida): esquema 3, columnas bce/inner_val_bce, ausencia de
+    NaN/inf, best_epoch/best_monitor_value reconstruidos desde inner_val_bce, y
+    cobertura completa de la validación externa. Usa un directorio propio bajo /tmp,
+    nunca results/runs.
+    """
+    seccion("Prueba de entrenamiento con --early-stopping-monitor val_bce")
+    import shutil
+    import subprocess
+
+    import numpy as np
+    import pandas as pd
+
+    outdir = Path("/tmp/verify_setup_val_bce")
+    if outdir.exists():
+        shutil.rmtree(outdir)
+    r = subprocess.run(
+        [sys.executable, "run_experiment.py", "--site", "NYU", "--roi-set", "12",
+         "--n-splits", "2", "--n-repeats", "1", "--epochs", "3", "--patience", "2",
+         "--early-stopping-monitor", "val_bce", "--early-stopping-min-delta", "1e-5",
+         "--out", str(outdir), "--tag", "verify_bce"],
+        cwd=REPO / "src", capture_output=True, text=True)
+    if r.returncode != 0:
+        fail("la corrida con --early-stopping-monitor val_bce falló")
+        print((r.stdout + r.stderr)[-1500:])
+        return
+    ok("la corrida con --early-stopping-monitor val_bce se ejecuta sin errores")
+
+    run_dirs = [p for p in outdir.iterdir() if p.is_dir()] if outdir.exists() else []
+    if len(run_dirs) != 1:
+        fail(f"se esperaba exactamente 1 carpeta de corrida en {outdir}, hay {len(run_dirs)}")
+        return
+    run_dir = run_dirs[0]
+
+    try:
+        cfg = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
+    except Exception as e:
+        fail(f"no se pudo leer config.json: {type(e).__name__}: {e}")
+        return
+    prob = []
+    if cfg.get("config_schema_version") != 3:
+        prob.append(f"config_schema_version={cfg.get('config_schema_version')!r}, se esperaba 3")
+    if cfg.get("early_stopping_monitor") != "val_bce":
+        prob.append(f"early_stopping_monitor={cfg.get('early_stopping_monitor')!r}, se esperaba 'val_bce'")
+    (fail if prob else ok)(
+        "config.json: config_schema_version=3 y monitor solicitado"
+        + (f" — {'; '.join(prob)}" if prob else "")
+    )
+
+    try:
+        hist = pd.read_csv(run_dir / "history.csv")
+        val = pd.read_csv(run_dir / "metrics_val.csv")
+        pred = pd.read_csv(run_dir / "predictions_val.csv")
+    except Exception as e:
+        fail(f"no se pudieron leer los artefactos de la corrida: {type(e).__name__}: {e}")
+        return
+
+    prob = [c for c in ("bce", "inner_val_bce") if c not in hist.columns]
+    (fail if prob else ok)(
+        "history.csv contiene bce/inner_val_bce" + (f" — faltan {prob}" if prob else "")
+    )
+
+    numeric_hist = hist.select_dtypes(include=[np.number]).to_numpy()
+    if numeric_hist.size == 0 or not np.isfinite(numeric_hist).all():
+        fail("history.csv contiene valores no finitos o está vacío")
+    else:
+        ok("history.csv sin NaN/inf")
+
+    prob = [c for c in ("early_stopping_monitor", "best_monitor_value") if c not in val.columns]
+    (fail if prob else ok)(
+        "metrics_val.csv contiene early_stopping_monitor/best_monitor_value"
+        + (f" — faltan {prob}" if prob else "")
+    )
+
+    # best_epoch/best_monitor_value deben coincidir con el mínimo de inner_val_bce
+    # de ESE pliegue en history.csv — no con val_loss ni con ningún otro monitor.
+    prob = []
+    for _, row in val.iterrows():
+        fold_hist = hist[
+            (hist["fold"] == row["fold"]) & (hist["repeat"] == row["repeat"])
+        ].sort_values("epoch")
+        if fold_hist.empty:
+            prob.append(f"pliegue f{row['fold']}/r{row['repeat']}: sin filas en history.csv")
+            continue
+        series = fold_hist["inner_val_bce"].to_numpy()
+        expected_epoch = int(np.argmin(series)) + 1
+        if int(row["best_epoch"]) != expected_epoch:
+            prob.append(
+                f"pliegue f{row['fold']}/r{row['repeat']}: best_epoch={row['best_epoch']}, "
+                f"se esperaba {expected_epoch} (mínimo de inner_val_bce)"
+            )
+            continue
+        expected_value = float(series[expected_epoch - 1])
+        if abs(float(row["best_monitor_value"]) - expected_value) > 1e-6:
+            prob.append(
+                f"pliegue f{row['fold']}/r{row['repeat']}: best_monitor_value="
+                f"{row['best_monitor_value']}, se esperaba {expected_value}"
+            )
+    (fail if prob else ok)(
+        "best_epoch/best_monitor_value coinciden con el mínimo de inner_val_bce por pliegue"
+        + (f" — {'; '.join(prob)}" if prob else "")
+    )
+
+    # Cobertura de outer_val: cada sujeto exactamente una vez por repetición.
+    prob = []
+    n_subjects = cfg.get("n_subjects")
+    for repeat, group in pred.groupby("repeat"):
+        n_dup = int(group["subject_id"].duplicated().sum())
+        if n_dup:
+            prob.append(f"repetición {repeat}: {n_dup} subject_id duplicados en outer_val")
+        if n_subjects is not None and group["subject_id"].nunique() != n_subjects:
+            prob.append(
+                f"repetición {repeat}: {group['subject_id'].nunique()} sujetos evaluados, "
+                f"se esperaban {n_subjects}"
+            )
+    (fail if prob else ok)(
+        "validación externa cubre cada sujeto exactamente una vez por repetición"
+        + (f" — {'; '.join(prob)}" if prob else "")
+    )
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,

@@ -37,7 +37,7 @@ joined into this pipeline, so its effect on the connectivity matrices is not tes
 
 ## Model selection
 
-Epoch selection (early stopping) runs on an inner partition of each outer training fold; the outer fold is used only for the final evaluation. This isolates epoch selection from the test data, but it is not a full nested cross-validation: hyperparameters are fixed by the user, not tuned on an inner loop.
+Epoch selection (early stopping) runs on an inner partition of each outer training fold; the outer fold is used only for the final evaluation. This isolates epoch selection from the test data, but it is not a full nested cross-validation: hyperparameters are fixed by the user, not tuned on an inner loop. Which inner-validation series is watched (`--early-stopping-monitor`: `val_loss`, the default, or `val_bce`) is itself configurable and part of the run's identity, but this only changes which epoch gets selected, never the optimized objective (`binary_crossentropy` + L2) or which partition is read from.
 
 ## Supported models
 

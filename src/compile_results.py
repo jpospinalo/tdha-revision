@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Compila corridas de ``results/runs`` del proyecto TDHA.
 
-Compatible con configuraciones históricas y con el esquema v2 de
+Compatible con configuraciones históricas y con el esquema v3 de
 ``run_experiment.py``: representación estática/dinámica, ventanas en TR o
-segundos, solapamiento, Fisher z y ventanas gaussianas.
+segundos, solapamiento, Fisher z, ventanas gaussianas, y el monitor de
+early stopping (``val_loss``/``val_bce``, esquema v3; ausente en v1/v2 se
+interpreta como ``val_loss`` con ``min_delta=1e-5``).
 """
 from __future__ import annotations
 
@@ -22,7 +24,7 @@ DEFAULT_ROOT = Path(__file__).resolve().parent.parent / "results" / "runs"
 COUNT_COLUMNS = {"true_positives", "true_negatives", "false_positives", "false_negatives"}
 META_COLUMNS = {
     "fold", "repeat", "n_epochs", "best_epoch", "n_fit", "n_inner_val",
-    "n_outer_val", "class_weight_0", "class_weight_1",
+    "n_outer_val", "class_weight_0", "class_weight_1", "best_monitor_value",
 }
 PREFERRED_METRICS = [
     "loss", "accuracy", "balanced_accuracy", "precision", "recall",
@@ -187,6 +189,11 @@ def summarize(run_dir: Path, cfg: dict[str, Any], suffix: str = "") -> dict[str,
         "constant_policy": cfg.get("constant_policy", "zero"),
         "random_subset": cfg.get("random_subset"),
         "start_from_epoch": cfg.get("start_from_epoch"),
+        # Ausente en corridas de esquema 1/2: se interpretan como el
+        # comportamiento que tenía el callback antes de que este campo
+        # existiera (monitor fijo en val_loss, min_delta fijo en 1e-5).
+        "early_stopping_monitor": cfg.get("early_stopping_monitor", "val_loss"),
+        "early_stopping_min_delta": cfg.get("early_stopping_min_delta", 1e-5),
         "bold_hash": cfg.get("bold_hash"),
         "atlas_hash": cfg.get("atlas_hash"),
         "roi_indices_hash": cfg.get("roi_indices_hash"),
@@ -296,7 +303,7 @@ def methodological_group_columns(df: pd.DataFrame) -> list[str]:
         "site", "roi_set", "model", "representation", "connectivity_mode",
         "window_tr", "step_tr", "window_seconds", "step_seconds",
         "effective_overlap", "window_shape", "gaussian_sigma", "fisher_z",
-        "constant_policy",
+        "constant_policy", "early_stopping_monitor", "early_stopping_min_delta",
     ]
     return [c for c in candidates if c in df.columns]
 
@@ -493,10 +500,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stats-metric", default="accuracy")
     parser.add_argument(
         "--stats-by",
-        choices=["roi_set", "representation"],
+        choices=["roi_set", "representation", "early_stopping_monitor"],
         default="roi_set",
         help="dimensión a comparar de forma pareada: subconjuntos de ROIs "
-        "(por defecto) o representaciones (fija un solo roi_set)",
+        "(por defecto), representaciones (fija un solo roi_set), o el monitor "
+        "de early stopping val_loss/val_bce (fija site/model/roi_set/"
+        "representation/seed/n_splits/n_repeats)",
     )
     args = parser.parse_args(argv)
 
@@ -511,9 +520,9 @@ def main(argv: list[str] | None = None) -> int:
     display_cols = [
         "run_id", "site", "roi_set", "model", "representation", "window_seconds",
         "window_tr", "step_tr", "effective_overlap", "window_shape", "fisher_z",
-        "n_folds", "n_windows", "val_accuracy_mean", "val_accuracy_sd",
-        "val_f1_macro_mean", "val_auc_mean", "oof_auc_mean", "oof_f1_macro_mean",
-        "gap_acc", "commit",
+        "early_stopping_monitor", "n_folds", "n_windows", "val_accuracy_mean",
+        "val_accuracy_sd", "val_f1_macro_mean", "val_auc_mean", "oof_auc_mean",
+        "oof_f1_macro_mean", "gap_acc", "commit",
     ]
     print(df[[c for c in display_cols if c in df]].round(4).to_string(index=False))
 
@@ -547,11 +556,15 @@ def main(argv: list[str] | None = None) -> int:
         base = df[df["random_subset"].isna()] if "random_subset" in df else df
         group_col = args.stats_by
         # Todo lo que no sea la dimensión a comparar debe quedar fijo.
-        fixed = ["site", "model"]
         if group_col == "representation":
-            fixed.append("roi_set")  # comparar representaciones dentro de un mismo roi_set
+            fixed = ["site", "model", "roi_set"]  # comparar representaciones dentro de un mismo roi_set
+        elif group_col == "early_stopping_monitor":
+            # comparar val_loss vs val_bce dentro de la misma configuración
+            # metodológica; seed/n_splits/n_repeats se verifican aparte por
+            # claridad del mensaje, aunque split_fingerprint ya los garantiza.
+            fixed = ["site", "model", "roi_set", "representation", "seed", "n_splits", "n_repeats"]
         else:
-            fixed.append("representation")  # comparar ROIs dentro de una misma representación
+            fixed = ["site", "model", "representation"]  # comparar ROIs dentro de una misma representación
         for column in fixed:
             if column in base and base[column].dropna().nunique() > 1:
                 raise SystemExit(

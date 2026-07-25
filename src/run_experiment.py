@@ -69,11 +69,17 @@ except ModuleNotFoundError:  # importación desde pruebas o ``python -m src...``
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_DIR = REPO_ROOT / "results" / "runs"
-CONFIG_SCHEMA_VERSION = 2
+CONFIG_SCHEMA_VERSION = 3
 REPRESENTATIONS = (
     "ordered", "permuted", "mean", "mean_std", "static", "partial", "shrunk", "hybrid",
     "ordered_scaled", "permuted_scaled", "tangent",
 )
+# Monitores admitidos para EarlyStopping/selección de best_epoch. Una corrida
+# histórica (esquema 1 o 2, sin este campo en config.json) se interpreta como
+# early_stopping_monitor="val_loss", early_stopping_min_delta=1e-5 — el mismo
+# comportamiento que tenían antes de que este campo existiera.
+EARLY_STOPPING_MONITORS = ("val_loss", "val_bce")
+DEFAULT_EARLY_STOPPING_MIN_DELTA = 1e-5
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +230,9 @@ def validate_training_args(args: argparse.Namespace, y: np.ndarray) -> None:
         args.clipnorm = _positive_float("--clipnorm", args.clipnorm)
     if not 0 < float(args.inner_val_frac) < 1:
         raise SystemExit("ERROR: --inner-val-frac debe pertenecer a (0, 1).")
+    args.early_stopping_min_delta = _positive_float(
+        "--early-stopping-min-delta", args.early_stopping_min_delta, allow_zero=True
+    )
 
     labels = np.asarray(y, dtype=np.int64)
     values, counts = np.unique(labels, return_counts=True)
@@ -746,7 +755,18 @@ def evaluate(model: Any, X: np.ndarray, y: Sequence[int]) -> tuple[dict[str, flo
 
 
 def compile_model(model: Any, args: argparse.Namespace) -> Any:
-    """Compila con la única métrica necesaria para el historial por época."""
+    """Compila el modelo con las métricas necesarias para el historial por época.
+
+    El objetivo de optimización sigue siendo exactamente ``binary_crossentropy``
+    más las penalizaciones de regularización (L2) que declare cada arquitectura
+    vía ``kernel_regularizer`` — ninguna métrica participa del cálculo de
+    gradientes. Se registran dos métricas, no una sola: ``accuracy`` (como
+    antes) y ``bce`` (BinaryCrossentropy), que Keras expone también como
+    ``val_bce`` en ``history.history``. ``bce``/``val_bce`` miden solo la
+    entropía cruzada de las predicciones, sin la regularización que sí está
+    incluida en ``loss``/``val_loss`` — esa diferencia es justamente lo que
+    permite comparar ambos criterios de selección de época.
+    """
 
     import keras
 
@@ -756,7 +776,10 @@ def compile_model(model: Any, args: argparse.Namespace) -> Any:
     model.compile(
         optimizer=keras.optimizers.Adam(**optimizer_args),
         loss="binary_crossentropy",
-        metrics=[keras.metrics.BinaryAccuracy(name="accuracy")],
+        metrics=[
+            keras.metrics.BinaryAccuracy(name="accuracy"),
+            keras.metrics.BinaryCrossentropy(name="bce"),
+        ],
     )
     return model
 
@@ -862,20 +885,28 @@ def run_config(
             args,
         )
 
+        # y se pasa como columna (N, 1), no (N,): con la métrica BinaryCrossentropy
+        # nueva, Keras exige que 'target' y 'output' tengan el mismo rango, y el
+        # modelo siempre produce (lote, 1) (una sola neurona sigmoide). El resto del
+        # código sigue usando y[...] en 1D (evaluate(), class_weight, predictions_val):
+        # este reshape es local a la llamada de fit, no muta 'y'.
         history = model.fit(
             Xf_fold[fit_idx],
-            y[fit_idx],
-            validation_data=(Xf_fold[inner_val_idx], y[inner_val_idx]),
+            y[fit_idx].reshape(-1, 1),
+            validation_data=(
+                Xf_fold[inner_val_idx],
+                y[inner_val_idx].reshape(-1, 1),
+            ),
             epochs=args.epochs,
             batch_size=args.batch_size,
             class_weight=class_weight,
             verbose=0,
             callbacks=[
                 EarlyStopping(
-                    monitor="val_loss",
+                    monitor=args.early_stopping_monitor,
                     mode="min",
                     patience=args.patience,
-                    min_delta=1e-5,
+                    min_delta=args.early_stopping_min_delta,
                     start_from_epoch=args.start_from_epoch,
                     restore_best_weights=True,
                 )
@@ -883,7 +914,29 @@ def run_config(
         )
 
         n_epochs = len(history.history["loss"])
-        best_epoch = int(np.argmin(history.history["val_loss"])) + 1
+        if args.early_stopping_monitor not in history.history:
+            raise RuntimeError(
+                f"El monitor '{args.early_stopping_monitor}' no está en "
+                f"history.history; claves disponibles: {sorted(history.history.keys())}."
+            )
+        monitor_values = np.asarray(
+            history.history[args.early_stopping_monitor], dtype=float
+        )
+        if monitor_values.ndim != 1 or monitor_values.size == 0:
+            raise RuntimeError(
+                f"history.history['{args.early_stopping_monitor}'] tiene forma "
+                f"inválida: {monitor_values.shape}."
+            )
+        if not np.isfinite(monitor_values).all():
+            raise RuntimeError(
+                f"history.history['{args.early_stopping_monitor}'] contiene "
+                "valores no finitos."
+            )
+        # best_epoch/best_monitor_value deben coincidir con la serie que observa
+        # el propio callback: si el monitor es val_bce, no se recalculan desde
+        # val_loss (serían inconsistentes con qué pesos restauró EarlyStopping).
+        best_epoch = int(np.argmin(monitor_values)) + 1
+        best_monitor_value = float(monitor_values[best_epoch - 1])
 
         # El pliegue externo se utiliza aquí por primera vez.
         train_metrics, _ = evaluate(model, Xf_fold[outer_train], y[outer_train])
@@ -898,6 +951,8 @@ def run_config(
             "repeat": repeat,
             "n_epochs": n_epochs,
             "best_epoch": best_epoch,
+            "early_stopping_monitor": args.early_stopping_monitor,
+            "best_monitor_value": best_monitor_value,
             "n_fit": int(fit_idx.size),
             "n_inner_val": int(inner_val_idx.size),
             "n_outer_val": int(outer_val_idx.size),
@@ -915,6 +970,8 @@ def run_config(
                     "epoch": epoch,
                     "loss": float(loss),
                     "inner_val_loss": float(history.history["val_loss"][epoch - 1]),
+                    "bce": float(history.history["bce"][epoch - 1]),
+                    "inner_val_bce": float(history.history["val_bce"][epoch - 1]),
                     "accuracy": float(history.history["accuracy"][epoch - 1]),
                     "inner_val_accuracy": float(
                         history.history["val_accuracy"][epoch - 1]
@@ -1129,6 +1186,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="calcula pesos por pliegue usando únicamente el subconjunto fit",
     )
+    training_group.add_argument(
+        "--early-stopping-monitor",
+        choices=EARLY_STOPPING_MONITORS,
+        default="val_loss",
+        help=(
+            "métrica de validación interna usada para detener y restaurar pesos; "
+            "val_loss incluye regularización y val_bce mide solo BCE predictiva"
+        ),
+    )
+    training_group.add_argument(
+        "--early-stopping-min-delta",
+        type=float,
+        default=DEFAULT_EARLY_STOPPING_MIN_DELTA,
+        help="mejora mínima exigida por EarlyStopping; debe ser >= 0",
+    )
 
     anatomy_group = parser.add_argument_group("control anatómico")
     anatomy_group.add_argument(
@@ -1271,7 +1343,9 @@ def write_run_summary(
         f"{n_eval} evaluaciones externas · semilla {config.get('seed')} · "
         f"class_weight: {'sí' if config.get('class_weight') else 'no'}",
         f"- **Entrenamiento**: lr={config.get('lr')}, batch={config.get('batch_size')}, "
-        f"epochs={config.get('epochs')}, patience={config.get('patience')}",
+        f"epochs={config.get('epochs')}, patience={config.get('patience')}, "
+        f"monitor={config.get('early_stopping_monitor', 'val_loss')}, "
+        f"min_delta={config.get('early_stopping_min_delta', DEFAULT_EARLY_STOPPING_MIN_DELTA)}",
         "",
     ]
 
@@ -1452,6 +1526,8 @@ def main(argv: Sequence[str] | None = None) -> str | None:
         "inner_val_frac": args.inner_val_frac,
         "class_weight": bool(args.class_weight),
         "start_from_epoch": args.start_from_epoch,
+        "early_stopping_monitor": args.early_stopping_monitor,
+        "early_stopping_min_delta": args.early_stopping_min_delta,
         "random_subset": args.random_subset,
         "n_random_sets": args.n_random_sets if args.random_subset else None,
         "exclude_roi_set": args.exclude_roi_set,

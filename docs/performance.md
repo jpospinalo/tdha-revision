@@ -14,7 +14,9 @@ Windows come straight from the physical specification, converted to samples with
 
 ## Early stopping
 
-Training stops on the inner validation loss with `restore_best_weights`, so the best epoch is recovered whenever training stops. The default `--patience 25` cuts the epochs that run after the loss has plateaued — the dominant cost within a run. Raise it only if convergence curves show late gains.
+Training stops on the inner validation series chosen by `--early-stopping-monitor` (`val_loss` by default, or `val_bce`) with `restore_best_weights`, so the best epoch is recovered whenever training stops. The default `--patience 25` cuts the epochs that run after the monitored series has plateaued — the dominant cost within a run, independent of which monitor is selected. Raise it only if convergence curves show late gains.
+
+Recording the extra `bce`/`val_bce` metric adds a second scalar computation per batch alongside the existing `accuracy` metric — negligible next to the forward/backward pass itself, and it does not change what `model.fit` optimizes.
 
 ## Mixed precision
 
