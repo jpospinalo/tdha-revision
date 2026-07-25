@@ -528,6 +528,19 @@ def build_representation(
             warnings.append(message)
         diagnostics = static_diagnostics(n_timepoints, tr_seconds)
         diagnostics["connectivity"] = "tangent_nilearn_fold_local"
+        # Trazabilidad del estimador: nilearn resuelve cov_estimator=None a
+        # LedoitWolf internamente y aplica standardize=True por defecto (z-score
+        # de la serie temporal antes de estimar la covarianza). Ninguno de los
+        # dos es configurable desde aquí todavía; se registran para que quede
+        # constancia en config.json de qué versión/ajustes produjeron la corrida.
+        try:
+            import nilearn as _nilearn
+
+            diagnostics["nilearn_version"] = getattr(_nilearn, "__version__", None)
+        except ImportError:
+            diagnostics["nilearn_version"] = None
+        diagnostics["tangent_cov_estimator"] = "LedoitWolf (default de nilearn, cov_estimator=None)"
+        diagnostics["tangent_standardize"] = True
         return selected, diagnostics, warnings
 
     if spec is None:  # salvaguarda de programación

@@ -27,8 +27,8 @@ From the dynamic sequence, `--representation` selects what the model receives:
 - `partial` — a single regularized partial-correlation matrix (Ledoit-Wolf shrinkage) over the whole series; isolates direct connections and stays well-conditioned when timepoints < ROIs.
 - `shrunk` — a single regularized *full*-correlation matrix (Ledoit-Wolf shrinkage) over the whole series; same question as `static`, more stable estimate.
 - `hybrid` — static connectivity concatenated per connection with the mean, standard deviation, and mean absolute change of the windows; order-invariant.
-- `ordered_scaled` / `permuted_scaled` — the same windows as `ordered`/`permuted`, each connection rescaled to zero mean / unit variance, fit-only. A control for `tangent`: it isolates "does per-fold rescaling alone help" from "does the tangent-space geometry help," since tangent features also need a rescale-like step to be usable in training.
-- `tangent` — tangent-space projection of the static Pearson matrix (nilearn), referenced against a fit-only group mean, fold-local. See "Fold-local representations" below.
+- `ordered_scaled` / `permuted_scaled` — the same windows as `ordered`/`permuted`, each connection rescaled to zero mean / unit variance, fit-only. A rough reference point for `tangent`, not a clean isolation of its geometry: besides the rescaling step, the two also differ in temporality (`ordered_scaled` is windowed/dynamic, `tangent` is whole-series/static) and in covariance estimator (sample correlation per window vs. the Ledoit-Wolf estimate `tangent` uses). A result that only shows up in `tangent` and not in `ordered_scaled` is consistent with the tangent-space geometry mattering, but doesn't rule out the estimator or temporality differences as the cause.
+- `tangent` — tangent-space projection built by nilearn's `ConnectivityMeasure(kind="tangent")` from the raw (whole-series) BOLD signal, fold-local. nilearn does **not** start from a Pearson correlation matrix: by default it standardizes (z-scores) each ROI's time series and estimates a Ledoit-Wolf covariance (`cov_estimator=None` resolves internally to `LedoitWolf`), then projects each subject's covariance against a geometric (Fréchet) mean fit only on that fold's `fit` subjects. `nilearn_version`, `tangent_cov_estimator`, and `tangent_standardize` are recorded per run under `windowing_diagnostics` in `config.json`. See "Fold-local representations" below.
 
 `static`, `partial`, `shrunk`, `mean`, and `tangent` all produce one matrix (or
 matrix-equivalent vector) per subject. `static`, `partial`, `shrunk`, and `mean` are
@@ -67,7 +67,9 @@ combinations are rejected explicitly.
 
 Windows are specified in physical time (seconds) and converted to samples using each site's TR, so the same window covers the same duration regardless of sampling rate.
 
-Window length respects the dynamic-connectivity lower bound: it must exceed the longest wavelength retained in the signal (Leonardi & Van De Ville, 2015). ATHENA band-pass filters at 0.009 Hz, which puts that floor near 111 s, so the default physical window is 120 s where the scan allows it. Sites too short for a valid window (OHSU, 185 s) default to the static representation.
+Window length respects the dynamic-connectivity lower bound: it must exceed the longest wavelength retained in the signal (Leonardi & Van De Ville, 2015). ATHENA band-pass filters at 0.009 Hz, which puts that floor near 111 s, so the **recommended** physical window is 120 s where the scan allows it — pass it explicitly with `--window-seconds 120` (the notebook's example configs already do). Sites too short for a valid window (OHSU, 185 s) default to the static representation.
+
+This is a recommendation, not the CLI's actual default: `run_experiment.py`, when no window/step arguments are given at all, falls back to `--window 70 --step 2` (`windowing_preset: "legacy_70_2"` in `config.json`) for backward compatibility with early runs, not to 120 s. Always pass `--window-seconds`/`--step-seconds` explicitly rather than relying on the bare default.
 
 Both rectangular and Gaussian windows are supported.
 

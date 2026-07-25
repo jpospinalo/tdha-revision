@@ -16,6 +16,10 @@ representación usa los mismos nombres que el ejecutor (``ordered``, ``permuted`
 ``shrunk`` y ``tangent`` se omiten los parámetros de ventana automáticamente (usan
 toda la serie, sin ventanas). ``ordered_scaled`` y ``permuted_scaled`` sí son
 dinámicas y sí llevan parámetros de ventana, igual que ``ordered``/``permuted``.
+Para esas representaciones sin ventana, si además se pide barrer varios valores de
+``--window-seconds``/``--step-seconds``/etc., el comando resultante es idéntico en
+cada combinación (los parámetros de ventana se descartan); ``build_arg_lists``
+deduplica esos comandos repetidos antes de encolarlos.
 
 Cualquier argumento no reconocido se reenvía tal cual a ``run_experiment.py`` (por
 ejemplo ``--n-splits 5`` o ``--class-weight``), aplicándose a todas las corridas.
@@ -154,6 +158,7 @@ def build_arg_lists(args: argparse.Namespace, passthrough: Sequence[str]) -> lis
     )
 
     arg_lists: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
     for site, roi, model, rep, w_s, w_tr, s_s, ov, s_tr, shape, sigma in combos:
         exp: list[str] = []
         if site:
@@ -188,6 +193,15 @@ def build_arg_lists(args: argparse.Namespace, passthrough: Sequence[str]) -> lis
             exp.append("--fisher-z")
 
         exp.extend(passthrough)
+
+        # Para representaciones sin ventana, variar los ejes de enventanado en el
+        # producto cartesiano no cambia 'exp' (esos parámetros se descartan arriba):
+        # sin esta comprobación se encolaría el mismo comando una vez por cada
+        # combinación de window/step/overlap/shape/sigma solicitada.
+        key = tuple(exp)
+        if key in seen:
+            continue
+        seen.add(key)
         arg_lists.append(exp)
     return arg_lists
 

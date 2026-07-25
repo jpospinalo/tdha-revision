@@ -242,6 +242,34 @@ def check_representaciones_fold_aware():
         prob.append("¡FUGA! perturbar rest_idx cambió la salida de fit_idx")
     (fail if prob else ok)("ordered_scaled: sin fuga, fit centrado en 0" + (f" — {'; '.join(prob)}" if prob else ""))
 
+    args_p = _argparse.Namespace(
+        site="NYU", representation="permuted_scaled", fisher_z=False,
+        constant_policy="zero", tr_seconds=None, window_tr=None, step_tr=None,
+        window_seconds=120.0, step_seconds=12.0, overlap=None,
+        window_shape="rectangular", gaussian_sigma=None, representation_seed=1,
+    )
+    spec_p = R.resolve_temporal_spec(args_p, n_timepoints=b["bold"].shape[-1])
+    Xf_p, _, _ = R.build_representation(
+        site="NYU", bold=b["bold"], labels=b["labels"], subjects=b["subjects"],
+        indices=idx, roi_key="12", args=args_p, spec=spec_p, use_cache=False,
+    )
+    transform_p, out_shape_p = R.resolve_fold_transform(args_p, r)
+    scaled_p = transform_p(Xf_p, fit_idx)
+    fit_vals_p = scaled_p[fit_idx].reshape(-1, scaled_p.shape[-1])
+    prob = []
+    if out_shape_p is not None:
+        prob.append("output_shape no debería ser None para permuted_scaled")
+    if not np.isfinite(scaled_p).all():
+        prob.append("valores no finitos")
+    if np.max(np.abs(fit_vals_p.mean(axis=0))) > 1e-4:
+        prob.append("media de fit no queda ~0")
+    scaled_p_perturbed = transform_p(
+        np.where(np.arange(n)[:, None, None] == rest_idx[0], 999.0, Xf_p), fit_idx
+    )
+    if not np.allclose(scaled_p[fit_idx], scaled_p_perturbed[fit_idx], atol=1e-6):
+        prob.append("¡FUGA! perturbar rest_idx cambió la salida de fit_idx")
+    (fail if prob else ok)("permuted_scaled: sin fuga, fit centrado en 0" + (f" — {'; '.join(prob)}" if prob else ""))
+
     if importlib.util.find_spec("nilearn") is None:
         warn("nilearn no está instalado: no se puede probar 'tangent' aquí (pip install nilearn)")
         return

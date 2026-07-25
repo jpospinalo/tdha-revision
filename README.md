@@ -100,12 +100,18 @@ silencio.
 entrenamiento para el early stopping. El pliegue de validación externo solo se usa en
 la evaluación final, nunca para decidir nada.
 
-**Trazabilidad.** Cada `config.json` guarda el hash de las señales, los parámetros de
-enventanado, el commit de git, si el árbol estaba limpio, el usuario y las versiones de
-Python, TensorFlow y GPU. `compile_results.py` usa esa información para avisar cuando
-las corridas seleccionadas no son comparables (semilla, huella de particiones, hashes
-de datos/código distintos, árbol sucio, configuraciones duplicadas); con
-`--strict-comparability` esos avisos abortan la ejecución en vez de solo imprimirse.
+**Trazabilidad.** Cada `config.json` guarda el hash de las señales BOLD (`bold_hash`), el
+hash del atlas (`atlas_hash`), hashes del código de datos y del runner
+(`data_code_hash`, `runner_code_hash`), los parámetros de enventanado, el commit de
+git, si el árbol estaba limpio, el usuario y las versiones de Python, TensorFlow y GPU.
+`compile_results.py` usa parte de esa información para avisar cuando las corridas
+seleccionadas no son comparables: semilla, `n_splits`/`n_repeats`, huella de
+particiones, `bold_hash` distinto entre corridas del mismo sitio, árbol sucio, o
+`config_hash`/`subset_suffix` duplicados. **No** compara `atlas_hash`,
+`data_code_hash`, `runner_code_hash` ni versiones de software entre corridas —esos
+campos quedan guardados para inspección manual, pero `check_comparability()` no los
+usa como criterio de aborto. Con `--strict-comparability` los avisos que sí genera
+abortan la ejecución en vez de solo imprimirse.
 
 ### Reproducibilidad: qué se garantiza y qué no
 
