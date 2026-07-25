@@ -12,7 +12,9 @@ ADHD-200 preprocessed rs-fMRI ROI time series. Each subject is a multivariate si
 
 **Dynamic** — the series is cut into overlapping windows, one connectivity matrix per window, giving a sequence that keeps temporal information.
 
-Connectivity is estimated as the Pearson correlation between ROIs within each window, with an optional Fisher Z transform afterwards. Two full-series representations (`partial`, `shrunk`) replace the raw sample correlation with a Ledoit-Wolf shrinkage estimate instead: Dadi et al. (2019, *Benchmarking functional connectome-based predictive models for resting-state fMRI*, >240 pipelines evaluated) find that raw sample correlation is the weakest connectivity estimator for prediction, and that shrinkage regularization improves on it — more so as the number of ROIs grows relative to the number of timepoints, since sample correlation's estimation variance grows with that ratio. Their strongest performer, tangent-space parametrization, is not implemented here yet.
+Connectivity is estimated as the Pearson correlation between ROIs within each window, with an optional Fisher Z transform afterwards. Two full-series representations (`partial`, `shrunk`) replace the raw sample correlation with a Ledoit-Wolf shrinkage estimate instead: Dadi et al. (2019, *Benchmarking functional connectome-based predictive models for resting-state fMRI*, >240 pipelines evaluated) find that raw sample correlation is the weakest connectivity estimator for prediction, and that shrinkage regularization improves on it — more so as the number of ROIs grows relative to the number of timepoints, since sample correlation's estimation variance grows with that ratio.
+
+A third representation, `tangent`, implements their strongest performer: tangent-space parametrization (nilearn's `ConnectivityMeasure(kind="tangent")`). Unlike `partial`/`shrunk`, tangent projection is not subject-local — every subject's coordinates depend on a group reference (a Fréchet mean over covariances), so it cannot be precomputed once per subject before cross-validation without leaking the outer fold into that reference. See "Fold-local representations" below for how this is kept fold-local.
 
 ## Model input representations
 
@@ -25,17 +27,41 @@ From the dynamic sequence, `--representation` selects what the model receives:
 - `partial` — a single regularized partial-correlation matrix (Ledoit-Wolf shrinkage) over the whole series; isolates direct connections and stays well-conditioned when timepoints < ROIs.
 - `shrunk` — a single regularized *full*-correlation matrix (Ledoit-Wolf shrinkage) over the whole series; same question as `static`, more stable estimate.
 - `hybrid` — static connectivity concatenated per connection with the mean, standard deviation, and mean absolute change of the windows; order-invariant.
+- `ordered_scaled` / `permuted_scaled` — the same windows as `ordered`/`permuted`, each connection rescaled to zero mean / unit variance, fit-only. A control for `tangent`: it isolates "does per-fold rescaling alone help" from "does the tangent-space geometry help," since tangent features also need a rescale-like step to be usable in training.
+- `tangent` — tangent-space projection of the static Pearson matrix (nilearn), referenced against a fit-only group mean, fold-local. See "Fold-local representations" below.
 
-`static`, `partial`, `shrunk`, and `mean` all produce one matrix (or matrix-equivalent
-vector) per subject and are interchangeable as `brainnetcnn` input. `ordered` and
-`permuted` also work with `brainnetcnn`, but it treats their windows as fixed input
-channels, not as a modeled sequence — the first layer learns one weight per window, with
-no recurrence or attention across them, so it does not exploit temporal order even when
-fed a dynamic representation. `mean_std` and `hybrid` concatenate multiple statistics
-per connection and cannot be reshaped back into a square matrix, so they only work with
-vector models (`lstm`, `gru`, `cnn1d`, `transformer`, `deepsets`).
+`static`, `partial`, `shrunk`, `mean`, and `tangent` all produce one matrix (or
+matrix-equivalent vector) per subject. `static`, `partial`, `shrunk`, and `mean` are
+interchangeable as `brainnetcnn` input; `tangent` is not (see below). `ordered` and
+`permuted` (and their `_scaled` variants) also work with `brainnetcnn`, but it treats
+their windows as fixed input channels, not as a modeled sequence — the first layer learns
+one weight per window, with no recurrence or attention across them, so it does not
+exploit temporal order even when fed a dynamic representation. `mean_std` and `hybrid`
+concatenate multiple statistics per connection and cannot be reshaped back into a square
+matrix, so they only work with vector models (`lstm`, `gru`, `cnn1d`, `transformer`,
+`deepsets`).
 
-`permuted`, `mean`, and `mean_std` exist to test whether the ordering of resting-state windows contributes signal, which decides whether order-sensitive architectures (recurrent, positional transformer) are worth using over order-invariant ones (`deepsets`, transformer without positional encoding, `static`).
+`permuted`, `mean`, `mean_std`, and `permuted_scaled` exist to test whether the ordering of resting-state windows contributes signal, which decides whether order-sensitive architectures (recurrent, positional transformer) are worth using over order-invariant ones (`deepsets`, transformer without positional encoding, `static`).
+
+## Fold-local representations
+
+`ordered_scaled`, `permuted_scaled`, and `tangent` cannot be built once per subject
+before cross-validation the way every other representation is: their values (a
+per-connection mean/sd, or a geometric reference) depend on *which subjects fall in
+`fit`* for a given fold, and fitting that on anything outside `fit` would leak the
+outer/inner validation subjects into training. `run_experiment.py` handles this with a
+`fold_transform` hook: `build_representation()` still returns an untransformed base
+(the raw `ordered`/`permuted` tensor, or the raw BOLD series for `tangent`) once per
+run, and `run_config()` calls the fold-specific transform — fit only on `fit_idx`,
+applied without refitting to `inner_val_idx`/`outer_val_idx` — inside the fold loop,
+before every use of the data (training, epoch selection, and the outer evaluation).
+Every historical representation uses no transform (`fold_transform=None`), so its
+tensor is exactly the one indexed directly, with no behavior change.
+
+`tangent` additionally requires nilearn and does not accept `--fisher-z` (its
+coefficients are not Pearson correlations) or `brainnetcnn` (they are not
+topologically interpretable edge weights, unlike a correlation matrix) — both
+combinations are rejected explicitly.
 
 ## Temporal windowing
 

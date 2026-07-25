@@ -53,7 +53,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -70,7 +70,10 @@ except ModuleNotFoundError:  # importación desde pruebas o ``python -m src...``
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_DIR = REPO_ROOT / "results" / "runs"
 CONFIG_SCHEMA_VERSION = 2
-REPRESENTATIONS = ("ordered", "permuted", "mean", "mean_std", "static", "partial", "shrunk", "hybrid")
+REPRESENTATIONS = (
+    "ordered", "permuted", "mean", "mean_std", "static", "partial", "shrunk", "hybrid",
+    "ordered_scaled", "permuted_scaled", "tangent",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +237,19 @@ def validate_training_args(args: argparse.Namespace, y: np.ndarray) -> None:
             f"({int(counts.min())})."
         )
 
+    if args.representation == "tangent" and args.fisher_z:
+        raise SystemExit(
+            "ERROR: 'tangent' no admite --fisher-z: sus coeficientes son desviaciones "
+            "geométricas respecto de una referencia, no correlaciones de Pearson, y "
+            "arctanh no tiene sentido sobre ellos."
+        )
+    if args.representation == "tangent" and args.model == "brainnetcnn":
+        raise SystemExit(
+            "ERROR: 'tangent' no es compatible con brainnetcnn: sus coeficientes no "
+            "son pesos de conexión interpretables topológicamente, son proyecciones "
+            "en el espacio tangente respecto de una referencia poblacional."
+        )
+
 
 def compute_class_weights(y_fit: Sequence[int]) -> dict[int, float]:
     """Pesos balanceados calculados únicamente con el subconjunto de ajuste."""
@@ -341,7 +357,7 @@ def resolve_temporal_spec(
         )
     ) or args.window_shape != "rectangular"
 
-    if args.representation in ("static", "partial", "shrunk"):
+    if args.representation in ("static", "partial", "shrunk", "tangent"):
         if explicit_temporal:
             raise SystemExit(
                 f"ERROR: la representación '{args.representation}' usa toda la serie y no "
@@ -488,6 +504,32 @@ def build_representation(
         diagnostics["connectivity"] = "shrunk_ledoit_wolf"
         return base, diagnostics, []
 
+    if args.representation == "tangent":
+        # No se puede precalcular la representación tangente final aquí: la
+        # referencia geométrica solo puede ajustarse con los sujetos de 'fit' de
+        # cada pliegue (ver _fold_tangent_transform), no globalmente. Esta rama
+        # solo valida y devuelve la serie BOLD cruda de las ROIs seleccionadas;
+        # la proyección real ocurre dentro de run_config(), pliegue a pliegue.
+        arr = tdha_data.validate_bold_array(bold, check_finite=False)
+        idx = tdha_data.validate_indices(indices, arr.shape[1])
+        selected = np.asarray(arr, dtype=np.float32)[:, idx, :]
+        if not np.isfinite(selected).all():
+            raise ValueError("Las señales seleccionadas contienen NaN o valores infinitos.")
+        constant = selected.std(axis=2, ddof=1) < 1e-6
+        n_constant_subjects = int(constant.any(axis=1).sum())
+        warnings: list[str] = []
+        if n_constant_subjects:
+            message = (
+                f"{n_constant_subjects} sujeto(s) tienen al menos una ROI casi "
+                "constante; la covarianza/tangente puede ser degenerada para ellos."
+            )
+            if args.constant_policy == "raise":
+                raise ValueError(message)
+            warnings.append(message)
+        diagnostics = static_diagnostics(n_timepoints, tr_seconds)
+        diagnostics["connectivity"] = "tangent_nilearn_fold_local"
+        return selected, diagnostics, warnings
+
     if spec is None:  # salvaguarda de programación
         raise RuntimeError("Se requiere WindowSpec para representaciones dinámicas.")
 
@@ -530,9 +572,9 @@ def build_representation(
     diagnostics["gaussian_sigma"] = spec.gaussian_sigma
     warnings = tdha_data.methodological_warnings(diagnostics)
 
-    if args.representation == "ordered":
+    if args.representation in ("ordered", "ordered_scaled"):
         output = ordered
-    elif args.representation == "permuted":
+    elif args.representation in ("permuted", "permuted_scaled"):
         output = tdha_data.permute_windows(
             ordered,
             subject_ids=subjects,
@@ -554,6 +596,87 @@ def build_representation(
         raise ValueError(f"Representación desconocida: {args.representation!r}.")
 
     return np.asarray(output, dtype=np.float32), diagnostics, warnings
+
+
+# ---------------------------------------------------------------------------
+# Transformaciones fold-aware (ajustadas solo con 'fit' de cada pliegue)
+# ---------------------------------------------------------------------------
+#
+# build_representation() construye una base sin etiquetas, común a todo el
+# pliegue. Para 'ordered_scaled'/'permuted_scaled'/'tangent', esa base no es
+# directamente entrenable: falta un paso que solo puede ajustarse con los
+# sujetos de 'fit' de cada pliegue (para no filtrar información de
+# inner_val/outer_val). Estas funciones reciben la base global y fit_idx, y
+# devuelven el tensor ya transformado para TODOS los sujetos, listo para que
+# run_config() indexe fit/inner_val/outer_val como con cualquier otra
+# representación. Todas las representaciones históricas usan fold_transform=None
+# y no pasan por aquí.
+
+
+def _fold_edge_scaler(Xf: np.ndarray, fit_idx: np.ndarray) -> np.ndarray:
+    """Z-score por conexión (última dimensión), ajustado solo con fit_idx.
+
+    Se agrupan todos los sujetos y ventanas de fit_idx para estimar media y
+    desviación por conexión — con el mismo número de ventanas por sujeto,
+    ninguno pesa más que otro. sigma < 1e-8 se trata como 1.0 (deja esa
+    conexión centrada en cero en vez de dividir por casi-cero).
+    """
+    fit_values = np.asarray(Xf, dtype=np.float64)[fit_idx].reshape(-1, Xf.shape[-1])
+    mu = fit_values.mean(axis=0)
+    sigma = fit_values.std(axis=0, ddof=0)
+    sigma_safe = np.where(sigma < 1e-8, 1.0, sigma)
+    scaled = (np.asarray(Xf, dtype=np.float64) - mu) / sigma_safe
+    if not np.isfinite(scaled).all():
+        raise ValueError("El escalado por pliegue produjo valores no finitos.")
+    return scaled.astype(np.float32)
+
+
+def _fold_tangent_transform(raw_series: np.ndarray, fit_idx: np.ndarray) -> np.ndarray:
+    """Proyección en espacio tangente (nilearn), referencia ajustada solo con fit_idx.
+
+    raw_series: (n_sujetos, n_rois, n_tiempos), la serie BOLD cruda de las ROIs
+    seleccionadas (ver la rama 'tangent' de build_representation). nilearn espera
+    (n_tiempos, n_rois) por sujeto. La covarianza (Ledoit-Wolf, por defecto en
+    nilearn) y la referencia geométrica se ajustan únicamente con los sujetos de
+    fit_idx; todos los sujetos (incluidos inner_val/outer_val) se proyectan
+    después con esa misma referencia ya fija, sin volver a ajustarla.
+    """
+    try:
+        from nilearn.connectome import ConnectivityMeasure
+    except ImportError as exc:
+        raise SystemExit(
+            "ERROR: la representación 'tangent' requiere el paquete 'nilearn' "
+            "(pip install nilearn)."
+        ) from exc
+
+    series_txr = np.transpose(np.asarray(raw_series, dtype=np.float64), (0, 2, 1))
+    fit_series = [series_txr[i] for i in fit_idx]
+    all_series = [series_txr[i] for i in range(series_txr.shape[0])]
+
+    measure = ConnectivityMeasure(kind="tangent", vectorize=True, discard_diagonal=True)
+    measure.fit(fit_series)
+    vectors = np.asarray(measure.transform(all_series), dtype=np.float64)
+    if not np.isfinite(vectors).all():
+        raise ValueError("La proyección tangente produjo valores no finitos.")
+    return vectors[:, np.newaxis, :].astype(np.float32)
+
+
+def resolve_fold_transform(
+    args: argparse.Namespace, n_rois: int
+) -> tuple[Callable[[np.ndarray, np.ndarray], np.ndarray] | None, tuple[int, int] | None]:
+    """Determina la transformación fold-aware y la forma de salida esperada.
+
+    Devuelve (None, None) para toda representación histórica: el comportamiento
+    de esas rutas no cambia. Solo 'tangent' necesita declarar explícitamente su
+    forma de salida, porque build_representation() le devuelve la serie BOLD
+    cruda (otra forma) en vez del tensor ya listo para entrenar.
+    """
+    if args.representation in ("ordered_scaled", "permuted_scaled"):
+        return _fold_edge_scaler, None
+    if args.representation == "tangent":
+        n_features = n_rois * (n_rois - 1) // 2
+        return _fold_tangent_transform, (1, n_features)
+    return None, None
 
 
 # ---------------------------------------------------------------------------
@@ -633,8 +756,19 @@ def run_config(
     outdir: Path,
     split_plan: Sequence[Mapping[str, Any]],
     subset_id: int | None = None,
+    fold_transform: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
+    output_shape: tuple[int, int] | None = None,
 ) -> dict[str, float]:
-    """Ejecuta la validación cruzada sobre una representación ya construida."""
+    """Ejecuta la validación cruzada sobre una representación ya construida.
+
+    Si ``fold_transform`` es None (todas las representaciones históricas), el
+    comportamiento es exactamente el de antes: Xf ya es el tensor final y cada
+    pliegue solo indexa fit/inner_val/outer_val sobre él. Si se da
+    ``fold_transform``, Xf es una base sin transformar (p. ej. la serie BOLD
+    cruda para 'tangent') y, dentro de cada pliegue, ``fold_transform(Xf,
+    fit_idx)`` produce el tensor de ESE pliegue para todos los sujetos —
+    ajustado solo con fit_idx, aplicado sin reajustar a inner_val/outer_val.
+    """
 
     import keras
     from keras.callbacks import EarlyStopping
@@ -648,7 +782,11 @@ def run_config(
     if not np.isfinite(Xf).all():
         raise ValueError("La representación contiene NaN o infinitos.")
 
-    n_subjects, n_windows, n_features = Xf.shape
+    n_subjects = Xf.shape[0]
+    if output_shape is not None:
+        n_windows, n_features = output_shape
+    else:
+        n_windows, n_features = Xf.shape[1], Xf.shape[2]
     print(
         f" entrada: {n_subjects} sujetos · {n_windows} ventanas · "
         f"{n_features} características"
@@ -668,6 +806,25 @@ def run_config(
         outer_val_idx = np.asarray(fold_data["outer_val"], dtype=np.int64)
         fold_number = int(fold_data["fold"])
         repeat = int(fold_data["repeat"])
+
+        if fold_transform is not None:
+            Xf_fold = np.asarray(fold_transform(Xf, fit_idx), dtype=np.float32)
+            if Xf_fold.ndim != 3 or Xf_fold.shape[0] != n_subjects:
+                raise ValueError(
+                    f"fold_transform devolvió forma {Xf_fold.shape} en el pliegue "
+                    f"{fold_number}; se esperaban {n_subjects} sujetos en el eje 0."
+                )
+            if output_shape is not None and Xf_fold.shape[1:] != tuple(output_shape):
+                raise ValueError(
+                    f"fold_transform devolvió forma {Xf_fold.shape[1:]} en el pliegue "
+                    f"{fold_number}; se esperaba {output_shape}."
+                )
+            if not np.isfinite(Xf_fold).all():
+                raise ValueError(
+                    f"fold_transform produjo valores no finitos en el pliegue {fold_number}."
+                )
+        else:
+            Xf_fold = Xf
 
         # Evita acumulación de grafos entre pliegues. La semilla se fija después
         # de limpiar la sesión para conservar una inicialización reproducible.
@@ -693,9 +850,9 @@ def run_config(
         )
 
         history = model.fit(
-            Xf[fit_idx],
+            Xf_fold[fit_idx],
             y[fit_idx],
-            validation_data=(Xf[inner_val_idx], y[inner_val_idx]),
+            validation_data=(Xf_fold[inner_val_idx], y[inner_val_idx]),
             epochs=args.epochs,
             batch_size=args.batch_size,
             class_weight=class_weight,
@@ -716,10 +873,10 @@ def run_config(
         best_epoch = int(np.argmin(history.history["val_loss"])) + 1
 
         # El pliegue externo se utiliza aquí por primera vez.
-        train_metrics, _ = evaluate(model, Xf[outer_train], y[outer_train])
+        train_metrics, _ = evaluate(model, Xf_fold[outer_train], y[outer_train])
         val_metrics, probabilities = evaluate(
             model,
-            Xf[outer_val_idx],
+            Xf_fold[outer_val_idx],
             y[outer_val_idx],
         )
 
@@ -905,7 +1062,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--representation",
         choices=REPRESENTATIONS,
         default="ordered",
-        help="ordered, permuted, mean, mean_std o static",
+        help="ver docs/methodology.md; static/partial/shrunk/tangent no llevan ventana",
     )
     data_group.add_argument(
         "--representation-seed",
@@ -1263,7 +1420,7 @@ def main(argv: Sequence[str] | None = None) -> str | None:
         "roi_indices_hash": indices_hash(roi_idx),
         "representation": args.representation,
         "representation_seed": args.representation_seed
-        if args.representation == "permuted"
+        if args.representation in ("permuted", "permuted_scaled")
         else None,
         "windowing": window_identity,
         "fisher_z": bool(args.fisher_z),
@@ -1413,6 +1570,7 @@ def main(argv: Sequence[str] | None = None) -> str | None:
             )
             for warning in warnings:
                 print(f" AVISO DE ENVENTANADO: {warning}")
+            fold_transform, output_shape = resolve_fold_transform(args, subset.size)
             result = run_config(
                 Xf,
                 labels,
@@ -1421,14 +1579,19 @@ def main(argv: Sequence[str] | None = None) -> str | None:
                 outdir,
                 split_plan,
                 subset_id=subset_number,
+                fold_transform=fold_transform,
+                output_shape=output_shape,
+            )
+            n_model_windows, n_model_features = (
+                output_shape if output_shape is not None else (Xf.shape[1], Xf.shape[2])
             )
             summary.append(
                 {
                     "set": subset_number,
                     "rois": json.dumps(subset.tolist()),
                     "roi_indices_hash": indices_hash(subset),
-                    "n_model_windows": int(Xf.shape[1]),
-                    "n_features": int(Xf.shape[2]),
+                    "n_model_windows": int(n_model_windows),
+                    "n_features": int(n_model_features),
                     "median_adjacent_similarity": diagnostics.get(
                         "median_adjacent_similarity"
                     ),
@@ -1468,14 +1631,21 @@ def main(argv: Sequence[str] | None = None) -> str | None:
         )
         config["windowing_diagnostics"] = diagnostics
         config["methodological_warnings"] = warnings
-        config["n_windows"] = int(Xf.shape[1])
-        config["n_features"] = int(Xf.shape[2])
-        config["input_shape"] = [int(Xf.shape[1]), int(Xf.shape[2])]
+        fold_transform, output_shape = resolve_fold_transform(args, roi_idx.size)
+        n_model_windows, n_model_features = (
+            output_shape if output_shape is not None else (Xf.shape[1], Xf.shape[2])
+        )
+        config["n_windows"] = int(n_model_windows)
+        config["n_features"] = int(n_model_features)
+        config["input_shape"] = [int(n_model_windows), int(n_model_features)]
         write_config(outdir / "config.json", config)
 
         for warning in warnings:
             print(f" AVISO DE ENVENTANADO: {warning}")
-        run_config(Xf, labels, subjects, args, outdir, split_plan)
+        run_config(
+            Xf, labels, subjects, args, outdir, split_plan,
+            fold_transform=fold_transform, output_shape=output_shape,
+        )
         write_run_summary(outdir, config)
 
     print(f"\nResultados en {outdir}")

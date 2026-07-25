@@ -2,9 +2,11 @@
 
 Computational optimizations in the pipeline. None of them changes the methodological workflow or the reported metrics.
 
-## Connectivity is built once
+## Connectivity is built once — except three fold-local representations
 
 Connectivity is generated during data preparation and reused across all folds and repetitions, so identical matrices are never recomputed. In `run_queue.py --in-process`, configurations that share data and windowing also reuse it through the in-memory cache. Building it is cheap anyway: from ~40 ms (12 ROIs) to ~2 s (116 ROIs).
+
+This does not hold for `ordered_scaled`, `permuted_scaled`, and `tangent`: their value depends on which subjects fall in `fit` for a given fold, so `run_config()` recomputes them once per fold via a `fold_transform` hook (see `methodology.md`). For the `_scaled` variants this is a cheap array rescale. For `tangent` it additionally fits a Ledoit-Wolf covariance and a geometric (Fréchet) reference per fold — more than the other representations, though still small next to a training run's cost at 12 ROIs; this has not been benchmarked at 116 ROIs, where the covariance estimation and the reference iteration both grow with ROI count.
 
 ## Windowing
 

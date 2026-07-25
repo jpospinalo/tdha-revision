@@ -11,9 +11,11 @@ Los argumentos coinciden con los de ``run_experiment.py``: el enventanado se def
 en segundos (``--window-seconds`` / ``--step-seconds`` u ``--overlap``) o en TR
 (``--window-tr`` / ``--step-tr``), pero no en ambas unidades a la vez. La
 representación usa los mismos nombres que el ejecutor (``ordered``, ``permuted``,
-``mean``, ``mean_std``, ``static``, ``partial``, ``shrunk``, ``hybrid``); con
-``static``, ``partial`` y ``shrunk`` se omiten los parámetros de ventana
-automáticamente (usan toda la serie, sin ventanas).
+``mean``, ``mean_std``, ``static``, ``partial``, ``shrunk``, ``hybrid``,
+``ordered_scaled``, ``permuted_scaled``, ``tangent``); con ``static``, ``partial``,
+``shrunk`` y ``tangent`` se omiten los parámetros de ventana automáticamente (usan
+toda la serie, sin ventanas). ``ordered_scaled`` y ``permuted_scaled`` sí son
+dinámicas y sí llevan parámetros de ventana, igual que ``ordered``/``permuted``.
 
 Cualquier argumento no reconocido se reenvía tal cual a ``run_experiment.py`` (por
 ejemplo ``--n-splits 5`` o ``--class-weight``), aplicándose a todas las corridas.
@@ -49,7 +51,10 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
-REPRESENTATIONS = ("ordered", "permuted", "mean", "mean_std", "static", "partial", "shrunk", "hybrid")
+REPRESENTATIONS = (
+    "ordered", "permuted", "mean", "mean_std", "static", "partial", "shrunk", "hybrid",
+    "ordered_scaled", "permuted_scaled", "tangent",
+)
 WINDOW_SHAPES = ("rectangular", "gaussian")
 
 
@@ -158,11 +163,12 @@ def build_arg_lists(args: argparse.Namespace, passthrough: Sequence[str]) -> lis
         if model:
             exp += ["--model", str(model)]
 
-        sin_ventana = rep in ("static", "partial", "shrunk")
+        sin_ventana = rep in ("static", "partial", "shrunk", "tangent")
         if rep:
             exp += ["--representation", rep]
 
-        # 'static', 'partial' y 'shrunk' usan toda la serie: no llevan parámetros de ventana.
+        # 'static', 'partial', 'shrunk' y 'tangent' usan toda la serie: no llevan
+        # parámetros de ventana. 'ordered_scaled'/'permuted_scaled' sí son dinámicas.
         if not sin_ventana:
             if w_s is not None:
                 exp += ["--window-seconds", str(w_s)]

@@ -370,17 +370,49 @@ def paired_stats(root: str | Path, runs: dict[Any, str], metric: str = "accuracy
 
     values: dict[Any, np.ndarray] = {}
     splits: set[int] = set()
+    reference_index: pd.Index | None = None
     for key, run_id in runs.items():
-        frame = pd.read_csv(Path(root) / run_id / "metrics_val.csv").sort_values("fold")
-        if metric not in frame:
-            raise ValueError(f"La métrica {metric!r} no existe en {run_id}.")
-        values[key] = frame[metric].to_numpy(dtype=float)
+        frame = pd.read_csv(Path(root) / run_id / "metrics_val.csv")
+        required = {"repeat", "fold", metric}
+        missing_columns = required - set(frame.columns)
+        if missing_columns:
+            raise ValueError(
+                f"{run_id}: faltan columnas requeridas {sorted(missing_columns)}"
+            )
+        if frame.duplicated(["repeat", "fold"]).any():
+            duplicated = frame.loc[
+                frame.duplicated(["repeat", "fold"], keep=False),
+                ["repeat", "fold"],
+            ]
+            raise ValueError(
+                f"{run_id}: claves repeat/fold duplicadas:\n"
+                f"{duplicated.to_string(index=False)}"
+            )
+        # Pareamos por (repeat, fold) explícitamente en vez de confiar en que
+        # ordenar por 'fold' y comparar solo la longitud alinee las mismas
+        # particiones entre corridas — esa suposición se cumple hoy porque el
+        # generador numera 'fold' de forma global y única, pero no está
+        # garantizada por el formato del archivo.
+        series = (
+            frame.set_index(["repeat", "fold"])[metric]
+            .sort_index()
+            .astype(float)
+        )
+        if reference_index is None:
+            reference_index = series.index
+        elif not series.index.equals(reference_index):
+            missing = reference_index.difference(series.index).tolist()
+            extra = series.index.difference(reference_index).tolist()
+            raise ValueError(
+                f"{run_id}: los pliegues no coinciden con la corrida de referencia. "
+                f"Faltantes={missing}; adicionales={extra}"
+            )
+        if not np.isfinite(series.to_numpy()).all():
+            raise ValueError(f"{run_id}: la métrica {metric!r} contiene NaN o infinitos.")
+        values[key] = series.to_numpy()
         k = _infer_n_splits(frame)
         if k is not None:
             splits.add(k)
-    lengths = {k: len(v) for k, v in values.items()}
-    if len(set(lengths.values())) > 1:
-        raise ValueError(f"Número de pliegues distinto entre corridas: {lengths}")
 
     n_splits = splits.pop() if len(splits) == 1 else None
     if len(splits) > 1:

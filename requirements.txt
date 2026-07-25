@@ -10,5 +10,8 @@ joblib>=1.3
 scipy>=1.11
 statsmodels>=0.14
 
+# Representación 'tangent' (proyección en espacio tangente, referencia por pliegue)
+nilearn>=0.10
+
 # Gráficos del notebook
 matplotlib>=3.7

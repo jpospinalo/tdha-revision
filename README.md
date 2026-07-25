@@ -90,6 +90,11 @@ Nadeau-Bengio (corrige por que los pliegues de una k-fold repetida no son
 observaciones independientes) más corrección de Holm entre contrastes. `--stats`
 también imprime un ANOVA de medidas repetidas y un t-test pareado ingenuo, pero
 ambos quedan etiquetados como exploratorios/de referencia, no como el veredicto.
+Las corridas se emparejan por un merge explícito de `(repeat, fold)`, no por
+posición tras ordenar: si a una corrida le faltan columnas, tiene claves
+`repeat`/`fold` duplicadas, o sus pliegues no coinciden exactamente con los de la
+otra corrida, `--stats` falla con un error explícito en vez de comparar mal en
+silencio.
 
 **Sin fuga en la selección de época.** Dentro de cada pliegue se aparta un 15 % del
 entrenamiento para el early stopping. El pliegue de validación externo solo se usa en
@@ -170,19 +175,25 @@ y `brainnetcnn`. Las tres últimas son útiles cuando el orden temporal no aport
 matriz de conectividad con filtros topológicos (edge-to-edge / edge-to-node).
 
 `brainnetcnn` sirve con cualquier representación de una sola matriz por sujeto
-(`static`, `partial`, `shrunk`, `mean`) y con `ordered`/`permuted` (trata cada ventana
-como un canal fijo, sin modelar su orden temporal). **No** sirve con `mean_std` ni
-`hybrid`: ambas duplican o multiplican las características por conexión y el resultado
-ya no corresponde al triángulo superior de una matriz cuadrada.
+(`static`, `partial`, `shrunk`, `mean`) y con `ordered`/`permuted`/sus variantes
+`_scaled` (trata cada ventana como un canal fijo, sin modelar su orden temporal). **No**
+sirve con `mean_std` ni `hybrid`: ambas duplican o multiplican las características por
+conexión y el resultado ya no corresponde al triángulo superior de una matriz cuadrada.
+Tampoco sirve con `tangent`: sus coeficientes no son pesos de conexión interpretables
+topológicamente, y se rechaza explícitamente.
 
 Representaciones (`--representation`): `ordered` (secuencia dinámica), `static` (una matriz
 Pearson sobre toda la serie), `partial` (correlación parcial regularizada Ledoit-Wolf, una
 matriz por sujeto), `shrunk` (correlación completa regularizada Ledoit-Wolf, misma
 pregunta que `static` pero más estable con series cortas o muchos ROIs — ver
-`docs/methodology.md`), `hybrid` (estática + media/desviación/cambio de las ventanas),
-`mean` / `mean_std` (resúmenes invariantes al orden) y `permuted` (ventanas barajadas,
-control para saber si el orden discrimina). Si `ordered` y `permuted` rinden igual,
-conviene preferir los modelos y representaciones invariantes al orden.
+`docs/methodology.md`), `tangent` (proyección en espacio tangente vía nilearn, referencia
+ajustada solo con `fit` de cada pliegue; no admite `--fisher-z` ni `brainnetcnn`; requiere
+`pip install nilearn`), `hybrid` (estática + media/desviación/cambio de las ventanas),
+`mean` / `mean_std` (resúmenes invariantes al orden), `permuted` (ventanas barajadas,
+control para saber si el orden discrimina) y `ordered_scaled` / `permuted_scaled`
+(mismas ventanas, reescaladas por conexión dentro de cada pliegue, sin fuga — control
+para separar el efecto de reescalar del efecto de `tangent`). Si `ordered` y `permuted`
+rinden igual, conviene preferir los modelos y representaciones invariantes al orden.
 
 Eficiencia: `--mixed-precision` acelera los modelos grandes (39/116 ROIs, transformer,
 brainnetcnn) en GPU; `run_queue.py --in-process` corre un lote sin reiniciar TensorFlow

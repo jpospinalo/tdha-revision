@@ -8,13 +8,26 @@ Designed and validated for ADHD-200 rs-fMRI ROI time series. The modular design 
 
 ## Connectivity
 
-Pearson correlation (`static`, `ordered`, `permuted`, `mean`, `mean_std`) and two
-Ledoit-Wolf shrinkage estimators: `partial` (regularized partial correlation, isolates
-direct connections) and `shrunk` (regularized full correlation — same question as
-`static`, more stable with short series or many ROIs). No tangent-space parametrization
-yet, which Dadi et al. (2019, *Benchmarking functional connectome-based predictive
-models for resting-state fMRI*) find to be the strongest predictor in their benchmark of
-connectivity measures; no mutual information or other nonlinear measures.
+Pearson correlation (`static`, `ordered`, `permuted`, `mean`, `mean_std`,
+`ordered_scaled`, `permuted_scaled`), two Ledoit-Wolf shrinkage estimators (`partial`:
+regularized partial correlation, isolates direct connections; `shrunk`: regularized full
+correlation — same question as `static`, more stable with short series or many ROIs),
+and tangent-space parametrization (`tangent`, via nilearn), which Dadi et al. (2019,
+*Benchmarking functional connectome-based predictive models for resting-state fMRI*)
+find to be the strongest predictor in their benchmark of connectivity measures. No
+mutual information or other nonlinear measures.
+
+`tangent` is only implemented in its **static** form (one projection per subject,
+against a fit-only group reference) — not the dynamic, per-window version (a tangent
+coordinate per window, forming a sequence). The static form was chosen first because it
+needed far less new machinery (no change to the fold loop's data-dependency structure
+beyond a single fit-only transform) and because it isolates the geometric question from
+the temporal-order question; a dynamic tangent representation, if pursued later, adds a
+second axis of complexity (per-window projection) on top of one (dynamic vs. static)
+that has not yet shown a clear benefit for this dataset — see `validation.md` for the
+`ordered` vs. `static` results this decision was based on. The reference geometric mean
+is nilearn's tested implementation, not a hand-rolled one, to keep the SPD-matrix
+algebra (matrix log/exp, Fréchet mean) off this project's maintenance surface.
 
 ATHENA (the upstream ADHD-200 preprocessing pipeline) does not scrub high-motion
 volumes — it only regresses motion parameters, WM/CSF signal, and a polynomial drift.
@@ -33,10 +46,14 @@ Six architectures are registered: `lstm`, `gru`, `cnn1d`, `transformer`, `deepse
 `brainnetcnn` requires its input to reconstruct into a valid square matrix
 (`n_features = r·(r-1)/2` for some integer `r`). It works with any single-matrix
 representation (`static`, `partial`, `shrunk`, `mean`) and with `ordered`/`permuted`
-(each window becomes a channel, not a modeled time step — see `methodology.md`). It
-does **not** work with `mean_std` or `hybrid`: both concatenate multiple statistics per
-connection, so the feature count no longer corresponds to a triangle and construction
-fails.
+and their `_scaled` variants (each window becomes a channel, not a modeled time step —
+see `methodology.md`). It does **not** work with `mean_std` or `hybrid`: both
+concatenate multiple statistics per connection, so the feature count no longer
+corresponds to a triangle and construction fails. It also does not work with `tangent`,
+rejected explicitly even though its feature count does reconstruct into a square matrix:
+tangent coefficients are geometric deviations from a reference, not edge weights, so
+`brainnetcnn`'s topology-respecting filters would be operating on a quantity they were
+not designed for.
 
 ## Computational cost
 

@@ -197,6 +197,83 @@ def check_representaciones():
     (ok if okH else fail)(f"hybrid: {H.shape} (4×{F})" + ("" if okH else " — forma o valores inválidos"))
 
 
+def check_representaciones_fold_aware():
+    seccion("Representaciones fold-aware (ordered_scaled, permuted_scaled, tangent)")
+    import argparse as _argparse
+    import numpy as np
+    sys.path.insert(0, str(REPO / "src"))
+    import data as D
+    import run_experiment as R
+
+    b = D.load_bold("NYU")
+    idx = D.roi_indices("12")
+    r = len(idx)
+    F = r * (r - 1) // 2
+    n = b["bold"].shape[0]
+    rng = np.random.default_rng(0)
+    fit_idx = np.sort(rng.choice(n, size=n // 2, replace=False))
+    rest_idx = np.setdiff1d(np.arange(n), fit_idx)
+
+    args = _argparse.Namespace(
+        site="NYU", representation="ordered_scaled", fisher_z=False,
+        constant_policy="zero", tr_seconds=None, window_tr=None, step_tr=None,
+        window_seconds=120.0, step_seconds=12.0, overlap=None,
+        window_shape="rectangular", gaussian_sigma=None, representation_seed=1,
+    )
+    spec = R.resolve_temporal_spec(args, n_timepoints=b["bold"].shape[-1])
+    Xf, _, _ = R.build_representation(
+        site="NYU", bold=b["bold"], labels=b["labels"], subjects=b["subjects"],
+        indices=idx, roi_key="12", args=args, spec=spec, use_cache=False,
+    )
+    transform, out_shape = R.resolve_fold_transform(args, r)
+    scaled = transform(Xf, fit_idx)
+    fit_vals = scaled[fit_idx].reshape(-1, scaled.shape[-1])
+    prob = []
+    if out_shape is not None:
+        prob.append("output_shape no debería ser None para ordered_scaled")
+    if not np.isfinite(scaled).all():
+        prob.append("valores no finitos")
+    if np.max(np.abs(fit_vals.mean(axis=0))) > 1e-4:
+        prob.append("media de fit no queda ~0")
+    scaled_perturbed = transform(
+        np.where(np.arange(n)[:, None, None] == rest_idx[0], 999.0, Xf), fit_idx
+    )
+    if not np.allclose(scaled[fit_idx], scaled_perturbed[fit_idx], atol=1e-6):
+        prob.append("¡FUGA! perturbar rest_idx cambió la salida de fit_idx")
+    (fail if prob else ok)("ordered_scaled: sin fuga, fit centrado en 0" + (f" — {'; '.join(prob)}" if prob else ""))
+
+    if importlib.util.find_spec("nilearn") is None:
+        warn("nilearn no está instalado: no se puede probar 'tangent' aquí (pip install nilearn)")
+        return
+
+    args_t = _argparse.Namespace(
+        site="NYU", representation="tangent", fisher_z=False, constant_policy="zero",
+        tr_seconds=None, window_tr=None, step_tr=None, window_seconds=None,
+        step_seconds=None, overlap=None, window_shape="rectangular", gaussian_sigma=None,
+        representation_seed=None,
+    )
+    spec_t = R.resolve_temporal_spec(args_t, n_timepoints=b["bold"].shape[-1])
+    raw, _, _ = R.build_representation(
+        site="NYU", bold=b["bold"], labels=b["labels"], subjects=b["subjects"],
+        indices=idx, roi_key="12", args=args_t, spec=spec_t, use_cache=False,
+    )
+    transform_t, out_shape_t = R.resolve_fold_transform(args_t, r)
+    prob = []
+    if out_shape_t != (1, F):
+        prob.append(f"output_shape {out_shape_t}, se esperaba (1, {F})")
+    Xt = transform_t(raw, fit_idx)
+    if Xt.shape != (n, 1, F):
+        prob.append(f"forma {Xt.shape}")
+    if not np.isfinite(Xt).all():
+        prob.append("valores no finitos")
+    raw_perturbed = raw.copy()
+    raw_perturbed[rest_idx[0]] = rng.normal(size=raw_perturbed[rest_idx[0]].shape) * 50
+    Xt_perturbed = transform_t(raw_perturbed, fit_idx)
+    if not np.allclose(Xt[fit_idx], Xt_perturbed[fit_idx], atol=1e-6):
+        prob.append("¡FUGA! perturbar rest_idx cambió la referencia de fit_idx")
+    (fail if prob else ok)(f"tangent (nilearn): {Xt.shape}, sin fuga" + (f" — {'; '.join(prob)}" if prob else ""))
+
+
 def check_particiones():
     seccion("Particiones de validación cruzada")
     import numpy as np
@@ -282,6 +359,7 @@ def main():
         check_roi_sets()
         check_secuencias()
         check_representaciones()
+        check_representaciones_fold_aware()
         check_particiones()
         check_modelos(args.full)
         if args.full:
