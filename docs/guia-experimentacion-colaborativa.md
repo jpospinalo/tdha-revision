@@ -20,8 +20,12 @@ operativo del notebook, no el contenido metodológico.
    datos; `preflight()` (al final de la celda del constructor de argumentos) valida esta
    configuración concreta contra las particiones reales, sin entrenar.
 4. **Prueba de humo** (sección 4): si `EJECUTAR_PRUEBA_HUMO` es `True`, `prueba_humo()`
-   entrena 2 pliegues, 1 repetición, 3 épocas, en `/tmp` — nunca en la carpeta de
-   resultados. Confirma que el camino completo funciona antes de gastar tiempo de GPU en
+   entrena 2 pliegues, 1 repetición, 3 épocas, con `START_FROM_EPOCH` forzado a 0, en
+   `/tmp` — nunca en la carpeta de resultados. `START_FROM_EPOCH` de la configuración
+   formal (p. ej. un warm-up largo) no se usa en esta prueba: con solo 3 épocas de humo,
+   heredarlo tal cual la haría fallar por `--start-from-epoch` mayor que `--epochs`, sin
+   que eso diga nada sobre si la configuración formal es correcta. Confirma que el camino
+   completo funciona antes de gastar tiempo de GPU en
    la corrida larga.
 5. **La corrida** (sección 5): `ejecutar_corrida()` lanza la configuración de la celda 2
    tal cual — no admite argumentos sueltos ni overrides de última hora. Imprime `RUN_ID`

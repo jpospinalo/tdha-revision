@@ -1325,6 +1325,47 @@ def check_notebook_state_machine():
             "--overwrite y la misma carpeta temporal" + (f" — {'; '.join(prob)}" if prob else "")
         )
 
+        # --- Regresión: prueba_humo() con START_FROM_EPOCH grande en la config formal ---
+        # Bug reportado: construir_argv() no aceptaba un override de
+        # start_from_epoch, así que prueba_humo() (EPOCHS=3) heredaba el
+        # START_FROM_EPOCH de la config formal tal cual — con un warm-up
+        # largo (p. ej. 150, como en un TAG "bce_warmupNNN") la prueba de
+        # humo fallaba con "--start-from-epoch debe ser menor que --epochs"
+        # sin haber entrenado nada, incluso con la configuración formal
+        # correcta. prueba_humo() debe forzar start_from_epoch=0 en su propia
+        # llamada, sin tocar START_FROM_EPOCH de la config formal.
+        mode_warmup: dict = {"run_id_dry_run": "RUN_A"}
+        ns = _preparar_ns(mode_warmup, overrides={"START_FROM_EPOCH": 150})
+        try:
+            resultado = _silencioso(ns["prueba_humo"])
+            llamadas_smoke = [c for c in mode_warmup.get("calls", []) if "--out" in c]
+            prob = []
+            if resultado is not True:
+                prob.append(f"prueba_humo() devolvió {resultado!r}, se esperaba True")
+            if not llamadas_smoke:
+                prob.append("no se registró ninguna llamada al runner con --out")
+            else:
+                argv = llamadas_smoke[0]
+                valor_start = argv[argv.index("--start-from-epoch") + 1] if "--start-from-epoch" in argv else None
+                if valor_start != "0":
+                    prob.append(f"--start-from-epoch en la llamada de humo fue {valor_start!r}, se esperaba '0'")
+            (ok if not prob else fail)(
+                "prueba_humo() con START_FROM_EPOCH=150 en la config formal: fuerza "
+                "--start-from-epoch 0 en su propia llamada y tiene éxito"
+                + (f" — {'; '.join(prob)}" if prob else "")
+            )
+            if ns["CONFIG_NOTEBOOK"]["start_from_epoch"] != 150:
+                fail(
+                    "prueba_humo() con START_FROM_EPOCH=150: CONFIG_NOTEBOOK quedó "
+                    f"alterado a {ns['CONFIG_NOTEBOOK']['start_from_epoch']!r}, se esperaba "
+                    "que la config formal (150) no se tocara"
+                )
+        except RuntimeError as e:
+            fail(
+                "prueba_humo() con START_FROM_EPOCH=150 en la config formal: lanzó "
+                f"RuntimeError en vez de tener éxito — {e}"
+            )
+
         # --- ejecutar_corrida(): run_id no coincide con el de preflight() ---
         ns = _preparar_ns({"run_id_dry_run": "RUN_A", "run_id_formal": "RUN_B"})
         _silencioso(ns["preflight"])
