@@ -328,6 +328,175 @@ def check_particiones():
         f"cada sujeto validado 5 veces ({len(c)}/{len(y)} sujetos)")
 
 
+def _write_schema4_fixture(run_dir: Path) -> None:
+    """Escribe los 5 artefactos mínimos (un pliegue, una fila) de una corrida
+    de esquema 4 completa y válida, sin entrenar nada — usado por
+    check_schema4_artifact_validation() para mutar copias y probar que
+    _validate_schema4_artifacts()/collect() rechazan lo que deben rechazar.
+    """
+    import pandas as pd
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    cfg = {
+        "run_id": run_dir.name, "config_schema_version": 4, "site": "NYU",
+        "early_stopping_monitor": "val_loss", "early_stopping_ab_hash": "fixture0000000",
+    }
+    (run_dir / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    common = {
+        "fold": [1], "repeat": [1], "n_epochs": [3], "best_epoch": [2],
+        "early_stopping_monitor": ["val_loss"],
+        "best_monitor_value": [0.5], "restored_monitor_value": [0.5],
+        "accuracy": [0.7], "loss": [0.5],
+    }
+    pd.DataFrame(common).to_csv(run_dir / "metrics_train.csv", index=False)
+    pd.DataFrame(common).to_csv(run_dir / "metrics_val.csv", index=False)
+    pd.DataFrame({
+        "fold": [1], "repeat": [1], "epoch": [1],
+        "loss": [0.5], "inner_val_loss": [0.5], "bce": [0.4], "inner_val_bce": [0.4],
+    }).to_csv(run_dir / "history.csv", index=False)
+    pd.DataFrame({
+        "fold": [1], "repeat": [1], "subject_id": ["s1"], "y_true": [1], "y_prob": [0.6],
+    }).to_csv(run_dir / "predictions_val.csv", index=False)
+    pd.DataFrame({
+        "fold": [1], "repeat": [1], "subject_id": ["s1"], "split": ["fit"],
+    }).to_csv(run_dir / "folds.csv", index=False)
+
+
+def check_schema4_artifact_validation():
+    """Regresiones de _validate_schema4_artifacts()/collect() con fixtures
+    CSV escritos a mano, sin entrenar ni importar TensorFlow. Cubre los dos
+    defectos de la corrección v11 (ver docs/validation.md): (1)
+    predictions_val.csv/folds.csv no tenían ninguna columna obligatoria, así
+    que podían perder subject_id/split/epoch sin que nada lo detectara; (2)
+    la comprobación de finitud usaba frame[present].stack(), que descarta los
+    NaN por defecto (dropna=True) antes de que np.isfinite() los viera, así
+    que un best_monitor_value=NaN pasaba inadvertido.
+    """
+    seccion("Validación de artefactos de esquema 4 (fixtures, sin entrenar)")
+    import shutil
+    import pandas as pd
+    sys.path.insert(0, str(REPO / "src"))
+    import compile_results as C
+
+    root = Path("/tmp/verify_schema4_fixtures")
+    if root.exists():
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+
+    # --- Caso A: fixture válido ---
+    root_a = root / "caso_a"
+    run_a = root_a / "run_valido"
+    _write_schema4_fixture(run_a)
+    problems = C._validate_schema4_artifacts(run_a, "")
+    (ok if not problems else fail)(
+        "caso A (válido): _validate_schema4_artifacts() devuelve []"
+        + (f" — {problems}" if problems else "")
+    )
+    try:
+        df_a = C.collect(root_a, strict=True)
+        prob = []
+        if len(df_a) != 1:
+            prob.append(f"se esperaba 1 fila, hay {len(df_a)}")
+        if df_a.attrs.get("collection_warnings"):
+            prob.append(f"collection_warnings no vacío: {df_a.attrs.get('collection_warnings')}")
+        (ok if not prob else fail)(
+            "caso A: collect(strict=True) acepta el fixture válido, 1 fila, sin avisos"
+            + (f" — {'; '.join(prob)}" if prob else "")
+        )
+    except Exception as e:
+        fail(
+            "caso A: collect(strict=True) lanzó una excepción inesperada sobre un "
+            f"fixture válido: {type(e).__name__}: {e}"
+        )
+
+    # --- Caso B: columnas estructurales ausentes en 3 artefactos distintos ---
+    root_b = root / "caso_b"
+    run_b = root_b / "run_columnas_ausentes"
+    _write_schema4_fixture(run_b)
+    drops = [("predictions_val.csv", "subject_id"), ("folds.csv", "split"), ("history.csv", "epoch")]
+    for filename, column in drops:
+        path = run_b / filename
+        pd.read_csv(path).drop(columns=[column]).to_csv(path, index=False)
+
+    problems = C._validate_schema4_artifacts(run_b, "")
+    texto = " | ".join(problems)
+    detectadas = sum(1 for _, column in drops if column in texto)
+    (ok if detectadas == len(drops) else fail)(
+        f"caso B: _validate_schema4_artifacts() informa las {len(drops)} columnas ausentes"
+        + (f" — solo detectó {detectadas}/{len(drops)}: {problems}" if detectadas != len(drops) else "")
+    )
+    try:
+        C.collect(root_b, strict=True)
+        fail("caso B: collect(strict=True) no lanzó ValueError con columnas estructurales ausentes")
+    except ValueError:
+        ok("caso B: collect(strict=True) lanza ValueError con columnas estructurales ausentes")
+    df_b = C.collect(root_b, strict=False)
+    prob = []
+    if not df_b.empty:
+        prob.append(f"se esperaban 0 filas, hay {len(df_b)}")
+    if not df_b.attrs.get("collection_warnings"):
+        prob.append("collection_warnings vacío, se esperaba el diagnóstico de la corrida defectuosa")
+    (ok if not prob else fail)(
+        "caso B: collect(strict=False) descarta la corrida y registra el diagnóstico"
+        + (f" — {'; '.join(prob)}" if prob else "")
+    )
+
+    # --- Caso C: NaN en un campo numérico obligatorio (un subcaso por campo) ---
+    subcasos = [
+        ("metrics_val.csv", "best_monitor_value"),
+        ("history.csv", "inner_val_bce"),
+        ("predictions_val.csv", "y_prob"),
+    ]
+    for i, (filename, column) in enumerate(subcasos):
+        root_c = root / f"caso_c_{i}"
+        run_c = root_c / "run_nan"
+        _write_schema4_fixture(run_c)
+        path = run_c / filename
+        frame = pd.read_csv(path)
+        frame.loc[0, column] = float("nan")
+        frame.to_csv(path, index=False)
+
+        problems = C._validate_schema4_artifacts(run_c, "")
+        (ok if problems else fail)(
+            f"caso C ({filename}/{column}=NaN): _validate_schema4_artifacts() detecta el NaN"
+            + ("" if problems else " — devolvió []")
+        )
+        try:
+            C.collect(root_c, strict=True)
+            fail(f"caso C ({filename}/{column}=NaN): collect(strict=True) no lanzó ValueError")
+        except ValueError:
+            ok(f"caso C ({filename}/{column}=NaN): collect(strict=True) lanza ValueError")
+
+    # --- Caso D: compatibilidad histórica (esquema 2, sin contrato de esquema 4) ---
+    root_d = root / "caso_d"
+    run_d = root_d / "run_esquema2"
+    run_d.mkdir(parents=True)
+    cfg_d = {"run_id": "run_esquema2", "config_schema_version": 2, "site": "NYU"}
+    (run_d / "config.json").write_text(json.dumps(cfg_d), encoding="utf-8")
+    minimal = {"accuracy": [0.7], "loss": [0.5]}
+    pd.DataFrame(minimal).to_csv(run_d / "metrics_train.csv", index=False)
+    pd.DataFrame(minimal).to_csv(run_d / "metrics_val.csv", index=False)
+
+    df_d = C.collect(root_d, strict=True)
+    prob = []
+    if len(df_d) != 1:
+        prob.append(f"se esperaba 1 fila, hay {len(df_d)}")
+    if not df_d.attrs.get("collection_notices"):
+        prob.append("collection_notices vacío, se esperaba el aviso histórico")
+    if df_d.attrs.get("collection_warnings"):
+        prob.append(
+            f"collection_warnings no vacío para una corrida histórica válida: "
+            f"{df_d.attrs.get('collection_warnings')}"
+        )
+    (ok if not prob else fail)(
+        "caso D: una corrida de esquema 2 compila de forma descriptiva (1 fila) con el "
+        "aviso histórico, sin pasar por el contrato de esquema 4"
+        + (f" — {'; '.join(prob)}" if prob else "")
+    )
+
+    shutil.rmtree(root)
+
+
 def check_modelos(full):
     seccion("Arquitecturas")
     sys.path.insert(0, str(REPO / "src"))
@@ -691,6 +860,7 @@ def main():
         check_representaciones()
         check_representaciones_fold_aware()
         check_particiones()
+        check_schema4_artifact_validation()
         check_modelos(args.full)
         if args.full:
             check_entrenamiento()

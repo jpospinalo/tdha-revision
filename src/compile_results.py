@@ -289,16 +289,30 @@ def _validate_schema4_artifacts(run_dir: Path, suffix: str) -> list[str]:
     # Columnas exigidas por archivo, y de esas, cuáles deben además ser
     # finitas. No se exige (ni se audita finitud en) el resto de columnas:
     # varias son opcionales por diseño (p. ej. class_weight_0/1 solo se
-    # rellenan con --class-weight) y NaN ahí es legítimo, no un fallo.
-    required_by_file = {
-        "metrics_train": {"early_stopping_monitor", "best_monitor_value", "restored_monitor_value"},
-        "metrics_val": {"early_stopping_monitor", "best_monitor_value", "restored_monitor_value"},
-        "history": {"loss", "inner_val_loss", "bce", "inner_val_bce"},
+    # rellenan con --class-weight) y NaN ahí es legítimo, no un fallo. Los
+    # identificadores estructurales (fold/repeat/subject_id/split/epoch) se
+    # exigen en los cinco artefactos, no solo en metrics_train/val/history:
+    # sin ellos, predictions_val.csv y folds.csv podían faltar por completo
+    # sus columnas y aun así "pasar" la validación.
+    metrics_common = {
+        "fold", "repeat", "n_epochs", "best_epoch",
+        "early_stopping_monitor", "best_monitor_value", "restored_monitor_value",
     }
+    required_by_file = {
+        "metrics_train": metrics_common,
+        "metrics_val": metrics_common,
+        "history": {"fold", "repeat", "epoch", "loss", "inner_val_loss", "bce", "inner_val_bce"},
+        "predictions_val": {"fold", "repeat", "subject_id", "y_true", "y_prob"},
+        "folds": {"fold", "repeat", "subject_id", "split"},
+    }
+    # subject_id, split y early_stopping_monitor son texto y no se convierten
+    # a número; el resto de columnas obligatorias sí debe ser finito.
     finite_by_file = {
-        "metrics_train": {"best_monitor_value", "restored_monitor_value"},
-        "metrics_val": {"best_monitor_value", "restored_monitor_value", "best_epoch"},
-        "history": {"loss", "inner_val_loss", "bce", "inner_val_bce"},
+        "metrics_train": {"fold", "repeat", "n_epochs", "best_epoch", "best_monitor_value", "restored_monitor_value"},
+        "metrics_val": {"fold", "repeat", "n_epochs", "best_epoch", "best_monitor_value", "restored_monitor_value"},
+        "history": {"fold", "repeat", "epoch", "loss", "inner_val_loss", "bce", "inner_val_bce"},
+        "predictions_val": {"fold", "repeat", "y_true", "y_prob"},
+        "folds": {"fold", "repeat"},
     }
     for name, required in required_by_file.items():
         missing = required - set(frames[name].columns)
@@ -316,9 +330,14 @@ def _validate_schema4_artifacts(run_dir: Path, suffix: str) -> list[str]:
         present = [c for c in columns if c in frame.columns]
         if not present:
             continue
-        values = pd.to_numeric(frame[present].stack(), errors="coerce").to_numpy()
-        if values.size and not np.isfinite(values).all():
-            problems.append(f"{name}{suffix}.csv: valores no finitos en {sorted(present)}")
+        # frame[present].stack() descartaría los NaN por defecto (dropna=True)
+        # antes de que np.isfinite() los viera — así es como un
+        # best_monitor_value=NaN pasaba inadvertido. to_numeric + coerce
+        # conserva cada posición (incluida una celda vacía o con texto no
+        # numérico, que también se vuelve NaN) para que isfinite() la audite.
+        numeric = frame[present].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
+        if numeric.size == 0 or not np.isfinite(numeric).all():
+            problems.append(f"{name}{suffix}.csv: valores no finitos o no numéricos en {sorted(present)}")
 
     return problems
 
