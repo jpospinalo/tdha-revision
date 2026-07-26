@@ -428,8 +428,22 @@ def check_schema4_artifact_validation():
     try:
         C.collect(root_b, strict=True)
         fail("caso B: collect(strict=True) no lanzó ValueError con columnas estructurales ausentes")
-    except ValueError:
-        ok("caso B: collect(strict=True) lanza ValueError con columnas estructurales ausentes")
+    except ValueError as e:
+        # No basta con "lanzó ValueError": si la excepción viniera de otra causa,
+        # este chequeo pasaría sin haber ejercido de verdad la ruta que estamos
+        # probando. Se exige que el mensaje identifique la corrida y las tres
+        # columnas ausentes.
+        msg = str(e)
+        prob = []
+        if run_b.name not in msg:
+            prob.append(f"el mensaje no identifica la corrida ({run_b.name!r})")
+        faltan_en_msg = [column for _, column in drops if column not in msg]
+        if faltan_en_msg:
+            prob.append(f"el mensaje no menciona: {faltan_en_msg}")
+        (ok if not prob else fail)(
+            "caso B: collect(strict=True) lanza ValueError identificando la corrida y "
+            "las columnas ausentes" + (f" — {'; '.join(prob)}; mensaje={msg!r}" if prob else "")
+        )
     df_b = C.collect(root_b, strict=False)
     prob = []
     if not df_b.empty:
@@ -457,15 +471,29 @@ def check_schema4_artifact_validation():
         frame.to_csv(path, index=False)
 
         problems = C._validate_schema4_artifacts(run_c, "")
-        (ok if problems else fail)(
-            f"caso C ({filename}/{column}=NaN): _validate_schema4_artifacts() detecta el NaN"
-            + ("" if problems else " — devolvió []")
+        base_name = filename.replace(".csv", "")
+        detectado = any(base_name in p and column in p for p in problems)
+        (ok if detectado else fail)(
+            f"caso C ({filename}/{column}=NaN): _validate_schema4_artifacts() señala "
+            f"{filename} y {column}" + ("" if detectado else f" — problems={problems}")
         )
         try:
             C.collect(root_c, strict=True)
             fail(f"caso C ({filename}/{column}=NaN): collect(strict=True) no lanzó ValueError")
-        except ValueError:
-            ok(f"caso C ({filename}/{column}=NaN): collect(strict=True) lanza ValueError")
+        except ValueError as e:
+            # Igual que en el caso B: se exige que el mensaje señale la corrida y la
+            # columna alterada, no solo que haya llegado *algún* ValueError.
+            msg = str(e)
+            prob = []
+            if run_c.name not in msg:
+                prob.append(f"el mensaje no identifica la corrida ({run_c.name!r})")
+            if column not in msg:
+                prob.append(f"el mensaje no menciona la columna alterada ({column!r})")
+            (ok if not prob else fail)(
+                f"caso C ({filename}/{column}=NaN): collect(strict=True) lanza ValueError "
+                "identificando la corrida y la columna"
+                + (f" — {'; '.join(prob)}; mensaje={msg!r}" if prob else "")
+            )
 
     # --- Caso D: compatibilidad histórica (esquema 2, sin contrato de esquema 4) ---
     root_d = root / "caso_d"
