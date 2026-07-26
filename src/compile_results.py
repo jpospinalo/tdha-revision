@@ -288,6 +288,26 @@ def summarize(run_dir: Path, cfg: dict[str, Any], suffix: str = "") -> dict[str,
     return row
 
 
+def _parse_schema_version(cfg: dict[str, Any]) -> int | None:
+    """Devuelve ``config_schema_version`` como ``int`` válido (``>= 1``), o
+    ``None`` si el campo es de un tipo inaceptable (texto, booleano, decimal)
+    o menor que 1. Ausente se interpreta como el valor histórico ``1``.
+
+    Único lugar donde se hace esta conversión — la usan tanto
+    ``validate_run_artifacts()`` como ``collect()``, para que un
+    ``config_schema_version`` corrupto no dependa de que cada llamador repita
+    la misma comprobación de tipo antes de comparar contra el entero 4.
+    """
+    schema_raw = cfg.get("config_schema_version", 1)
+    if (
+        isinstance(schema_raw, bool)
+        or not isinstance(schema_raw, (int, np.integer))
+        or int(schema_raw) < 1
+    ):
+        return None
+    return int(schema_raw)
+
+
 def validate_run_artifacts(
     run_dir: Path, suffix: str = "", cfg: dict[str, Any] | None = None
 ) -> list[str]:
@@ -354,9 +374,37 @@ def validate_run_artifacts(
     if problems:
         return problems
 
-    schema = cfg.get("config_schema_version", 1)
+    # config_schema_version debe validarse antes de comparar con el entero 4:
+    # un valor textual o booleano hacía que "schema < 4" lanzara TypeError
+    # (o, con un booleano, comparara silenciosamente contra 0/1).
+    schema = _parse_schema_version(cfg)
+    if schema is None:
+        return [
+            "config.json: config_schema_version debe ser un entero >= 1; "
+            f"se recibió {cfg.get('config_schema_version', 1)!r}"
+        ]
     if schema < 4:
         return problems
+
+    # n_splits/n_repeats/n_subjects activan las comprobaciones de cobertura
+    # de más abajo (filas esperadas, unión de particiones); si faltan o son
+    # inválidos, esas comprobaciones se desactivaban en silencio en vez de
+    # señalar el problema. Se acumulan junto con el resto de columnas
+    # estructurales (no se corta en el primer campo inválido) para que un
+    # config.json con los tres campos rotos los reporte los tres a la vez.
+    campo_specs = (("n_splits", 2), ("n_repeats", 1), ("n_subjects", 1))
+    for campo, minimo in campo_specs:
+        valor = cfg.get(campo)
+        if (
+            campo not in cfg
+            or isinstance(valor, bool)
+            or not isinstance(valor, (int, np.integer))
+            or int(valor) < minimo
+        ):
+            problems.append(
+                f"config.json: {campo} debe ser un entero >= {minimo}; "
+                f"se recibió {valor!r}"
+            )
 
     # Columnas exigidas por archivo, y de esas, cuáles deben además ser
     # finitas. No se exige (ni se audita finitud en) el resto de columnas:
@@ -441,8 +489,15 @@ def validate_run_artifacts(
     pred, folds = frames["predictions_val"], frames["folds"]
 
     try:
-        n_splits, n_repeats = cfg.get("n_splits"), cfg.get("n_repeats")
-        expected_rows = n_splits * n_repeats if n_splits and n_repeats else None
+        # n_splits/n_repeats/n_subjects ya se validaron como enteros en rango
+        # más arriba (y si no lo eran, la función ya retornó antes de llegar
+        # aquí) — se usan directamente, sin un "if n_splits and n_repeats"
+        # que trataría un 0 inválido como "no lo sé" y apagaría en silencio
+        # la comprobación de expected_rows.
+        n_splits, n_repeats, n_subjects = (
+            int(cfg["n_splits"]), int(cfg["n_repeats"]), int(cfg["n_subjects"]),
+        )
+        expected_rows = n_splits * n_repeats
 
         # Claves únicas por archivo (sin filas duplicadas). Antes solo se
         # comprobaba esto para metrics_train/metrics_val; una fila repetida en
@@ -481,7 +536,7 @@ def validate_run_artifacts(
             if set(cols) <= set(frame.columns):
                 fold_repeat_by_file[name] = set(map(tuple, frame[cols].to_numpy()))
         reference = set(map(tuple, val[["repeat", "fold"]].to_numpy()))
-        if expected_rows is not None and len(reference) != expected_rows:
+        if len(reference) != expected_rows:
             problems.append(
                 f"metrics_val{suffix}.csv: {len(reference)} pares (repeat, fold) únicos, "
                 f"se esperaban {expected_rows} (n_splits={n_splits} × n_repeats={n_repeats})"
@@ -558,14 +613,13 @@ def validate_run_artifacts(
 
         # Cobertura de n_subjects por repetición (los duplicados de subject_id
         # ya se descartaron arriba, en la comprobación de clave única).
-        n_subjects = cfg.get("n_subjects")
-        if n_subjects is not None:
-            for repeat, group in pred.groupby("repeat"):
-                if group["subject_id"].nunique() != n_subjects:
-                    problems.append(
-                        f"predictions_val{suffix}.csv, repetición {repeat}: "
-                        f"{group['subject_id'].nunique()} sujetos, se esperaban {n_subjects}"
-                    )
+        # n_subjects ya se validó como entero >= 1 más arriba.
+        for repeat, group in pred.groupby("repeat"):
+            if group["subject_id"].nunique() != n_subjects:
+                problems.append(
+                    f"predictions_val{suffix}.csv, repetición {repeat}: "
+                    f"{group['subject_id'].nunique()} sujetos, se esperaban {n_subjects}"
+                )
 
         # y_true debe ser el mismo para un sujeto en todas las repeticiones en
         # las que aparece: es una etiqueta del sujeto, no de la repetición.
@@ -599,6 +653,20 @@ def validate_run_artifacts(
         # n_fit/n_inner_val/n_outer_val registrados en metrics_val.
         conjuntos_por_grupo: dict[tuple, frozenset] = {}
         for (fold_v, repeat_v), g in folds.groupby(["fold", "repeat"]):
+            # Los tres splits deben estar presentes en cada (repeat, fold),
+            # independientemente de n_fit/n_inner_val/n_outer_val: un
+            # artefacto manipulado puede mover todas las filas de un split a
+            # otro y ajustar esos conteos para que sigan coincidiendo, sin
+            # que ese split deje de faltar del todo. present_splits/
+            # missing_splits se calcula directamente sobre las filas de este
+            # grupo, no sobre los tamaños declarados.
+            present_splits = set(g["split"])
+            missing_splits = valores_permitidos - present_splits
+            if missing_splits:
+                problems.append(
+                    f"f{fold_v}r{repeat_v}: faltan splits {sorted(missing_splits)} "
+                    f"(presentes: {sorted(present_splits)})"
+                )
             sets = {s: set(g.loc[g["split"] == s, "subject_id"]) for s in valores_permitidos}
             conjuntos_por_grupo[(fold_v, repeat_v)] = frozenset(g["subject_id"])
             if sets["fit"] & sets["inner_val"]:
@@ -608,7 +676,7 @@ def validate_run_artifacts(
             if sets["inner_val"] & sets["outer_val"]:
                 problems.append(f"f{fold_v}r{repeat_v}: inner_val∩outer_val no vacío")
             union_total = sets["fit"] | sets["inner_val"] | sets["outer_val"]
-            if n_subjects is not None and len(union_total) != n_subjects:
+            if len(union_total) != n_subjects:
                 problems.append(
                     f"f{fold_v}r{repeat_v}: fit ∪ inner_val ∪ outer_val tiene "
                     f"{len(union_total)} sujetos, se esperaban n_subjects={n_subjects}"
@@ -667,7 +735,18 @@ def collect(root: str | Path, *, strict: bool = False) -> pd.DataFrame:
             if not val_files:
                 errors.append(f"{run_dir.name}: corrida incompleta, sin metrics_val*.csv")
                 continue
-            schema = cfg.get("config_schema_version", 1)
+            # _parse_schema_version() evita comparar un config_schema_version
+            # de tipo inválido (texto, booleano) contra el entero 4 más abajo
+            # — esa comparación lanzaba TypeError, que el except genérico de
+            # este bucle capturaba igual, pero con el texto crudo de la
+            # excepción de Python en vez de un diagnóstico que nombre el campo.
+            schema = _parse_schema_version(cfg)
+            if schema is None:
+                errors.append(
+                    f"{run_dir.name}: config.json: config_schema_version debe ser un "
+                    f"entero >= 1; se recibió {cfg.get('config_schema_version', 1)!r}"
+                )
+                continue
             for path in val_files:
                 suffix = _suffix_from_metrics(path)
                 train_path = run_dir / f"metrics_train{suffix}.csv"

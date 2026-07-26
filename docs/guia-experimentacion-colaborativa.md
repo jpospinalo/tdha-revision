@@ -258,16 +258,17 @@ válida — ver la sección siguiente.
 
 La celda de validación (después de la sección de resultados) llama a
 `compile_results.validate_run_artifacts(RUTA)` y exige que no reporte ningún problema.
-Entre otras cosas, comprueba: que `metrics_train.csv`/`metrics_val.csv` tengan
-exactamente `N_SPLITS × N_REPEATS` filas con claves `(fold, repeat)` únicas y
-coincidentes entre ambos archivos; que `history.csv` tenga una serie completa de épocas
-por fold y que el valor registrado en `best_epoch` coincida con `best_monitor_value`;
-que `restored_monitor_value` esté cerca de `best_monitor_value`; que
-`predictions_val.csv` tenga `y_prob` en `[0,1]` y cubra cada sujeto una vez por
-repetición; y que las particiones `fit`/`inner_val`/`outer_val` de `folds.csv` no se
-solapen dentro de un mismo fold. Si algo falla, la celda lanza `RuntimeError` con la
-lista completa de problemas — no hay forma de continuar a la descarga o el push sin
-resolverlos.
+Entre otras cosas, comprueba: que `config.json` traiga `config_schema_version`,
+`n_splits`, `n_repeats` y `n_subjects` válidos (enteros en rango, no texto ni
+booleanos); que `metrics_train.csv`/`metrics_val.csv` tengan exactamente
+`N_SPLITS × N_REPEATS` filas con claves `(fold, repeat)` únicas y coincidentes entre
+ambos archivos; que `history.csv` tenga una serie completa de épocas por fold y que el
+valor registrado en `best_epoch` coincida con `best_monitor_value`; que
+`restored_monitor_value` esté cerca de `best_monitor_value`; que `predictions_val.csv`
+tenga `y_prob` en `[0,1]` y cubra cada sujeto una vez por repetición; y que cada fold de
+`folds.csv` tenga sus tres particiones `fit`/`inner_val`/`outer_val` presentes y sin
+solaparse entre sí. Si algo falla, la celda lanza `RuntimeError` con la lista completa
+de problemas — no hay forma de continuar a la descarga o el push sin resolverlos.
 
 ## Descarga y subida
 

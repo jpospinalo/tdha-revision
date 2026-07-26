@@ -396,11 +396,20 @@ def check_schema4_artifact_validation():
     B2: n_fit/n_inner_val/n_outer_val); C, NaN en un campo numérico
     obligatorio; D, compatibilidad con esquemas anteriores a 4; E, las
     comprobaciones semánticas de sujetos/predicciones (duplicados, cobertura
-    OOF incompleta, probabilidad fuera de rango, solape entre particiones, y
-    predicciones que no coinciden con el outer_val real); los 5 bugs
-    reportados sobre esta función (filas duplicadas en folds.csv/history.csv,
-    un fold completo ausente en un archivo, valores de split desconocidos, y
-    restored_monitor_value no numérico sin que escape TypeError) — ver
+    OOF incompleta, probabilidad fuera de rango, solape entre particiones,
+    predicciones que no coinciden con el outer_val real, filas duplicadas en
+    folds.csv/history.csv, un fold completo ausente de un archivo, valores de
+    split desconocidos, un fold completo ausente específicamente de
+    folds.csv, y una clave (repeat, fold) en predictions_val.csv que no
+    existe en metrics_val.csv); F, restored_monitor_value no numérico sin que
+    escape TypeError. T1-T4 (correcciones v9): T1 exige n_splits/n_repeats/
+    n_subjects válidos en config.json (ausentes, booleanos o fuera de rango,
+    individualmente y los tres a la vez); T2 exige config_schema_version
+    válido (texto, booleano o cero, sin que escape TypeError); T3 reproduce
+    un fold al que le falta el split inner_val aunque n_fit/n_inner_val se
+    hayan ajustado a juego para que la unión y los tamaños declarados sigan
+    cuadrando; T4 cubre un fixture de dos repeticiones (sano, y luego con
+    y_true inconsistente para el mismo sujeto entre repeticiones). Ver
     docs/validation.md.
     """
     seccion("Validación de artefactos de esquema 4 (fixtures, sin entrenar)")
@@ -709,6 +718,204 @@ def check_schema4_artifact_validation():
             f"escapar TypeError: {e} en vez de ValueError"
         )
 
+    # --- T1: n_splits/n_repeats/n_subjects ausentes o inválidos en config.json ---
+    def _config_case(nombre: str, mutar_cfg, campos_esperados: list[str]) -> None:
+        root_t = root / f"caso_t1_{nombre}"
+        run_t = root_t / "run_config"
+        _write_schema4_fixture(run_t)
+        cfg_path = run_t / "config.json"
+        cfg = json.loads(cfg_path.read_text())
+        mutar_cfg(cfg)
+        cfg_path.write_text(json.dumps(cfg))
+
+        problems = C.validate_run_artifacts(run_t, "")
+        texto = " | ".join(problems)
+        faltan_en_lista = [c for c in campos_esperados if c not in texto]
+        (ok if not faltan_en_lista else fail)(
+            f"T1 ({nombre}): validate_run_artifacts() menciona {campos_esperados}"
+            + (f" — no menciona {faltan_en_lista}: {problems}" if faltan_en_lista else "")
+        )
+        try:
+            C.collect(root_t, strict=True)
+            fail(f"T1 ({nombre}): collect(strict=True) no lanzó ValueError")
+        except ValueError as e:
+            msg = str(e)
+            prob = []
+            if run_t.name not in msg:
+                prob.append(f"el mensaje no identifica la corrida ({run_t.name!r})")
+            faltan_en_msg = [c for c in campos_esperados if c not in msg]
+            if faltan_en_msg:
+                prob.append(f"el mensaje no menciona {faltan_en_msg}")
+            (ok if not prob else fail)(
+                f"T1 ({nombre}): collect(strict=True) lanza ValueError identificando la "
+                "corrida y el/los campo(s)" + (f" — {'; '.join(prob)}; mensaje={msg!r}" if prob else "")
+            )
+
+    _config_case("n_splits_ausente", lambda cfg: cfg.pop("n_splits", None), ["n_splits"])
+    _config_case("n_repeats_ausente", lambda cfg: cfg.pop("n_repeats", None), ["n_repeats"])
+    _config_case("n_subjects_ausente", lambda cfg: cfg.pop("n_subjects", None), ["n_subjects"])
+    _config_case(
+        "tres_ausentes_a_la_vez",
+        lambda cfg: [cfg.pop(k, None) for k in ("n_splits", "n_repeats", "n_subjects")],
+        ["n_splits", "n_repeats", "n_subjects"],
+    )
+    _config_case("n_splits_booleano", lambda cfg: cfg.__setitem__("n_splits", True), ["n_splits"])
+    _config_case("n_repeats_fuera_de_rango", lambda cfg: cfg.__setitem__("n_repeats", 0), ["n_repeats"])
+
+    # --- T2: config_schema_version inválido (no debe escapar TypeError) ---
+    for valor, nombre in (("abc", "texto"), (True, "booleano"), (0, "cero")):
+        root_t2 = root / f"caso_t2_{nombre}"
+        run_t2 = root_t2 / "run_schema"
+        _write_schema4_fixture(run_t2)
+        cfg_path = run_t2 / "config.json"
+        cfg = json.loads(cfg_path.read_text())
+        cfg["config_schema_version"] = valor
+        cfg_path.write_text(json.dumps(cfg))
+        try:
+            problems = C.validate_run_artifacts(run_t2, "")
+            prob = []
+            if not problems:
+                prob.append("devolvió []")
+            elif "config_schema_version" not in " | ".join(problems):
+                prob.append(f"no menciona config_schema_version: {problems}")
+            (ok if not prob else fail)(
+                f"T2 (config_schema_version={valor!r}): validate_run_artifacts() devuelve "
+                "una lista mencionando config_schema_version" + (f" — {'; '.join(prob)}" if prob else "")
+            )
+        except (TypeError, ValueError) as e:
+            fail(
+                f"T2 (config_schema_version={valor!r}): validate_run_artifacts() dejó "
+                f"escapar {type(e).__name__}: {e}"
+            )
+        try:
+            C.collect(root_t2, strict=True)
+            fail(f"T2 (config_schema_version={valor!r}): collect(strict=True) no lanzó ValueError")
+        except ValueError as e:
+            msg = str(e)
+            (ok if run_t2.name in msg and "config_schema_version" in msg else fail)(
+                f"T2 (config_schema_version={valor!r}): collect(strict=True) lanza ValueError "
+                "identificando la corrida y config_schema_version"
+                + ("" if run_t2.name in msg and "config_schema_version" in msg else f" — mensaje={msg!r}")
+            )
+        except TypeError as e:
+            fail(f"T2 (config_schema_version={valor!r}): collect(strict=True) dejó escapar TypeError: {e}")
+
+    # --- T3: split ausente de un fold con n_fit/n_inner_val ajustados a juego (P2) ---
+    root_t3 = root / "caso_t3_split_ausente_conteos_coordinados"
+    run_t3 = root_t3 / "run_split_ausente"
+    _write_schema4_fixture(run_t3)
+    folds_path = run_t3 / "folds.csv"
+    folds_frame = pd.read_csv(folds_path)
+    fila0 = folds_frame.iloc[0]
+    fold_v, repeat_v = fila0["fold"], fila0["repeat"]
+    mask_inner = (
+        (folds_frame["fold"] == fold_v) & (folds_frame["repeat"] == repeat_v)
+        & (folds_frame["split"] == "inner_val")
+    )
+    n_movido = int(mask_inner.sum())
+    folds_frame.loc[mask_inner, "split"] = "fit"
+    folds_frame.to_csv(folds_path, index=False)
+    for fname in ("metrics_train.csv", "metrics_val.csv"):
+        p = run_t3 / fname
+        m = pd.read_csv(p)
+        row_mask = (m["fold"] == fold_v) & (m["repeat"] == repeat_v)
+        m.loc[row_mask, "n_fit"] = m.loc[row_mask, "n_fit"] + n_movido
+        m.loc[row_mask, "n_inner_val"] = m.loc[row_mask, "n_inner_val"] - n_movido
+        m.to_csv(p, index=False)
+
+    problems = C.validate_run_artifacts(run_t3, "")
+    texto = " | ".join(problems)
+    (ok if "inner_val" in texto else fail)(
+        "T3 (split inner_val ausente de un fold, n_fit/n_inner_val coordinados): "
+        "validate_run_artifacts() menciona 'inner_val' ausente"
+        + ("" if "inner_val" in texto else f" — problems={problems}")
+    )
+    try:
+        C.collect(root_t3, strict=True)
+        fail("T3: collect(strict=True) no lanzó ValueError")
+    except ValueError as e:
+        msg = str(e)
+        (ok if run_t3.name in msg and "inner_val" in msg else fail)(
+            "T3: collect(strict=True) lanza ValueError identificando la corrida y 'inner_val'"
+            + ("" if run_t3.name in msg and "inner_val" in msg else f" — mensaje={msg!r}")
+        )
+
+    # --- T4: casos pendientes del contrato anterior ---
+    def _fold_completo_ausente_en_folds_csv(run_dir: Path) -> None:
+        # A diferencia de "fold_completo_ausente" (que lo quita de
+        # metrics_train.csv), aquí el (repeat, fold) desaparece de folds.csv
+        # específicamente.
+        p = run_dir / "folds.csv"
+        frame = pd.read_csv(p)
+        objetivo = frame[["repeat", "fold"]].drop_duplicates().iloc[0]
+        mascara = (frame["repeat"] == objetivo["repeat"]) & (frame["fold"] == objetivo["fold"])
+        frame[~mascara].to_csv(p, index=False)
+
+    def _clave_repeat_fold_extra_en_predictions(run_dir: Path) -> None:
+        # A diferencia de "subject_id_duplicado_oof" (duplica una fila con la
+        # misma clave), esto agrega una clave (repeat, fold) que no existe en
+        # metrics_val.csv en absoluto.
+        p = run_dir / "predictions_val.csv"
+        frame = pd.read_csv(p)
+        fila_extra = pd.DataFrame([{
+            "fold": 99, "repeat": 1, "subject_id": "s_extra", "y_true": 0, "y_prob": 0.5,
+        }])
+        pd.concat([frame, fila_extra], ignore_index=True).to_csv(p, index=False)
+
+    _semantica("fold_completo_ausente_en_folds_csv", _fold_completo_ausente_en_folds_csv)
+    _semantica("clave_repeat_fold_extra_en_predictions_val", _clave_repeat_fold_extra_en_predictions)
+
+    def _construir_fixture_dos_repeticiones(run_dir: Path) -> None:
+        # Duplica el fixture válido de una repetición como su propia segunda
+        # repetición (mismos fold/subject_id, repeat=2) y fija n_repeats=2 en
+        # config.json — para probar comprobaciones que solo se manifiestan
+        # con más de una repetición (consistencia de y_true entre ellas).
+        _write_schema4_fixture(run_dir)
+        cfg_path = run_dir / "config.json"
+        cfg = json.loads(cfg_path.read_text())
+        cfg["n_repeats"] = 2
+        cfg_path.write_text(json.dumps(cfg))
+        for fname in ("metrics_train.csv", "metrics_val.csv", "history.csv",
+                      "predictions_val.csv", "folds.csv"):
+            p = run_dir / fname
+            frame = pd.read_csv(p)
+            dup = frame.copy()
+            dup["repeat"] = 2
+            pd.concat([frame, dup], ignore_index=True).to_csv(p, index=False)
+
+    root_t4_base = root / "caso_t4_dos_repeticiones_sin_mutar"
+    run_t4_base = root_t4_base / "run_dos_repeticiones"
+    _construir_fixture_dos_repeticiones(run_t4_base)
+    problems = C.validate_run_artifacts(run_t4_base, "")
+    (ok if not problems else fail)(
+        "T4 (fixture de dos repeticiones, sin mutar): validate_run_artifacts() devuelve []"
+        + (f" — {problems}" if problems else "")
+    )
+
+    root_t4_ytrue = root / "caso_t4_y_true_inconsistente_entre_repeticiones"
+    run_t4_ytrue = root_t4_ytrue / "run_y_true_inconsistente"
+    _construir_fixture_dos_repeticiones(run_t4_ytrue)
+    p_pred = run_t4_ytrue / "predictions_val.csv"
+    pred_frame = pd.read_csv(p_pred)
+    objetivo = (pred_frame["repeat"] == 2) & (pred_frame["subject_id"] == "s1")
+    pred_frame.loc[objetivo, "y_true"] = 1 - pred_frame.loc[objetivo, "y_true"]
+    pred_frame.to_csv(p_pred, index=False)
+    problems = C.validate_run_artifacts(run_t4_ytrue, "")
+    texto = " | ".join(problems)
+    (ok if "y_true" in texto and "s1" in texto else fail)(
+        "T4 (y_true distinto para 's1' entre repeticiones): validate_run_artifacts() lo detecta"
+        + ("" if "y_true" in texto and "s1" in texto else f" — problems={problems}")
+    )
+    try:
+        C.collect(root_t4_ytrue, strict=True)
+        fail("T4 (y_true inconsistente entre repeticiones): collect(strict=True) no lanzó ValueError")
+    except ValueError as e:
+        (ok if run_t4_ytrue.name in str(e) else fail)(
+            "T4 (y_true inconsistente entre repeticiones): collect(strict=True) lanza "
+            "ValueError identificando la corrida"
+            + ("" if run_t4_ytrue.name in str(e) else f" — mensaje={e!r}")
+        )
+
     shutil.rmtree(root)
 
 
@@ -873,7 +1080,20 @@ def check_notebook_state_machine():
     rechazando representación estática y modelo brainnetcnn; y
     exigir_corrida_validada() rechazando corrida no validada, validación
     vieja (RUN_ID_VALIDADO distinto de RUN_ID) y corrida que cambió en disco
-    después de validarse.
+    después de validarse. T5 (correcciones v9): ejecutar_corrida() resetea
+    CORRIDA_VALIDADA/RUN_ID_VALIDADO aunque partan de un estado previo válido
+    de otra corrida (True/"RUN_ANTERIOR"), no solo de su valor inicial; la
+    celda de diagnóstico con EJECUTAR_DIAGNOSTICO_ORDEN=False no llama al
+    runner simulado ni una vez; y prueba_humo() corrida dos veces en la misma
+    sesión tiene éxito ambas veces, con --overwrite y la misma carpeta
+    temporal en las dos llamadas. T6 (correcciones v9): construir_argv() real
+    del notebook, sin entrenar — ventana en segundos, ventana en TR, OVERLAP
+    como alternativa a STEP_SECONDS, ventana gaussiana con GAUSSIAN_SIGMA,
+    permuted con REPRESENTATION_SEED, DETERMINISTIC/MIXED_PRECISION/
+    CLASS_WEIGHT/CLIPNORM, RANDOM_SUBSET/N_RANDOM_SETS/EXCLUDE_ROI_SET, y el
+    rechazo de las combinaciones incompatibles ya documentadas (WINDOW_TR y
+    WINDOW_SECONDS a la vez, ninguno de los dos, STEP_SECONDS y OVERLAP a la
+    vez, GAUSSIAN_SIGMA sin WINDOW_SHAPE='gaussian').
     """
     seccion("Máquina de estados del notebook (preflight/prueba_humo/corrida/validación)")
     import contextlib
@@ -926,10 +1146,15 @@ def check_notebook_state_machine():
         RANDOM_SUBSET=None, N_RANDOM_SETS=20, EXCLUDE_ROI_SET=None,
         NOMBRE="Juan", CORREO="juan@ejemplo.com",
         TAG=None, OVERWRITE=False, EJECUTAR_PRUEBA_HUMO=True,
+        EJECUTAR_DIAGNOSTICO_ORDEN=False,
     )
+    src_diagnostico = _extraer_celda_notebook(nb, "9fe26788")
 
     def _main_falso(mode):
         def _main(argv):
+            # Registra cada argv recibido (T5.3: confirmar cuántas veces se
+            # llamó al runner y con qué argumentos, no solo el resultado).
+            mode.setdefault("calls", []).append(list(argv))
             if "--dry-run" in argv:
                 if mode.get("fail_dry_run"):
                     raise SystemExit(mode.get("dry_run_msg", "preflight simulado: fallo"))
@@ -1041,6 +1266,65 @@ def check_notebook_state_machine():
             "resetea CORRIDA_VALIDADA/RUN_ID_VALIDADO" + (f" — {'; '.join(prob)}" if prob else "")
         )
 
+        # --- T5.1: ejecutar_corrida() resetea un estado de validación previo ---
+        # A diferencia del camino feliz de arriba (que parte de
+        # CORRIDA_VALIDADA=False/RUN_ID_VALIDADO=None, los valores con los que
+        # la celda constructora ya los inicializa), aquí se fuerzan a mano a
+        # True/"RUN_ANTERIOR" después de construir el namespace, para
+        # comprobar que ejecutar_corrida() los resetea aunque ya hubiera una
+        # corrida distinta marcada como válida en la sesión — no solo que los
+        # deja en su valor inicial de siempre.
+        ns = _preparar_ns({"run_id_dry_run": "RUN_A", "run_id_formal": "RUN_A"})
+        ns["CORRIDA_VALIDADA"] = True
+        ns["RUN_ID_VALIDADO"] = "RUN_ANTERIOR"
+        _silencioso(ns["preflight"])
+        _silencioso(ns["prueba_humo"])
+        _silencioso(ns["ejecutar_corrida"])
+        prob = []
+        if ns["CORRIDA_VALIDADA"] is not False:
+            prob.append(f"CORRIDA_VALIDADA quedó en {ns['CORRIDA_VALIDADA']!r}, se esperaba False")
+        if ns["RUN_ID_VALIDADO"] is not None:
+            prob.append(f"RUN_ID_VALIDADO quedó en {ns['RUN_ID_VALIDADO']!r}, se esperaba None")
+        (ok if not prob else fail)(
+            "ejecutar_corrida() resetea CORRIDA_VALIDADA/RUN_ID_VALIDADO aunque partan de "
+            "un estado previo válido (True/'RUN_ANTERIOR') de otra corrida"
+            + (f" — {'; '.join(prob)}" if prob else "")
+        )
+
+        # --- T5.2: EJECUTAR_DIAGNOSTICO_ORDEN=False no debe llamar al runner ---
+        mode_diag = {"run_id_dry_run": "RUN_A"}
+        ns = _preparar_ns(mode_diag, overrides={"EJECUTAR_DIAGNOSTICO_ORDEN": False})
+        llamadas_antes = len(mode_diag.get("calls", []))
+        _silencioso(exec, compile(src_diagnostico, "<celda-diagnostico>", "exec"), ns)
+        llamadas_despues = len(mode_diag.get("calls", []))
+        (ok if llamadas_despues == llamadas_antes else fail)(
+            "celda de diagnóstico con EJECUTAR_DIAGNOSTICO_ORDEN=False: no llama al runner "
+            f"simulado (llamadas antes={llamadas_antes}, después={llamadas_despues})"
+        )
+
+        # --- T5.3: prueba_humo() dos veces en la misma sesión ---
+        mode_humo: dict = {"run_id_dry_run": "RUN_A"}
+        ns = _preparar_ns(mode_humo)
+        resultado_1 = _silencioso(ns["prueba_humo"])
+        resultado_2 = _silencioso(ns["prueba_humo"])
+        llamadas_humo = [c for c in mode_humo.get("calls", []) if "--out" in c]
+        prob = []
+        if resultado_1 is not True or resultado_2 is not True:
+            prob.append(f"resultados: primera={resultado_1!r}, segunda={resultado_2!r}, se esperaba True en ambas")
+        if len(llamadas_humo) != 2:
+            prob.append(f"se esperaban 2 llamadas al runner con --out, hubo {len(llamadas_humo)}")
+        else:
+            sin_overwrite = [i for i, argv in enumerate(llamadas_humo, start=1) if "--overwrite" not in argv]
+            if sin_overwrite:
+                prob.append(f"llamada(s) {sin_overwrite} sin --overwrite")
+            carpetas = {argv[argv.index("--out") + 1] for argv in llamadas_humo}
+            if len(carpetas) != 1:
+                prob.append(f"las dos llamadas no usan la misma carpeta --out: {carpetas}")
+        (ok if not prob else fail)(
+            "prueba_humo() ejecutada dos veces en la misma sesión: dos éxitos, ambas con "
+            "--overwrite y la misma carpeta temporal" + (f" — {'; '.join(prob)}" if prob else "")
+        )
+
         # --- ejecutar_corrida(): run_id no coincide con el de preflight() ---
         ns = _preparar_ns({"run_id_dry_run": "RUN_A", "run_id_formal": "RUN_B"})
         _silencioso(ns["preflight"])
@@ -1075,6 +1359,107 @@ def check_notebook_state_machine():
                 "ejecutar_diagnostico_orden() con MODELO='brainnetcnn' lanza ValueError "
                 "mencionándolo" + (f" — mensaje={e!r}" if "brainnetcnn" not in str(e) else "")
             )
+
+        # --- T6: construir_argv(), sin entrenar — inspecciona ARGV_CORRIDA ---
+        # _preparar_ns() ya construye CONFIG_NOTEBOOK/ARGV_CORRIDA al ejecutar
+        # la celda constructora con las variables de config_valida más los
+        # overrides de cada caso, así que no hace falta llamar a
+        # construir_argv() aparte: alcanza con inspeccionar ns["ARGV_CORRIDA"].
+        # Para las combinaciones rechazadas, construir_argv() lanza el
+        # ValueError durante ese mismo exec (en la línea que arma
+        # ARGV_CORRIDA), así que _preparar_ns() es quien lo deja escapar.
+        def _argv_case(nombre: str, overrides: dict, presentes: list, ausentes: list) -> None:
+            try:
+                ns_t6 = _preparar_ns({}, overrides=overrides)
+            except ValueError as e:
+                fail(f"T6 ({nombre}): construir_argv() lanzó ValueError inesperado: {e}")
+                return
+            argv = list(ns_t6["ARGV_CORRIDA"])
+            prob = []
+            faltan = [flag for flag in presentes if flag not in argv]
+            if faltan:
+                prob.append(f"faltan en argv: {faltan}")
+            sobran = [flag for flag in ausentes if flag in argv]
+            if sobran:
+                prob.append(f"no deberían estar en argv: {sobran}")
+            (ok if not prob else fail)(
+                f"T6 ({nombre}): construir_argv() produce el argv esperado"
+                + (f" — {'; '.join(prob)}; argv={argv}" if prob else "")
+            )
+
+        def _argv_rechazo(nombre: str, overrides: dict, fragmento_esperado: str) -> None:
+            try:
+                _preparar_ns({}, overrides=overrides)
+                fail(f"T6 ({nombre}): construir_argv() no lanzó ValueError para una combinación incompatible")
+            except ValueError as e:
+                (ok if fragmento_esperado in str(e) else fail)(
+                    f"T6 ({nombre}): construir_argv() lanza ValueError mencionando la causa esperada"
+                    + (f" — mensaje={e!r}, se esperaba fragmento {fragmento_esperado!r}"
+                       if fragmento_esperado not in str(e) else "")
+                )
+
+        _argv_case(
+            "ventana en segundos (default)", {},
+            presentes=["--window-seconds", "120", "--step-seconds", "12"],
+            ausentes=["--window", "--overlap"],
+        )
+        _argv_case(
+            "ventana en TR",
+            {"WINDOW_TR": 60, "STEP_TR": 6, "WINDOW_SECONDS": None, "STEP_SECONDS": None, "OVERLAP": None},
+            presentes=["--window", "60", "--step", "6"],
+            ausentes=["--window-seconds", "--step-seconds", "--overlap"],
+        )
+        _argv_case(
+            "OVERLAP en vez de STEP_SECONDS",
+            {"STEP_SECONDS": None, "OVERLAP": 0.5},
+            presentes=["--window-seconds", "120", "--overlap", "0.5"],
+            ausentes=["--step-seconds"],
+        )
+        _argv_case(
+            "ventana gaussiana con GAUSSIAN_SIGMA",
+            {"WINDOW_SHAPE": "gaussian", "GAUSSIAN_SIGMA": 10},
+            presentes=["--window-shape", "gaussian", "--gaussian-sigma", "10"],
+            ausentes=[],
+        )
+        _argv_case(
+            "permuted con REPRESENTATION_SEED",
+            {"REPRESENTACION": "permuted", "REPRESENTATION_SEED": 7},
+            presentes=["--representation", "permuted", "--representation-seed", "7"],
+            ausentes=[],
+        )
+        _argv_case(
+            "DETERMINISTIC/MIXED_PRECISION/CLASS_WEIGHT/CLIPNORM",
+            {"DETERMINISTIC": True, "MIXED_PRECISION": True, "CLASS_WEIGHT": True, "CLIPNORM": 1.0},
+            presentes=["--deterministic", "--mixed-precision", "--class-weight", "--clipnorm", "1.0"],
+            ausentes=[],
+        )
+        _argv_case(
+            "control anatómico: RANDOM_SUBSET/N_RANDOM_SETS/EXCLUDE_ROI_SET",
+            {"RANDOM_SUBSET": 20, "N_RANDOM_SETS": 5, "EXCLUDE_ROI_SET": "18"},
+            presentes=["--random-subset", "20", "--n-random-sets", "5", "--exclude-roi-set", "18"],
+            ausentes=[],
+        )
+
+        _argv_rechazo(
+            "WINDOW_TR y WINDOW_SECONDS a la vez",
+            {"WINDOW_TR": 60, "STEP_TR": 6},
+            "modos alternativos",
+        )
+        _argv_rechazo(
+            "ni WINDOW_TR ni WINDOW_SECONDS",
+            {"WINDOW_SECONDS": None, "STEP_SECONDS": None, "OVERLAP": None},
+            "sin ventana",
+        )
+        _argv_rechazo(
+            "STEP_SECONDS y OVERLAP a la vez",
+            {"OVERLAP": 0.5},
+            "alternativos",
+        )
+        _argv_rechazo(
+            "GAUSSIAN_SIGMA sin WINDOW_SHAPE='gaussian'",
+            {"GAUSSIAN_SIGMA": 10},
+            "solo aplica con WINDOW_SHAPE",
+        )
     finally:
         if original_run_experiment is not None:
             sys.modules["run_experiment"] = original_run_experiment
