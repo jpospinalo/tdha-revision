@@ -259,9 +259,75 @@ def summarize(run_dir: Path, cfg: dict[str, Any], suffix: str = "") -> dict[str,
     return row
 
 
+def _validate_schema4_artifacts(run_dir: Path, suffix: str) -> list[str]:
+    """Comprueba, para corridas de ``config_schema_version >= 4``, que los
+    artefactos que sustentan el gate no circular de ``restored_monitor_value``
+    existan y sean coherentes (ver ``methodology.md``, 'Early-stopping
+    monitor'). No es retroactivo: nunca se invoca para esquemas 1-3, que no
+    produjeron estos artefactos.
+    """
+    problems: list[str] = []
+    paths = {
+        "metrics_train": run_dir / f"metrics_train{suffix}.csv",
+        "metrics_val": run_dir / f"metrics_val{suffix}.csv",
+        "history": run_dir / f"history{suffix}.csv",
+        "predictions_val": run_dir / f"predictions_val{suffix}.csv",
+        "folds": run_dir / f"folds{suffix}.csv",
+    }
+    frames: dict[str, pd.DataFrame] = {}
+    for name, path in paths.items():
+        if not path.exists():
+            problems.append(f"falta {path.name}")
+            continue
+        try:
+            frames[name] = pd.read_csv(path)
+        except Exception as exc:
+            problems.append(f"{path.name}: no se pudo leer ({type(exc).__name__}: {exc})")
+    if problems:
+        return problems
+
+    # Columnas exigidas por archivo, y de esas, cuáles deben además ser
+    # finitas. No se exige (ni se audita finitud en) el resto de columnas:
+    # varias son opcionales por diseño (p. ej. class_weight_0/1 solo se
+    # rellenan con --class-weight) y NaN ahí es legítimo, no un fallo.
+    required_by_file = {
+        "metrics_train": {"early_stopping_monitor", "best_monitor_value", "restored_monitor_value"},
+        "metrics_val": {"early_stopping_monitor", "best_monitor_value", "restored_monitor_value"},
+        "history": {"loss", "inner_val_loss", "bce", "inner_val_bce"},
+    }
+    finite_by_file = {
+        "metrics_train": {"best_monitor_value", "restored_monitor_value"},
+        "metrics_val": {"best_monitor_value", "restored_monitor_value", "best_epoch"},
+        "history": {"loss", "inner_val_loss", "bce", "inner_val_bce"},
+    }
+    for name, required in required_by_file.items():
+        missing = required - set(frames[name].columns)
+        if missing:
+            problems.append(f"{name}{suffix}.csv: faltan columnas {sorted(missing)}")
+
+    for name, frame in frames.items():
+        if frame.empty:
+            problems.append(f"{name}{suffix}.csv está vacío")
+
+    for name, columns in finite_by_file.items():
+        frame = frames.get(name)
+        if frame is None or frame.empty:
+            continue
+        present = [c for c in columns if c in frame.columns]
+        if not present:
+            continue
+        values = pd.to_numeric(frame[present].stack(), errors="coerce").to_numpy()
+        if values.size and not np.isfinite(values).all():
+            problems.append(f"{name}{suffix}.csv: valores no finitos en {sorted(present)}")
+
+    return problems
+
+
 def collect(root: str | Path, *, strict: bool = False) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     errors: list[str] = []
+    notices: list[str] = []
+    seen_schema_notice: set[str] = set()
     root = Path(root)
     for cfg_path in sorted(root.glob("*/config.json")):
         try:
@@ -271,16 +337,47 @@ def collect(root: str | Path, *, strict: bool = False) -> pd.DataFrame:
             if not val_files:
                 errors.append(f"{run_dir.name}: corrida incompleta, sin metrics_val*.csv")
                 continue
+            schema = cfg.get("config_schema_version", 1)
             for path in val_files:
-                row = summarize(run_dir, cfg, _suffix_from_metrics(path))
-                if row is not None:
-                    rows.append(row)
+                suffix = _suffix_from_metrics(path)
+                train_path = run_dir / f"metrics_train{suffix}.csv"
+                if not train_path.exists():
+                    errors.append(
+                        f"{run_dir.name}{suffix}: corrida incompleta, falta {train_path.name}"
+                    )
+                    continue
+                row = summarize(run_dir, cfg, suffix)
+                if row is None:
+                    # summarize() solo devuelve None si metrics_train/metrics_val
+                    # están vacíos (ya comprobamos que existen arriba) — antes esto
+                    # se descartaba en silencio, incluso bajo strict=True.
+                    errors.append(
+                        f"{run_dir.name}{suffix}: metrics_train{suffix}.csv o "
+                        f"metrics_val{suffix}.csv están vacíos; summarize() no pudo "
+                        "compilar la corrida"
+                    )
+                    continue
+                if schema >= 4:
+                    problems = _validate_schema4_artifacts(run_dir, suffix)
+                    if problems:
+                        errors.append(f"{run_dir.name}{suffix}: " + "; ".join(problems))
+                        continue
+                elif run_dir.name not in seen_schema_notice:
+                    seen_schema_notice.add(run_dir.name)
+                    notices.append(
+                        f"{run_dir.name}: esquema {schema}, compila de forma descriptiva; "
+                        "best_epoch/best_monitor_value pueden no coincidir exactamente con "
+                        "lo que EarlyStopping restauró y quedan fuera de la comparación A/B "
+                        "formal por early_stopping_monitor (ver docs/limitations.md)."
+                    )
+                rows.append(row)
         except Exception as exc:  # informa el archivo defectuoso sin perder las demás corridas
             errors.append(f"{cfg_path}: {exc}")
     if strict and errors:
         raise ValueError("Errores durante la compilación:\n- " + "\n- ".join(errors))
     frame = pd.DataFrame(rows)
     frame.attrs["collection_warnings"] = errors
+    frame.attrs["collection_notices"] = notices
     return frame
 
 
@@ -572,6 +669,7 @@ def main(argv: list[str] | None = None) -> int:
 
     df = collect(args.root, strict=args.strict)
     warnings = df.attrs.get("collection_warnings", [])
+    notices = df.attrs.get("collection_notices", [])
     if df.empty:
         raise SystemExit(f"No se encontraron corridas completas en {args.root}")
     df = _filter(df, args)
@@ -591,6 +689,10 @@ def main(argv: list[str] | None = None) -> int:
         print("\nAVISOS DE RECOLECCIÓN")
         for warning in warnings:
             print(f"  · {warning}")
+    if notices:
+        print("\nCORRIDAS HISTÓRICAS (esquema < 4, fuera del A/B formal por monitor)")
+        for notice in notices:
+            print(f"  · {notice}")
     problems = check_comparability(df)
     if problems:
         print("\nAVISOS DE COMPARABILIDAD")

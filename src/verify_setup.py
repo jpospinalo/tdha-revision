@@ -355,48 +355,107 @@ def check_modelos(full):
             fail(f"{name}: {type(e).__name__}: {e}")
 
 
-def check_entrenamiento():
-    seccion("Prueba de entrenamiento (2 pliegues, 3 épocas)")
-    import subprocess
-    r = subprocess.run(
-        [sys.executable, "run_experiment.py", "--site", "NYU", "--roi-set", "12",
-         "--n-splits", "2", "--n-repeats", "1", "--epochs", "3", "--patience", "2",
-         "--out", "/tmp/verify_setup", "--tag", "verify"],
-        cwd=REPO / "src", capture_output=True, text=True)
-    if r.returncode == 0:
-        ok("la corrida completa se ejecuta sin errores")
-        for linea in r.stdout.splitlines():
-            if "val acc" in linea:
-                print(f"      {linea.strip()}")
-        # Sin --early-stopping-monitor: debe comportarse como si se hubiera
-        # pasado val_loss explícito (regresión, ver docs/architecture.md).
-        run_dirs = sorted(Path("/tmp/verify_setup").iterdir()) if Path("/tmp/verify_setup").exists() else []
-        if run_dirs:
-            try:
-                cfg = json.loads((run_dirs[-1] / "config.json").read_text(encoding="utf-8"))
-                if cfg.get("early_stopping_monitor") == "val_loss":
-                    ok("sin --early-stopping-monitor, la corrida queda como val_loss")
-                else:
-                    fail(f"sin --early-stopping-monitor, quedó como {cfg.get('early_stopping_monitor')!r}")
-            except Exception as e:
-                fail(f"no se pudo leer config.json de la corrida de humo: {e}")
-    else:
-        fail("la corrida falló")
-        print((r.stdout + r.stderr)[-1500:])
-
-    check_early_stopping_ab()
-
-
-def _run_early_stopping_smoke(outdir: Path, monitor: str) -> Path | None:
-    """Corrida corta con BrainNetCNN, subproceso (no --in-process), en un
-    directorio propio que se limpia antes de correr para que --full sea
-    repetible. Devuelve la carpeta de la corrida o None si falló.
+def check_default_monitor_parser():
+    """Regresión de qué monitor queda activo cuando no se pasa
+    --early-stopping-monitor, comprobada leyendo solo el parser (sin
+    TensorFlow, sin entrenar) — reemplaza a la antigua corrida de humo
+    genérica en /tmp/verify_setup, que además no era repetible sin
+    --overwrite (ver docs/validation.md).
     """
-    import shutil
+    seccion("Valores por defecto del parser (sin entrenar)")
+    sys.path.insert(0, str(REPO / "src"))
+    import run_experiment as R
+
+    args = R.build_parser().parse_args([])
+    prob = []
+    if args.early_stopping_monitor != "val_loss":
+        prob.append(f"early_stopping_monitor={args.early_stopping_monitor!r}, se esperaba 'val_loss'")
+    if args.early_stopping_min_delta != 1e-5:
+        prob.append(f"early_stopping_min_delta={args.early_stopping_min_delta!r}, se esperaba 1e-5")
+    (fail if prob else ok)(
+        "sin --early-stopping-monitor/--early-stopping-min-delta, el parser deja "
+        "val_loss / 1e-5" + (f" — {'; '.join(prob)}" if prob else "")
+    )
+
+
+def check_compiler_integration(root: Path, run_loss: Path, run_bce: Path):
+    """Comprueba, sobre las mismas dos corridas ya entrenadas por
+    check_early_stopping_ab() (sin reentrenar), que compile_results.py las
+    lea, acepte el par como A/B válido, y rechace variantes en memoria con
+    monitor duplicado o early_stopping_ab_hash alterado — sin lo cual
+    _check_early_stopping_ab() quedaría sin probar de verdad (ver
+    docs/validation.md).
+    """
+    seccion("Integración con compile_results.py (sin reentrenar)")
+    sys.path.insert(0, str(REPO / "src"))
+    import compile_results as C
+    import pandas as pd
+
+    try:
+        df = C.collect(root, strict=True)
+    except Exception as e:
+        fail(f"collect(root, strict=True) lanzó una excepción inesperada: {type(e).__name__}: {e}")
+        return
+
+    prob = []
+    if len(df) != 2:
+        prob.append(f"se esperaban 2 filas, hay {len(df)}")
+    monitors = sorted(df["early_stopping_monitor"]) if "early_stopping_monitor" in df else []
+    if monitors != ["val_bce", "val_loss"]:
+        prob.append(f"monitores encontrados {monitors}, se esperaban ['val_bce', 'val_loss']")
+    (fail if prob else ok)(
+        "collect(root, strict=True) sobre el par val_loss/val_bce da 2 filas, "
+        "una por monitor, sin duplicados" + (f" — {'; '.join(prob)}" if prob else "")
+    )
+    if prob:
+        return
+
+    try:
+        C._check_early_stopping_ab(df)
+        ok("_check_early_stopping_ab() acepta el par real val_loss/val_bce")
+    except SystemExit as e:
+        fail(f"_check_early_stopping_ab() rechazó el par real: {e}")
+        return
+
+    # Negativo 1: monitor duplicado (val_loss repetido, sin val_bce) — debe rechazarse.
+    dup = pd.concat([df[df["early_stopping_monitor"] == "val_loss"]] * 2, ignore_index=True)
+    try:
+        C._check_early_stopping_ab(dup)
+        fail("_check_early_stopping_ab() no rechazó un par con monitor duplicado")
+    except SystemExit:
+        ok("_check_early_stopping_ab() rechaza un par con monitor duplicado (val_loss × 2)")
+
+    # Negativo 2: early_stopping_ab_hash alterado en una fila — debe rechazarse.
+    altered = df.copy()
+    altered.loc[altered.index[0], "early_stopping_ab_hash"] = "deadbeefdeadbeef"
+    try:
+        C._check_early_stopping_ab(altered)
+        fail("_check_early_stopping_ab() no rechazó un early_stopping_ab_hash alterado")
+    except SystemExit:
+        ok("_check_early_stopping_ab() rechaza un early_stopping_ab_hash alterado")
+
+
+def check_entrenamiento():
+    seccion("Prueba de entrenamiento (BrainNetCNN, esquema 4)")
+    check_default_monitor_parser()
+    resultado = check_early_stopping_ab()
+    if resultado is not None:
+        root, run_loss, run_bce = resultado
+        check_compiler_integration(root, run_loss, run_bce)
+
+
+def _run_early_stopping_smoke(root: Path, monitor: str) -> Path | None:
+    """Corrida corta con BrainNetCNN, subproceso (no --in-process), dentro de
+    `root` — compartida entre val_loss y val_bce, limpiada una sola vez por
+    check_early_stopping_ab() para que --full solo entrene dos veces. La
+    carpeta nueva se detecta por diferencia de contenido antes/después de
+    correr (no por orden alfabético ni por `run_dirs[-1]`, que se vuelven
+    ambiguos con un root compartido). Devuelve la carpeta de la corrida, o
+    None si algo falló.
+    """
     import subprocess
 
-    if outdir.exists():
-        shutil.rmtree(outdir)
+    antes = {p for p in root.iterdir() if p.is_dir()} if root.exists() else set()
     r = subprocess.run(
         [sys.executable, "run_experiment.py", "--site", "NYU", "--roi-set", "12",
          "--model", "brainnetcnn", "--representation", "ordered",
@@ -407,7 +466,7 @@ def _run_early_stopping_smoke(outdir: Path, monitor: str) -> Path | None:
          "--n-splits", "2", "--n-repeats", "1", "--epochs", "4", "--patience", "2",
          "--seed", "42", "--deterministic",
          "--early-stopping-monitor", monitor, "--early-stopping-min-delta", "1e-5",
-         "--out", str(outdir), "--tag", f"verify_{monitor}", "--overwrite"],
+         "--out", str(root), "--tag", f"verify_{monitor}", "--overwrite"],
         cwd=REPO / "src", capture_output=True, text=True)
     if r.returncode != 0:
         fail(f"la corrida con --early-stopping-monitor {monitor} falló")
@@ -415,11 +474,15 @@ def _run_early_stopping_smoke(outdir: Path, monitor: str) -> Path | None:
         return None
     ok(f"la corrida con --early-stopping-monitor {monitor} se ejecuta sin errores")
 
-    run_dirs = [p for p in outdir.iterdir() if p.is_dir()] if outdir.exists() else []
-    if len(run_dirs) != 1:
-        fail(f"se esperaba exactamente 1 carpeta de corrida en {outdir}, hay {len(run_dirs)}")
+    despues = {p for p in root.iterdir() if p.is_dir()} if root.exists() else set()
+    nuevas = sorted(despues - antes)
+    if len(nuevas) != 1:
+        fail(
+            f"se esperaba exactamente 1 carpeta nueva en {root} tras "
+            f"--early-stopping-monitor {monitor}, hubo {len(nuevas)}"
+        )
         return None
-    return run_dirs[0]
+    return nuevas[0]
 
 
 def _audit_early_stopping_artifacts(run_dir: Path, monitor: str):
@@ -456,12 +519,22 @@ def _audit_early_stopping_artifacts(run_dir: Path, monitor: str):
 
     try:
         hist = pd.read_csv(run_dir / "history.csv")
+        train = pd.read_csv(run_dir / "metrics_train.csv")
         val = pd.read_csv(run_dir / "metrics_val.csv")
         pred = pd.read_csv(run_dir / "predictions_val.csv")
         folds = pd.read_csv(run_dir / "folds.csv")
     except Exception as e:
         fail(f"{monitor}: no se pudieron leer los artefactos: {type(e).__name__}: {e}")
         return cfg
+
+    prob = [c for c in ("early_stopping_monitor", "best_monitor_value", "restored_monitor_value")
+            if c not in train.columns]
+    if len(train) != len(val):
+        prob.append(f"metrics_train.csv tiene {len(train)} filas, metrics_val.csv tiene {len(val)}")
+    (fail if prob else ok)(
+        f"{monitor}: metrics_train.csv presente, mismo número de filas que "
+        "metrics_val.csv y con metadatos de esquema 4" + (f" — {prob}" if prob else "")
+    )
 
     prob = [c for c in ("bce", "inner_val_bce", "loss", "inner_val_loss") if c not in hist.columns]
     if hist.empty:
@@ -559,23 +632,31 @@ def _audit_early_stopping_artifacts(run_dir: Path, monitor: str):
 
 def check_early_stopping_ab():
     """Dos corridas cortas con BrainNetCNN, idénticas salvo el monitor
-    (val_loss / val_bce), auditadas simétricamente y sin usar np.argmin como
-    oráculo de qué época restauró EarlyStopping (ver methodology.md).
+    (val_loss / val_bce), compartiendo un único directorio raíz (limpiado una
+    sola vez aquí, no una vez por corrida) y auditadas simétricamente sin usar
+    np.argmin como oráculo de qué época restauró EarlyStopping (ver
+    methodology.md). Devuelve (root, run_loss, run_bce) para que la
+    comprobación del compilador (check_compiler_integration) pueda reusar las
+    mismas dos corridas sin reentrenar, o None si algo falló.
     """
+    import shutil
+
     seccion("Comparación val_loss / val_bce con BrainNetCNN (esquema 4)")
 
-    outdir_loss = Path("/tmp/verify_setup_early_stopping_val_loss")
-    outdir_bce = Path("/tmp/verify_setup_early_stopping_val_bce")
+    root = Path("/tmp/verify_setup_early_stopping")
+    if root.exists():
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
 
-    run_loss = _run_early_stopping_smoke(outdir_loss, "val_loss")
-    run_bce = _run_early_stopping_smoke(outdir_bce, "val_bce")
+    run_loss = _run_early_stopping_smoke(root, "val_loss")
+    run_bce = _run_early_stopping_smoke(root, "val_bce")
     if run_loss is None or run_bce is None:
-        return
+        return None
 
     cfg_loss = _audit_early_stopping_artifacts(run_loss, "val_loss")
     cfg_bce = _audit_early_stopping_artifacts(run_bce, "val_bce")
     if cfg_loss is None or cfg_bce is None:
-        return
+        return None
 
     prob = []
     if cfg_loss.get("split_fingerprint") != cfg_bce.get("split_fingerprint"):
@@ -590,6 +671,8 @@ def check_early_stopping_ab():
         "las dos corridas comparten split_fingerprint/early_stopping_ab_hash y "
         "difieren en config_hash" + (f" — {'; '.join(prob)}" if prob else "")
     )
+
+    return root, run_loss, run_bce
 
 
 def main():

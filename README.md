@@ -109,7 +109,10 @@ participar del objetivo de optimización. `--early-stopping-min-delta` (por defe
 `1e-5`) fija la mejora mínima exigida. `best_epoch`/`best_monitor_value` se leen de la
 propia instancia de `EarlyStopping` tras `fit()`, no del mínimo global de la serie (con
 `min_delta > 0` o `--start-from-epoch > 0` no son lo mismo), y quedan corroborados por
-una reevaluación posterior independiente del modelo ya restaurado (`restored_monitor_value`).
+una reevaluación posterior independiente del modelo ya restaurado (`restored_monitor_value`),
+que debe coincidir con `best_monitor_value`: si no coincide (o no es finita), la corrida
+aborta con `RuntimeError` antes de tocar el pliegue externo, en vez de guardar metadatos
+inconsistentes con los pesos realmente restaurados.
 El monitor y su `min_delta` quedan en la identidad de la configuración: dos corridas
 idénticas salvo el monitor tienen `config_hash`/`run_id` distintos, pero comparten
 `early_stopping_ab_hash` (la identidad completa sin el monitor) — eso es lo que exige

@@ -973,7 +973,29 @@ def run_config(
             return_dict=True,
         )
         restored_key = "loss" if args.early_stopping_monitor == "val_loss" else "bce"
+        if restored_key not in restored_eval:
+            raise RuntimeError(
+                f"model.evaluate() no devolvió {restored_key!r}; "
+                f"claves disponibles: {sorted(restored_eval)}."
+            )
         restored_monitor_value = float(restored_eval[restored_key])
+        if not np.isfinite(restored_monitor_value):
+            raise RuntimeError(
+                "La reevaluación de los pesos restaurados produjo un valor no "
+                f"finito en el pliegue {fold_number}: {restored_monitor_value}."
+            )
+        # Compuerta activa, no solo un campo de auditoría pasivo: si la
+        # reevaluación independiente no reproduce lo que el callback registró
+        # como mejor valor, algo no cuadra entre qué pesos quedaron realmente
+        # restaurados y los metadatos — se aborta ANTES de tocar outer_val, no
+        # después de haber gastado esa evaluación (que sería la primera y
+        # única vez que se consulta el pliegue externo).
+        if not np.isclose(restored_monitor_value, best_monitor_value, rtol=1e-4, atol=1e-6):
+            raise RuntimeError(
+                "Los pesos restaurados no reproducen best_monitor_value en el "
+                f"pliegue {fold_number}: restored={restored_monitor_value}, "
+                f"best={best_monitor_value}."
+            )
 
         # El pliegue externo se utiliza aquí por primera vez.
         train_metrics, _ = evaluate(model, Xf_fold[outer_train], y[outer_train])
