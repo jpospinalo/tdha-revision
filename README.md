@@ -138,7 +138,11 @@ git, si el árbol estaba limpio, el usuario y las versiones de Python, TensorFlo
 `compile_results.py` usa parte de esa información para avisar cuando las corridas
 seleccionadas no son comparables: semilla, `n_splits`/`n_repeats`, huella de
 particiones, `bold_hash` distinto entre corridas del mismo sitio, árbol sucio, o
-`config_hash`/`subset_suffix` duplicados. **No** compara `atlas_hash`,
+`config_hash`/`subset_suffix` duplicados. Ese último aviso también salta al comparar
+corridas hechas a propósito con `--tag` para repetir la misma configuración (`--tag` no
+cambia `config_hash`, solo el nombre de carpeta): no es un error de por sí, sino la señal
+de que `compile_results.py` las está tratando como una sola configuración repetida y no
+como configuraciones independientes que deban promediarse juntas. **No** compara `atlas_hash`,
 `data_code_hash`, `runner_code_hash` ni versiones de software entre corridas —esos
 campos quedan guardados para inspección manual, pero `check_comparability()` no los
 usa como criterio de aborto. Con `--strict-comparability` los avisos que sí genera

@@ -11,8 +11,11 @@ operativo del notebook, no el contenido metodológico.
    falte, deja el directorio de trabajo en `src/`.
 2. **Configurar** (sección 2, la única celda que se edita): cinco bloques —A) datos,
    representación, modelo; B) enventanado; C) entrenamiento y validación; D) control
-   anatómico; E) identidad y controles operativos. Todos los valores son explícitos; no
-   hay parámetros en `None` que dependan de un default oculto del script.
+   anatómico; E) identidad y controles operativos. Todos los valores se escriben a mano en
+   la celda, incluidos los que valen `None` (por ejemplo `OVERLAP`, `WINDOW_TR`,
+   `RANDOM_SUBSET` o `TAG`): ahí `None` es una elección explícita con un significado
+   documentado (p. ej. "sin solape fijo", "no usar ventana por TR", "usar todos los ROIs"),
+   no un valor sin llenar que caiga en un default oculto del script.
 3. **Comprobaciones previas** (sección 3): `verify_setup.py` revisa el repositorio y los
    datos; `preflight()` (al final de la celda del constructor de argumentos) valida esta
    configuración concreta contra las particiones reales, sin entrenar.
@@ -30,11 +33,19 @@ operativo del notebook, no el contenido metodológico.
 7. **Validar antes de exportar**: corre la misma validación semántica que
    `compile_results.py --strict` sobre la carpeta de la corrida. Si encuentra un
    problema, la celda falla con la lista completa y no se puede descargar ni subir nada.
-8. **Descargar** (opcional) o **subir a GitHub** (sección 7): ambas exigen que la
-   validación anterior haya marcado `CORRIDA_VALIDADA = True`.
-9. **Compilar** (sección 8, no hace falta correrlo en cada corrida): reúne todas las
-   carpetas de `results/runs/`, arma la tabla agregada y avisa —o aborta, con
-   `--strict-comparability`— si detecta corridas no comparables.
+8. **Descargar** (opcional) o **subir a GitHub** (sección 7): ambas llaman a
+   `exigir_corrida_validada()`, que no solo exige `CORRIDA_VALIDADA = True` sino que
+   revalida contra disco que `RUN_ID_VALIDADO` coincide con el `RUN_ID` de la corrida
+   actual — si volvió a ejecutar la celda 5 después de validar, o si `RUN_ID` cambió por
+   cualquier motivo, la validación quedó vieja y hay que repetirla antes de exportar.
+9. **Diagnóstico de orden** (opcional, sección intermedia): solo se ejecuta si
+   `EJECUTAR_DIAGNOSTICO_ORDEN = True` (por defecto `False`, porque entrena tres variantes
+   completas y no aporta nada fuera de representaciones sensibles al orden temporal).
+   Rechaza representaciones estáticas y `MODELO == "brainnetcnn"` con un error explícito
+   en vez de correr un diagnóstico que no tiene sentido para ellos.
+10. **Compilar** (sección 8, no hace falta correrlo en cada corrida): reúne todas las
+    carpetas de `results/runs/`, arma la tabla agregada y avisa —o aborta, con
+    `--strict-comparability`— si detecta corridas no comparables.
 
 ## Variables del notebook, argumento de la CLI y campo de `config.json`
 
@@ -335,9 +346,13 @@ subir, conviene confirmar los cambios primero.
 **El `early_stopping_ab_hash` no coincide con el brazo complementario**: revise que
 ambas corridas compartan sitio, ROIs, representación, ventana (segundos, no TR, o
 viceversa), arquitectura e hiperparámetros, `lr`/`batch_size`/`epochs`/`patience`,
-semilla y `TAG`/`OVERWRITE` aparte. Un commit distinto también cambia el hash de código
-que entra en la identidad — confirme que ambas corridas se hicieron sobre el mismo
-commit.
+semilla y `TAG`/`OVERWRITE` aparte (`TAG`/`OVERWRITE` no entran en el hash, así que no
+hace falta que coincidan). Un commit diferente no invalida por sí solo el A/B: el hash
+cambia si cambia el contenido de alguno de los elementos que forman la identidad —por
+ejemplo `run_experiment.py`, `data.py`, BOLD o atlas—, no por el número de commit en sí.
+Cambios limitados al notebook, al compilador o a la documentación pueden conservar el
+mismo hash aunque el commit sea distinto. La comprobación definitiva es comparar
+`early_stopping_ab_hash`, no el commit.
 
 **La celda de validación falla antes de descargar/subir**: lee la lista de problemas
 impresa — nombra el archivo y el campo exactos. No hay forma de saltarse esta celda

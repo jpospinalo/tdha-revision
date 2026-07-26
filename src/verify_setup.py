@@ -9,8 +9,11 @@ coherente. Pensado para ejecutarse justo después de clonar, antes de lanzar nad
     python verify_setup.py            # comprobaciones rápidas
     python verify_setup.py --full     # añade una prueba de entrenamiento real
 
-Sin --full no se importa TensorFlow, así que sirve también para revisar el
-repositorio en un entorno sin GPU ni Keras instalados.
+Sin --full no se entrena ningún modelo, pero check_modelos() sí construye cada
+arquitectura registrada (para contar parámetros y validar la forma de salida), lo que
+importa Keras/TensorFlow si está instalado. Si Keras no está instalado, ese chequeo se
+reduce a un aviso en vez de fallar, así que el script sigue siendo útil en un entorno
+sin GPU ni Keras.
 """
 
 import argparse
@@ -389,12 +392,16 @@ def check_schema4_artifact_validation():
     """Regresiones de compile_results.validate_run_artifacts()/collect() con
     fixtures CSV escritos a mano, sin entrenar ni importar TensorFlow.
 
-    Caso A prueba un fixture sano; B, columnas estructurales ausentes; C,
-    NaN en un campo numérico obligatorio; D, compatibilidad con esquemas
-    anteriores a 4; E, las comprobaciones semánticas más nuevas (duplicados,
-    cobertura OOF incompleta, probabilidad fuera de rango, solape entre
-    particiones, y predicciones que no coinciden con el outer_val real —
-    ver docs/validation.md).
+    Caso A prueba un fixture sano; B, columnas estructurales ausentes (incluye
+    B2: n_fit/n_inner_val/n_outer_val); C, NaN en un campo numérico
+    obligatorio; D, compatibilidad con esquemas anteriores a 4; E, las
+    comprobaciones semánticas de sujetos/predicciones (duplicados, cobertura
+    OOF incompleta, probabilidad fuera de rango, solape entre particiones, y
+    predicciones que no coinciden con el outer_val real); los 5 bugs
+    reportados sobre esta función (filas duplicadas en folds.csv/history.csv,
+    un fold completo ausente en un archivo, valores de split desconocidos, y
+    restored_monitor_value no numérico sin que escape TypeError) — ver
+    docs/validation.md.
     """
     seccion("Validación de artefactos de esquema 4 (fixtures, sin entrenar)")
     import shutil
@@ -441,6 +448,25 @@ def check_schema4_artifact_validation():
     for filename, column in drops:
         path = run_b / filename
         pd.read_csv(path).drop(columns=[column]).to_csv(path, index=False)
+
+    # --- Caso B2: n_fit/n_inner_val/n_outer_val ausentes en metrics_val.csv ---
+    # Bug C4 #1: antes de esta revisión estas tres columnas no estaban en el
+    # contrato de esquema 4, así que un CSV sin ellas pasaba la validación.
+    root_b2 = root / "caso_b2"
+    run_b2 = root_b2 / "run_sin_n_fit_inner_outer"
+    _write_schema4_fixture(run_b2)
+    faltantes_b2 = ["n_fit", "n_inner_val", "n_outer_val"]
+    path_b2 = run_b2 / "metrics_val.csv"
+    pd.read_csv(path_b2).drop(columns=faltantes_b2).to_csv(path_b2, index=False)
+    problems_b2 = C.validate_run_artifacts(run_b2, "")
+    texto_b2 = " | ".join(problems_b2)
+    detectadas_b2 = sum(1 for c in faltantes_b2 if c in texto_b2)
+    (ok if detectadas_b2 == len(faltantes_b2) else fail)(
+        "caso B2: validate_run_artifacts() informa n_fit/n_inner_val/n_outer_val "
+        "ausentes en metrics_val.csv"
+        + (f" — solo detectó {detectadas_b2}/{len(faltantes_b2)}: {problems_b2}"
+           if detectadas_b2 != len(faltantes_b2) else "")
+    )
 
     problems = C.validate_run_artifacts(run_b, "")
     texto = " | ".join(problems)
@@ -603,6 +629,86 @@ def check_schema4_artifact_validation():
     _semantica("solape_fit_outer_val", _solape_fit_outer_val)
     _semantica("prediccion_no_coincide_outer_val", _prediccion_no_coincide_con_outer_val)
 
+    # --- Casos C4: los 4 bugs restantes reportados sobre validate_run_artifacts ---
+
+    def _fila_duplicada_folds(run_dir: Path) -> None:
+        # Bug C4 #2: una fila repetida en folds.csv (misma clave
+        # (repeat, fold, subject_id)) no se detectaba porque no había un
+        # chequeo de unicidad de claves por archivo.
+        p = run_dir / "folds.csv"
+        frame = pd.read_csv(p)
+        pd.concat([frame, frame.iloc[[0]]], ignore_index=True).to_csv(p, index=False)
+
+    def _fila_duplicada_history(run_dir: Path) -> None:
+        # Mismo bug que arriba, pero en history.csv con clave
+        # (repeat, fold, epoch).
+        p = run_dir / "history.csv"
+        frame = pd.read_csv(p)
+        pd.concat([frame, frame.iloc[[0]]], ignore_index=True).to_csv(p, index=False)
+
+    def _fold_completo_ausente(run_dir: Path) -> None:
+        # Bug C4 #3: si un (repeat, fold) completo falta en un archivo (aquí,
+        # metrics_train.csv) pero sigue presente en metrics_val.csv, antes no
+        # se detectaba porque no había comprobación de cobertura cruzada de
+        # pares (repeat, fold) entre archivos.
+        p = run_dir / "metrics_train.csv"
+        frame = pd.read_csv(p)
+        objetivo = frame[["repeat", "fold"]].drop_duplicates().iloc[0]
+        mascara = (frame["repeat"] == objetivo["repeat"]) & (frame["fold"] == objetivo["fold"])
+        frame[~mascara].to_csv(p, index=False)
+
+    def _split_desconocido(run_dir: Path) -> None:
+        # Bug C4 #4: un valor de split fuera de {fit, inner_val, outer_val}
+        # se descartaba en silencio en vez de señalarse.
+        p = run_dir / "folds.csv"
+        frame = pd.read_csv(p)
+        frame.loc[0, "split"] = "unknown"
+        frame.to_csv(p, index=False)
+
+    _semantica("fila_duplicada_folds", _fila_duplicada_folds)
+    _semantica("fila_duplicada_history", _fila_duplicada_history)
+    _semantica("fold_completo_ausente", _fold_completo_ausente)
+    _semantica("split_desconocido", _split_desconocido)
+
+    # Bug C4 #5: restored_monitor_value no numérico (p. ej. "abc" por una
+    # corrida corrupta) hacía que np.isfinite() lanzara TypeError, que se
+    # propagaba sin capturar en vez de convertirse en un diagnóstico. Se
+    # prueba por separado porque el contrato exigido es más fuerte que "hay
+    # un problema en la lista": ni validate_run_artifacts() ni
+    # collect(strict=True) deben dejar escapar una excepción de contenido.
+    root_f = root / "caso_f_restored_monitor_value_no_numerico"
+    run_f = root_f / "run_restored_no_numerico"
+    _write_schema4_fixture(run_f)
+    p_f = run_f / "metrics_val.csv"
+    frame_f = pd.read_csv(p_f)
+    frame_f["restored_monitor_value"] = frame_f["restored_monitor_value"].astype(object)
+    frame_f.loc[0, "restored_monitor_value"] = "abc"
+    frame_f.to_csv(p_f, index=False)
+    try:
+        problems_f = C.validate_run_artifacts(run_f, "")
+        (ok if problems_f else fail)(
+            "caso F (restored_monitor_value no numérico): validate_run_artifacts() "
+            "devuelve un diagnóstico en vez de lanzar" + ("" if problems_f else " — devolvió []")
+        )
+    except (TypeError, ValueError) as e:
+        fail(
+            "caso F (restored_monitor_value no numérico): validate_run_artifacts() "
+            f"dejó escapar {type(e).__name__}: {e} en vez de devolver un diagnóstico"
+        )
+    try:
+        C.collect(root_f, strict=True)
+        fail("caso F (restored_monitor_value no numérico): collect(strict=True) no lanzó ValueError")
+    except ValueError:
+        ok(
+            "caso F (restored_monitor_value no numérico): collect(strict=True) lanza "
+            "ValueError (no TypeError) con el contenido corrupto"
+        )
+    except TypeError as e:
+        fail(
+            "caso F (restored_monitor_value no numérico): collect(strict=True) dejó "
+            f"escapar TypeError: {e} en vez de ValueError"
+        )
+
     shutil.rmtree(root)
 
 
@@ -615,9 +721,14 @@ def check_aggregate_table_gate():
     deterministic ya están en esa lista; luego, para cada uno de esos tres
     campos por separado, confirma que dos corridas que solo difieren ahí
     caen en grupos distintos de aggregate_table() (no solo que el campo
-    está listado); por último confirma que, si dos filas comparten todas
-    las columnas agrupadas y aun así traen config_hash distinto,
-    aggregate_table() aborta en vez de promediar.
+    está listado); luego confirma que, si dos filas comparten todas las
+    columnas agrupadas y aun así traen config_hash distinto,
+    aggregate_table() aborta en vez de promediar. Por último (C5) repite el
+    mismo patrón de "está en la lista y de verdad separa grupos" para los
+    campos de identidad añadidos en C5 (representation_seed,
+    start_from_epoch, random_subset/n_random_sets, seed, runner_code_hash) y
+    confirma que las versiones de software/GPU siguen excluidas aunque estén
+    presentes en el DataFrame.
     """
     seccion("Compuerta de aggregate_table() ante config_hash mixto (H11)")
     sys.path.insert(0, str(REPO / "src"))
@@ -681,6 +792,347 @@ def check_aggregate_table_gate():
             "aggregate_table() aborta ante config_hash mixto, identificando el grupo y "
             "los run_id/config_hash en conflicto" + (f" — {'; '.join(prob)}" if prob else "")
         )
+
+    # --- C5: campos de identidad añadidos a methodological_group_columns() ---
+    # Antes de C5 estos campos no estaban en la lista, así que dos corridas
+    # que solo difirieran en, por ejemplo, la semilla de la representación o
+    # el hash del código del runner se hubieran promediado juntas como si
+    # fueran la misma configuración metodológica.
+    base_c5 = {
+        **base,
+        "representation_seed": 1,
+        "start_from_epoch": 0,
+        "random_subset": 20,
+        "n_random_sets": 5,
+        "seed": 42,
+        "runner_code_hash": "aaaa1111",
+    }
+    groups_c5 = C.methodological_group_columns(pd.DataFrame([base_c5]))
+    prob_c5 = [c for c in ("representation_seed", "start_from_epoch", "random_subset",
+                            "n_random_sets", "seed", "runner_code_hash") if c not in groups_c5]
+    (ok if not prob_c5 else fail)(
+        "methodological_group_columns() incluye representation_seed/start_from_epoch/"
+        "random_subset/n_random_sets/seed/runner_code_hash"
+        + (f" — faltan {prob_c5}" if prob_c5 else "")
+    )
+
+    variantes_c5 = {
+        "start_from_epoch": 5,
+        "representation_seed": 2,
+        # random_subset y n_random_sets se prueban juntos: cambiar solo el
+        # tamaño del subconjunto aleatorio de ROIs ya debe separar los grupos.
+        "random_subset": 30,
+        "seed": 7,
+        "runner_code_hash": "bbbb2222",
+    }
+    for campo, valor_distinto in variantes_c5.items():
+        fila_a = {**base_c5, "config_hash": f"hashA_{campo}", "base_run_id": f"runA_{campo}"}
+        fila_b = {**base_c5, "config_hash": f"hashB_{campo}", "base_run_id": f"runB_{campo}",
+                  campo: valor_distinto}
+        agregada = C.aggregate_table(pd.DataFrame([fila_a, fila_b]))
+        (ok if len(agregada) == 2 else fail)(
+            f"dos corridas que solo difieren en {campo} quedan en grupos separados (C5)"
+            + (f" — se esperaban 2 grupos, hay {len(agregada)}" if len(agregada) != 2 else "")
+        )
+
+    # Versiones de software/GPU quedan fuera a propósito (no son parte de
+    # config_hash): confirmar que methodological_group_columns() no las
+    # incluye aunque estén presentes en el DataFrame.
+    base_software = {**base_c5, "tensorflow_version": "2.15.0", "gpu_name": "A100", "python_version": "3.11"}
+    groups_software = C.methodological_group_columns(pd.DataFrame([base_software]))
+    excluidas_presentes = [c for c in ("tensorflow_version", "gpu_name", "python_version")
+                            if c in groups_software]
+    (ok if not excluidas_presentes else fail)(
+        "methodological_group_columns() excluye versiones de software/GPU aunque estén "
+        "presentes en el DataFrame"
+        + (f" — incluyó {excluidas_presentes}" if excluidas_presentes else "")
+    )
+
+
+def _extraer_celda_notebook(nb, cell_id):
+    for cell in nb["cells"]:
+        if cell.get("id") == cell_id:
+            return "".join(cell["source"])
+    raise KeyError(f"celda {cell_id!r} no encontrada en el notebook")
+
+
+def check_notebook_state_machine():
+    """Máquina de estados de tdha_experimentos.ipynb (C1-C3): preflight(),
+    prueba_humo(), ejecutar_corrida(), ejecutar_diagnostico_orden() y
+    exigir_corrida_validada(), ejecutadas fuera de Colab con un
+    run_experiment.main() simulado (sin entrenar, sin importar TensorFlow).
+
+    Se extrae el código real de las celdas del notebook (por id, para no
+    mantener una copia manual que se desincronice) y se ejecuta en un
+    namespace con las variables de la celda de configuración fijadas a un
+    caso válido conocido — el mismo patrón de docs/guia-experimentacion-
+    colaborativa.md. Prueba: preflight() éxito/fracaso; ejecutar_corrida()
+    bloqueada sin preflight, bloqueada sin prueba de humo superada, y
+    bloqueada si el run_id de la corrida formal no coincide con el que
+    predijo preflight(); prueba_humo() fracaso; ejecutar_diagnostico_orden()
+    rechazando representación estática y modelo brainnetcnn; y
+    exigir_corrida_validada() rechazando corrida no validada, validación
+    vieja (RUN_ID_VALIDADO distinto de RUN_ID) y corrida que cambió en disco
+    después de validarse.
+    """
+    seccion("Máquina de estados del notebook (preflight/prueba_humo/corrida/validación)")
+    import contextlib
+    import io
+    import types
+
+    def _silencioso(func, *args, **kwargs):
+        # preflight()/prueba_humo() imprimen el "argv simulado" y mensajes de
+        # progreso pensados para Colab; aquí solo interesa el resultado o la
+        # excepción, así que se silencia stdout durante la llamada.
+        with contextlib.redirect_stdout(io.StringIO()):
+            return func(*args, **kwargs)
+
+    nb_path = REPO / "tdha_experimentos.ipynb"
+    with open(nb_path, encoding="utf-8") as f:
+        nb = json.load(f)
+
+    src_builder = _extraer_celda_notebook(nb, "9151337b")
+    lineas = src_builder.splitlines()
+    while lineas and not lineas[-1].strip():
+        lineas.pop()
+    if lineas[-1].strip() != "preflight()":
+        fail(
+            "check_notebook_state_machine(): la celda 9151337b no termina en una "
+            "llamada a preflight() como se esperaba — se omite esta prueba para no "
+            "correr una llamada real por accidente"
+        )
+        return
+    src_builder_sin_llamada = "\n".join(lineas[:-1])
+
+    src_gate_completo = _extraer_celda_notebook(nb, "4b8c48fb")
+    idx = src_gate_completo.find("def exigir_corrida_validada")
+    if idx == -1:
+        fail("check_notebook_state_machine(): no se encontró def exigir_corrida_validada en la celda 4b8c48fb")
+        return
+    src_gate = src_gate_completo[idx:]
+
+    config_valida = dict(
+        SITIO="NYU", ROI_SET="12", MODELO="lstm", HIPERPARAMS={},
+        REPRESENTACION="ordered", REPRESENTATION_SEED=None,
+        FISHER_Z=False, CONSTANT_POLICY="zero",
+        WINDOW_SECONDS=120, STEP_SECONDS=12, OVERLAP=None,
+        WINDOW_TR=None, STEP_TR=None, TR_SECONDS=None,
+        WINDOW_SHAPE="rectangular", GAUSSIAN_SIGMA=None,
+        LR=1e-4, BATCH_SIZE=8, EPOCHS=150, PATIENCE=25,
+        CLIPNORM=None, INNER_VAL_FRAC=0.15, START_FROM_EPOCH=0,
+        EARLY_STOPPING_MONITOR="val_loss", EARLY_STOPPING_MIN_DELTA=1e-5,
+        N_SPLITS=10, N_REPEATS=5, CLASS_WEIGHT=False, SEED=42,
+        DETERMINISTIC=False, MIXED_PRECISION=False,
+        RANDOM_SUBSET=None, N_RANDOM_SETS=20, EXCLUDE_ROI_SET=None,
+        NOMBRE="Juan", CORREO="juan@ejemplo.com",
+        TAG=None, OVERWRITE=False, EJECUTAR_PRUEBA_HUMO=True,
+    )
+
+    def _main_falso(mode):
+        def _main(argv):
+            if "--dry-run" in argv:
+                if mode.get("fail_dry_run"):
+                    raise SystemExit(mode.get("dry_run_msg", "preflight simulado: fallo"))
+                return mode.get("run_id_dry_run", "RUN_X")
+            if "--out" in argv:
+                if mode.get("fail_smoke"):
+                    raise SystemExit(mode.get("smoke_msg", "prueba de humo simulada: fallo"))
+                return "RUN_SMOKE"
+            if mode.get("fail_formal"):
+                raise SystemExit(mode.get("formal_msg", "corrida formal simulada: fallo"))
+            return mode.get("run_id_formal", "RUN_X")
+        return _main
+
+    original_run_experiment = sys.modules.get("run_experiment")
+
+    def _preparar_ns(mode, overrides=None):
+        fake_module = types.ModuleType("run_experiment")
+        fake_module.main = _main_falso(mode)
+        sys.modules["run_experiment"] = fake_module
+        ns = dict(config_valida)
+        if overrides:
+            ns.update(overrides)
+        exec(compile(src_builder_sin_llamada, "<celda-constructor>", "exec"), ns)
+        return ns
+
+    try:
+        # --- preflight(): éxito ---
+        ns = _preparar_ns({"run_id_dry_run": "RUN_A"})
+        run_id = _silencioso(ns["preflight"])
+        prob = []
+        if run_id != "RUN_A":
+            prob.append(f"preflight() devolvió {run_id!r}, se esperaba 'RUN_A'")
+        if ns["PREFLIGHT_OK"] is not True:
+            prob.append(f"PREFLIGHT_OK quedó en {ns['PREFLIGHT_OK']!r}, se esperaba True")
+        if ns["PREFLIGHT_RUN_ID"] != "RUN_A":
+            prob.append(f"PREFLIGHT_RUN_ID quedó en {ns['PREFLIGHT_RUN_ID']!r}, se esperaba 'RUN_A'")
+        (ok if not prob else fail)(
+            "preflight() con --dry-run limpio: PREFLIGHT_OK=True, PREFLIGHT_RUN_ID fijado"
+            + (f" — {'; '.join(prob)}" if prob else "")
+        )
+
+        # --- preflight(): fracaso ---
+        ns = _preparar_ns({"fail_dry_run": True, "dry_run_msg": "AVISO_SIMULADO_PREFLIGHT"})
+        try:
+            _silencioso(ns["preflight"])
+            fail("preflight() con --dry-run fallido no lanzó RuntimeError")
+        except RuntimeError as e:
+            prob = []
+            if "AVISO_SIMULADO_PREFLIGHT" not in str(e):
+                prob.append("el mensaje no incluye el aviso original")
+            if ns["PREFLIGHT_OK"] is not False:
+                prob.append(f"PREFLIGHT_OK quedó en {ns['PREFLIGHT_OK']!r}, se esperaba False")
+            (ok if not prob else fail)(
+                "preflight() con --dry-run fallido: RuntimeError con el aviso, PREFLIGHT_OK=False"
+                + (f" — {'; '.join(prob)}" if prob else "")
+            )
+
+        # --- ejecutar_corrida() sin preflight ---
+        ns = _preparar_ns({"run_id_dry_run": "RUN_A", "run_id_formal": "RUN_A"})
+        try:
+            _silencioso(ns["ejecutar_corrida"])
+            fail("ejecutar_corrida() sin preflight() no lanzó RuntimeError")
+        except RuntimeError as e:
+            (ok if "preflight" in str(e) else fail)(
+                "ejecutar_corrida() sin preflight() lanza RuntimeError mencionando preflight()"
+                + (f" — mensaje={e!r}" if "preflight" not in str(e) else "")
+            )
+
+        # --- ejecutar_corrida() con preflight pero sin prueba de humo superada ---
+        ns = _preparar_ns({"run_id_dry_run": "RUN_A", "run_id_formal": "RUN_A"})
+        _silencioso(ns["preflight"])
+        try:
+            _silencioso(ns["ejecutar_corrida"])
+            fail("ejecutar_corrida() sin prueba de humo superada (EJECUTAR_PRUEBA_HUMO=True) no lanzó RuntimeError")
+        except RuntimeError as e:
+            (ok if "humo" in str(e) else fail)(
+                "ejecutar_corrida() sin prueba de humo superada lanza RuntimeError mencionando la prueba de humo"
+                + (f" — mensaje={e!r}" if "humo" not in str(e) else "")
+            )
+
+        # --- prueba_humo(): fracaso ---
+        ns = _preparar_ns({"fail_smoke": True, "smoke_msg": "AVISO_SIMULADO_SMOKE"})
+        try:
+            _silencioso(ns["prueba_humo"])
+            fail("prueba_humo() con entrenamiento simulado fallido no lanzó RuntimeError")
+        except RuntimeError as e:
+            prob = []
+            if "AVISO_SIMULADO_SMOKE" not in str(e):
+                prob.append("el mensaje no incluye el aviso original")
+            if ns["SMOKE_OK"] is not False:
+                prob.append(f"SMOKE_OK quedó en {ns['SMOKE_OK']!r}, se esperaba False")
+            (ok if not prob else fail)(
+                "prueba_humo() con entrenamiento simulado fallido: RuntimeError, SMOKE_OK=False"
+                + (f" — {'; '.join(prob)}" if prob else "")
+            )
+
+        # --- ejecutar_corrida(): camino feliz completo ---
+        ns = _preparar_ns({"run_id_dry_run": "RUN_A", "run_id_formal": "RUN_A"})
+        _silencioso(ns["preflight"])
+        _silencioso(ns["prueba_humo"])
+        run_id = _silencioso(ns["ejecutar_corrida"])
+        prob = []
+        if run_id != "RUN_A":
+            prob.append(f"ejecutar_corrida() devolvió {run_id!r}, se esperaba 'RUN_A'")
+        if ns["CORRIDA_VALIDADA"] is not False or ns["RUN_ID_VALIDADO"] is not None:
+            prob.append("CORRIDA_VALIDADA/RUN_ID_VALIDADO no quedaron reseteados tras la corrida formal")
+        (ok if not prob else fail)(
+            "ejecutar_corrida() con preflight y prueba de humo superados: corre y "
+            "resetea CORRIDA_VALIDADA/RUN_ID_VALIDADO" + (f" — {'; '.join(prob)}" if prob else "")
+        )
+
+        # --- ejecutar_corrida(): run_id no coincide con el de preflight() ---
+        ns = _preparar_ns({"run_id_dry_run": "RUN_A", "run_id_formal": "RUN_B"})
+        _silencioso(ns["preflight"])
+        _silencioso(ns["prueba_humo"])
+        try:
+            _silencioso(ns["ejecutar_corrida"])
+            fail("ejecutar_corrida() con run_id distinto al de preflight() no lanzó RuntimeError")
+        except RuntimeError as e:
+            (ok if "no coincide" in str(e) else fail)(
+                "ejecutar_corrida() con run_id distinto al de preflight() lanza RuntimeError "
+                "señalando el desajuste" + (f" — mensaje={e!r}" if "no coincide" not in str(e) else "")
+            )
+
+        # --- ejecutar_diagnostico_orden(): rechaza representación estática ---
+        ns = _preparar_ns({"run_id_dry_run": "RUN_A"}, overrides={"REPRESENTACION": "static"})
+        try:
+            _silencioso(ns["ejecutar_diagnostico_orden"])
+            fail("ejecutar_diagnostico_orden() con REPRESENTACION='static' no lanzó ValueError")
+        except ValueError as e:
+            (ok if "static" in str(e) else fail)(
+                "ejecutar_diagnostico_orden() con REPRESENTACION='static' lanza ValueError "
+                "mencionándola" + (f" — mensaje={e!r}" if "static" not in str(e) else "")
+            )
+
+        # --- ejecutar_diagnostico_orden(): rechaza brainnetcnn ---
+        ns = _preparar_ns({"run_id_dry_run": "RUN_A"}, overrides={"MODELO": "brainnetcnn"})
+        try:
+            _silencioso(ns["ejecutar_diagnostico_orden"])
+            fail("ejecutar_diagnostico_orden() con MODELO='brainnetcnn' no lanzó ValueError")
+        except ValueError as e:
+            (ok if "brainnetcnn" in str(e) else fail)(
+                "ejecutar_diagnostico_orden() con MODELO='brainnetcnn' lanza ValueError "
+                "mencionándolo" + (f" — mensaje={e!r}" if "brainnetcnn" not in str(e) else "")
+            )
+    finally:
+        if original_run_experiment is not None:
+            sys.modules["run_experiment"] = original_run_experiment
+        else:
+            sys.modules.pop("run_experiment", None)
+
+    # --- exigir_corrida_validada() ---
+    def _preparar_ns_gate(cv, run_id_validado, run_id, problemas_export):
+        ns_gate = {
+            "CORRIDA_VALIDADA": cv, "RUN_ID_VALIDADO": run_id_validado, "RUN_ID": run_id,
+            "RUTA": Path("/tmp/no_existe_verify_setup"),
+            "validate_run_artifacts": lambda ruta: list(problemas_export),
+        }
+        exec(compile(src_gate, "<celda-gate>", "exec"), ns_gate)
+        return ns_gate
+
+    ns_gate = _preparar_ns_gate(False, None, "RUN_A", [])
+    try:
+        _silencioso(ns_gate["exigir_corrida_validada"])
+        fail("exigir_corrida_validada() con CORRIDA_VALIDADA=False no lanzó RuntimeError")
+    except RuntimeError as e:
+        (ok if "validada" in str(e) else fail)(
+            "exigir_corrida_validada() con CORRIDA_VALIDADA=False lanza RuntimeError"
+            + (f" — mensaje={e!r}" if "validada" not in str(e) else "")
+        )
+
+    ns_gate = _preparar_ns_gate(True, "RUN_A", "RUN_B", [])
+    try:
+        _silencioso(ns_gate["exigir_corrida_validada"])
+        fail("exigir_corrida_validada() con RUN_ID_VALIDADO distinto de RUN_ID no lanzó RuntimeError")
+    except RuntimeError as e:
+        (ok if "validada" in str(e) else fail)(
+            "exigir_corrida_validada() con RUN_ID_VALIDADO≠RUN_ID (validación vieja) lanza RuntimeError"
+            + (f" — mensaje={e!r}" if "validada" not in str(e) else "")
+        )
+
+    ns_gate = _preparar_ns_gate(True, "RUN_A", "RUN_A", ["archivo corrupto tras validar"])
+    try:
+        _silencioso(ns_gate["exigir_corrida_validada"])
+        fail("exigir_corrida_validada() con la corrida corrupta en disco no lanzó RuntimeError")
+    except RuntimeError as e:
+        prob = []
+        if "cambió" not in str(e) and "dejó de ser válida" not in str(e):
+            prob.append("el mensaje no indica que la corrida cambió/dejó de ser válida")
+        if ns_gate["CORRIDA_VALIDADA"] is not False or ns_gate["RUN_ID_VALIDADO"] is not None:
+            prob.append("CORRIDA_VALIDADA/RUN_ID_VALIDADO no quedaron reseteados")
+        (ok if not prob else fail)(
+            "exigir_corrida_validada() revalida contra disco y rechaza una corrida que "
+            "cambió después de validarse, reseteando el estado"
+            + (f" — {'; '.join(prob)}" if prob else "")
+        )
+
+    ns_gate = _preparar_ns_gate(True, "RUN_A", "RUN_A", [])
+    try:
+        _silencioso(ns_gate["exigir_corrida_validada"])
+        ok("exigir_corrida_validada() con validación vigente y sin problemas en disco no lanza nada")
+    except RuntimeError as e:
+        fail(f"exigir_corrida_validada() con validación vigente lanzó RuntimeError inesperado: {e}")
 
 
 def check_modelos(full):
@@ -948,6 +1400,7 @@ def main():
         check_particiones()
         check_schema4_artifact_validation()
         check_aggregate_table_gate()
+        check_notebook_state_machine()
         check_modelos(args.full)
         if args.full:
             check_entrenamiento()

@@ -107,8 +107,9 @@ def oof_metrics_per_repetition(predictions: pd.DataFrame) -> pd.DataFrame | None
     pliegue: el AUC o el F1 de un pliegue con ~18 sujetos es muy ruidoso, mientras que
     el de la muestra completa (agrupada) tiene mucha menos varianza de muestreo.
 
-    Devuelve una fila por repetición con AUC, F1 macro, exactitud balanceada, log-loss
-    y Brier, o ``None`` si el archivo de predicciones no tiene el formato esperado.
+    Devuelve una fila por repetición con exactitud (accuracy), AUC, F1 macro, exactitud
+    balanceada, log-loss y Brier, o ``None`` si el archivo de predicciones no tiene el
+    formato esperado.
     """
 
     needed = {"repeat", "y_true", "y_prob"}
@@ -364,9 +365,12 @@ def validate_run_artifacts(
     # identificadores estructurales (fold/repeat/subject_id/split/epoch) se
     # exigen en los cinco artefactos, no solo en metrics_train/val/history:
     # sin ellos, predictions_val.csv y folds.csv podían faltar por completo
-    # sus columnas y aun así "pasar" la validación.
+    # sus columnas y aun así "pasar" la validación. n_fit/n_inner_val/
+    # n_outer_val se exigen aparte de las particiones porque son el
+    # contraste independiente contra los tamaños reales de folds.csv más
+    # abajo — sin ellos ese contraste no puede hacerse.
     metrics_common = {
-        "fold", "repeat", "n_epochs", "best_epoch",
+        "fold", "repeat", "n_epochs", "best_epoch", "n_fit", "n_inner_val", "n_outer_val",
         "early_stopping_monitor", "best_monitor_value", "restored_monitor_value",
     }
     required_by_file = {
@@ -379,12 +383,24 @@ def validate_run_artifacts(
     # subject_id, split y early_stopping_monitor son texto y no se convierten
     # a número; el resto de columnas obligatorias sí debe ser finito.
     finite_by_file = {
-        "metrics_train": {"fold", "repeat", "n_epochs", "best_epoch", "best_monitor_value", "restored_monitor_value"},
-        "metrics_val": {"fold", "repeat", "n_epochs", "best_epoch", "best_monitor_value", "restored_monitor_value"},
+        "metrics_train": {"fold", "repeat", "n_epochs", "best_epoch", "n_fit", "n_inner_val",
+                          "n_outer_val", "best_monitor_value", "restored_monitor_value"},
+        "metrics_val": {"fold", "repeat", "n_epochs", "best_epoch", "n_fit", "n_inner_val",
+                        "n_outer_val", "best_monitor_value", "restored_monitor_value"},
         "history": {"fold", "repeat", "epoch", "loss", "inner_val_loss", "bce", "inner_val_bce"},
         "predictions_val": {"fold", "repeat", "y_true", "y_prob"},
         "folds": {"fold", "repeat"},
     }
+    # Columnas de texto que no pueden quedar vacías/nulas — subject_id y
+    # split son identificadores estructurales igual que fold/repeat, solo
+    # que no numéricos, así que se validan aparte de finite_by_file.
+    text_by_file = {
+        "metrics_train": {"early_stopping_monitor"},
+        "metrics_val": {"early_stopping_monitor"},
+        "predictions_val": {"subject_id"},
+        "folds": {"subject_id", "split"},
+    }
+
     for name, required in required_by_file.items():
         missing = required - set(frames[name].columns)
         if missing:
@@ -404,47 +420,100 @@ def validate_run_artifacts(
         if numeric.size == 0 or not np.isfinite(numeric).all():
             problems.append(f"{name}{suffix}.csv: valores no finitos o no numéricos en {sorted(present)}")
 
+    for name, columns in text_by_file.items():
+        frame = frames.get(name)
+        for col in (c for c in columns if c in frame.columns):
+            vacio = frame[col].isna() | (frame[col].astype(str).str.strip() == "")
+            if vacio.any():
+                problems.append(f"{name}{suffix}.csv: columna {col!r} tiene {int(vacio.sum())} valores vacíos")
+
+    # A partir de aquí las comprobaciones son semánticas (cruzan varios
+    # archivos, comparan valores entre sí) y asumen columnas presentes con
+    # tipos correctos. Si alguna comprobación estructural de arriba ya
+    # encontró un problema, se corta aquí: seguir adelante sobre datos que ya
+    # se sabe que están corruptos (p. ej. un texto donde se esperaba un
+    # número) es lo que antes dejaba escapar un TypeError de np.isfinite()
+    # en vez de un diagnóstico legible.
+    if problems:
+        return problems
+
     train, val, hist = frames["metrics_train"], frames["metrics_val"], frames["history"]
     pred, folds = frames["predictions_val"], frames["folds"]
-    key_cols = {"fold", "repeat"}
 
-    # Filas únicas de (fold, repeat) y coincidencia con n_splits*n_repeats.
-    n_splits, n_repeats = cfg.get("n_splits"), cfg.get("n_repeats")
-    expected_rows = n_splits * n_repeats if n_splits and n_repeats else None
-    for name, frame in (("metrics_train", train), ("metrics_val", val)):
-        if not key_cols <= set(frame.columns):
-            continue
-        n_unique = len(frame[["fold", "repeat"]].drop_duplicates())
-        if len(frame) != n_unique:
-            problems.append(f"{name}{suffix}.csv: {len(frame)} filas pero {n_unique} pares (fold, repeat) únicos")
-        elif expected_rows is not None and n_unique != expected_rows:
+    try:
+        n_splits, n_repeats = cfg.get("n_splits"), cfg.get("n_repeats")
+        expected_rows = n_splits * n_repeats if n_splits and n_repeats else None
+
+        # Claves únicas por archivo (sin filas duplicadas). Antes solo se
+        # comprobaba esto para metrics_train/metrics_val; una fila repetida en
+        # folds.csv o una época repetida en history.csv pasaban inadvertidas
+        # porque las comprobaciones siguientes construían conjuntos (que
+        # deduplican) en vez de contar filas.
+        key_cols_by_file = {
+            "metrics_train": ["repeat", "fold"],
+            "metrics_val": ["repeat", "fold"],
+            "history": ["repeat", "fold", "epoch"],
+            "predictions_val": ["repeat", "subject_id"],
+            "folds": ["repeat", "fold", "subject_id"],
+        }
+        for name, frame in frames.items():
+            cols = key_cols_by_file[name]
+            if not set(cols) <= set(frame.columns):
+                continue
+            n_total, n_unique = len(frame), len(frame[cols].drop_duplicates())
+            if n_total != n_unique:
+                problems.append(
+                    f"{name}{suffix}.csv: {n_total} filas pero {n_unique} claves "
+                    f"{tuple(cols)} únicas (hay filas duplicadas)"
+                )
+
+        # (repeat, fold) esperado: n_splits × n_repeats pares únicos en
+        # metrics_val, y ese mismo conjunto —sin faltantes ni sobrantes— en
+        # metrics_train, history, predictions_val y folds. Antes solo se
+        # comparaban metrics_train y metrics_val entre sí; un fold ausente
+        # por completo en folds.csv (o en predictions_val.csv) no lo
+        # detectaba nada, porque el resto del código solo agrupaba por
+        # (fold, repeat) presentes y nunca notaba los que faltaban.
+        fold_repeat_by_file: dict[str, set] = {}
+        for name, cols in (("metrics_train", ["repeat", "fold"]), ("history", ["repeat", "fold"]),
+                          ("predictions_val", ["repeat", "fold"]), ("folds", ["repeat", "fold"])):
+            frame = frames[name]
+            if set(cols) <= set(frame.columns):
+                fold_repeat_by_file[name] = set(map(tuple, frame[cols].to_numpy()))
+        reference = set(map(tuple, val[["repeat", "fold"]].to_numpy()))
+        if expected_rows is not None and len(reference) != expected_rows:
             problems.append(
-                f"{name}{suffix}.csv: {n_unique} filas, se esperaban {expected_rows} "
-                f"(n_splits={n_splits} × n_repeats={n_repeats})"
+                f"metrics_val{suffix}.csv: {len(reference)} pares (repeat, fold) únicos, "
+                f"se esperaban {expected_rows} (n_splits={n_splits} × n_repeats={n_repeats})"
             )
+        for name, keys in fold_repeat_by_file.items():
+            if keys != reference:
+                problems.append(
+                    f"{name}{suffix}.csv no cubre los mismos pares (repeat, fold) que "
+                    f"metrics_val{suffix}.csv: solo en metrics_val="
+                    f"{sorted(reference - keys)}, solo en {name}={sorted(keys - reference)}"
+                )
 
-    # Las mismas claves (fold, repeat) en metrics_train y metrics_val.
-    if key_cols <= set(train.columns) and key_cols <= set(val.columns):
-        train_keys = set(map(tuple, train[["repeat", "fold"]].to_numpy()))
-        val_keys = set(map(tuple, val[["repeat", "fold"]].to_numpy()))
-        if train_keys != val_keys:
-            problems.append(
-                f"metrics_train{suffix}.csv y metrics_val{suffix}.csv no comparten las "
-                f"mismas claves (repeat, fold): solo en train={sorted(train_keys - val_keys)}, "
-                f"solo en val={sorted(val_keys - train_keys)}"
-            )
+        # Repeticiones cubiertas por las predicciones OOF frente a las de las
+        # métricas — un desajuste aquí sobreviviría a la comprobación de
+        # (repeat, fold) de arriba si predictions_val.csv, por error, trajera
+        # una repetición completa que metrics_val.csv no tiene con las mismas
+        # claves exactas de fold.
+        if {"repeat"} <= set(pred.columns):
+            pred_repeats = set(pred["repeat"].unique())
+            metric_repeats = {r for r, _ in reference}
+            if pred_repeats != metric_repeats:
+                problems.append(
+                    f"predictions_val{suffix}.csv cubre repeticiones {sorted(pred_repeats)}, "
+                    f"metrics_val{suffix}.csv cubre {sorted(metric_repeats)}"
+                )
 
-    # Serie de épocas completa por pliegue, best_epoch en rango, y su valor en
-    # history coincide con best_monitor_value (no circular: restored_monitor_value
-    # viene de una reevaluación del modelo, no de leer esta misma fila).
-    if {"fold", "repeat", "n_epochs", "best_epoch", "early_stopping_monitor",
-        "best_monitor_value"} <= set(val.columns) and {"fold", "repeat", "epoch"} <= set(hist.columns):
+        # Serie de épocas completa por pliegue, best_epoch en rango, y su valor en
+        # history coincide con best_monitor_value (no circular: restored_monitor_value
+        # viene de una reevaluación del modelo, no de leer esta misma fila).
         for _, row in val.iterrows():
             fold_v, repeat_v = row["fold"], row["repeat"]
-            n_epochs_fold, best_epoch = row.get("n_epochs"), row.get("best_epoch")
-            if pd.isna(n_epochs_fold) or pd.isna(best_epoch):
-                continue
-            n_epochs_fold, best_epoch = int(n_epochs_fold), int(best_epoch)
+            n_epochs_fold, best_epoch = int(row["n_epochs"]), int(row["best_epoch"])
             fold_hist = hist[(hist["fold"] == fold_v) & (hist["repeat"] == repeat_v)]
             epochs_presentes = set(fold_hist["epoch"].dropna().astype(int))
             epochs_esperadas = set(range(1, n_epochs_fold + 1))
@@ -458,30 +527,27 @@ def validate_run_artifacts(
                 continue
             monitor = row.get("early_stopping_monitor")
             inner_col = {"val_loss": "inner_val_loss", "val_bce": "inner_val_bce"}.get(monitor)
-            best_value = row.get("best_monitor_value")
-            if inner_col is None or inner_col not in hist.columns or pd.isna(best_value):
+            best_value = float(row["best_monitor_value"])
+            if inner_col is None or inner_col not in hist.columns:
                 continue
             recorded = fold_hist.loc[fold_hist["epoch"] == best_epoch, inner_col]
             if recorded.empty:
                 problems.append(f"f{fold_v}r{repeat_v}: no hay fila de history{suffix}.csv para epoch={best_epoch}")
-            elif abs(float(recorded.iloc[0]) - float(best_value)) > 1e-6:
+            elif abs(float(recorded.iloc[0]) - best_value) > 1e-6:
                 problems.append(
                     f"f{fold_v}r{repeat_v}: history[{inner_col}][{best_epoch}]={float(recorded.iloc[0])} "
                     f"!= best_monitor_value={best_value}"
                 )
-            restored_value = row.get("restored_monitor_value")
-            if restored_value is None or pd.isna(restored_value):
-                continue
+            restored_value = float(row["restored_monitor_value"])
             if not np.isfinite(restored_value):
                 problems.append(f"f{fold_v}r{repeat_v}: restored_monitor_value no finito")
-            elif abs(float(restored_value) - float(best_value)) > 1e-4:
+            elif abs(restored_value - best_value) > 1e-4:
                 problems.append(
                     f"f{fold_v}r{repeat_v}: restored_monitor_value={restored_value} se "
                     f"aleja de best_monitor_value={best_value} (pesos no consistentes)"
                 )
 
-    # Rango de etiquetas y probabilidades en las predicciones OOF.
-    if {"y_true", "y_prob"} <= set(pred.columns):
+        # Rango de etiquetas y probabilidades en las predicciones OOF.
         y_true = pd.to_numeric(pred["y_true"], errors="coerce")
         y_prob = pd.to_numeric(pred["y_prob"], errors="coerce")
         fuera_de_clase = sorted(y_true[~y_true.isin([0, 1])].dropna().unique().tolist())
@@ -490,30 +556,63 @@ def validate_run_artifacts(
         if not y_prob.between(0, 1).all():
             problems.append(f"predictions_val{suffix}.csv: y_prob tiene valores fuera de [0, 1]")
 
-    # Un subject_id por repetición, y cobertura de n_subjects.
-    if {"repeat", "subject_id"} <= set(pred.columns):
+        # Cobertura de n_subjects por repetición (los duplicados de subject_id
+        # ya se descartaron arriba, en la comprobación de clave única).
         n_subjects = cfg.get("n_subjects")
-        for repeat, group in pred.groupby("repeat"):
-            n_dup = int(group["subject_id"].duplicated().sum())
-            if n_dup:
-                problems.append(f"predictions_val{suffix}.csv, repetición {repeat}: {n_dup} subject_id duplicados")
-            if n_subjects is not None and group["subject_id"].nunique() != n_subjects:
-                problems.append(
-                    f"predictions_val{suffix}.csv, repetición {repeat}: "
-                    f"{group['subject_id'].nunique()} sujetos, se esperaban {n_subjects}"
-                )
+        if n_subjects is not None:
+            for repeat, group in pred.groupby("repeat"):
+                if group["subject_id"].nunique() != n_subjects:
+                    problems.append(
+                        f"predictions_val{suffix}.csv, repetición {repeat}: "
+                        f"{group['subject_id'].nunique()} sujetos, se esperaban {n_subjects}"
+                    )
 
-    # Particiones fit/inner_val/outer_val disjuntas, y sus tamaños coinciden con
-    # n_fit/n_inner_val/n_outer_val registrados en metrics_val.
-    if {"fold", "repeat", "split", "subject_id"} <= set(folds.columns):
+        # y_true debe ser el mismo para un sujeto en todas las repeticiones en
+        # las que aparece: es una etiqueta del sujeto, no de la repetición.
+        y_true_por_sujeto = pred.assign(y_true=y_true).groupby("subject_id")["y_true"].nunique()
+        inconsistentes = sorted(y_true_por_sujeto[y_true_por_sujeto > 1].index.tolist())
+        if inconsistentes:
+            problems.append(
+                f"predictions_val{suffix}.csv: y_true distinto para el mismo sujeto entre "
+                f"repeticiones: {inconsistentes}"
+            )
+
+        # El conjunto de sujetos predichos OOF debe ser idéntico entre
+        # repeticiones (cada repetición cubre a todos los sujetos una vez).
+        sujetos_por_repeticion = {r: frozenset(g["subject_id"]) for r, g in pred.groupby("repeat")}
+        if len(set(sujetos_por_repeticion.values())) > 1:
+            problems.append(
+                f"predictions_val{suffix}.csv: el conjunto de sujetos no es idéntico en "
+                "todas las repeticiones"
+            )
+
+        # Valores de split permitidos. Antes, una fila con split="mystery" no
+        # encajaba en ninguno de los tres conjuntos de abajo y simplemente se
+        # ignoraba, en vez de señalarse como un valor inválido.
+        valores_permitidos = {"fit", "inner_val", "outer_val"}
+        desconocidos = sorted(set(folds["split"].unique()) - valores_permitidos)
+        if desconocidos:
+            problems.append(f"folds{suffix}.csv: valores de split desconocidos {desconocidos}")
+
+        # Particiones fit/inner_val/outer_val disjuntas, su unión cubre
+        # exactamente n_subjects, y sus tamaños coinciden con
+        # n_fit/n_inner_val/n_outer_val registrados en metrics_val.
+        conjuntos_por_grupo: dict[tuple, frozenset] = {}
         for (fold_v, repeat_v), g in folds.groupby(["fold", "repeat"]):
-            sets = {s: set(g.loc[g["split"] == s, "subject_id"]) for s in ("fit", "inner_val", "outer_val")}
+            sets = {s: set(g.loc[g["split"] == s, "subject_id"]) for s in valores_permitidos}
+            conjuntos_por_grupo[(fold_v, repeat_v)] = frozenset(g["subject_id"])
             if sets["fit"] & sets["inner_val"]:
                 problems.append(f"f{fold_v}r{repeat_v}: fit∩inner_val no vacío")
             if sets["fit"] & sets["outer_val"]:
                 problems.append(f"f{fold_v}r{repeat_v}: fit∩outer_val no vacío")
             if sets["inner_val"] & sets["outer_val"]:
                 problems.append(f"f{fold_v}r{repeat_v}: inner_val∩outer_val no vacío")
+            union_total = sets["fit"] | sets["inner_val"] | sets["outer_val"]
+            if n_subjects is not None and len(union_total) != n_subjects:
+                problems.append(
+                    f"f{fold_v}r{repeat_v}: fit ∪ inner_val ∪ outer_val tiene "
+                    f"{len(union_total)} sujetos, se esperaban n_subjects={n_subjects}"
+                )
             if {"fold", "repeat", "subject_id"} <= set(pred.columns):
                 pred_ids = set(pred.loc[(pred["fold"] == fold_v) & (pred["repeat"] == repeat_v), "subject_id"])
                 if pred_ids != sets["outer_val"]:
@@ -521,21 +620,35 @@ def validate_run_artifacts(
                         f"f{fold_v}r{repeat_v}: sujetos de predictions_val{suffix}.csv no "
                         f"coinciden con outer_val de folds{suffix}.csv"
                     )
-            if {"fold", "repeat", "n_fit", "n_inner_val", "n_outer_val"} <= set(val.columns):
-                fila = val[(val["fold"] == fold_v) & (val["repeat"] == repeat_v)]
-                if not fila.empty:
-                    esperado = fila.iloc[0]
-                    for split_name, columna in (
-                        ("fit", "n_fit"), ("inner_val", "n_inner_val"), ("outer_val", "n_outer_val")
-                    ):
-                        n_esperado = esperado.get(columna)
-                        if n_esperado is None or pd.isna(n_esperado):
-                            continue
-                        if len(sets[split_name]) != int(n_esperado):
-                            problems.append(
-                                f"f{fold_v}r{repeat_v}: {split_name} tiene {len(sets[split_name])} "
-                                f"sujetos en folds{suffix}.csv, se esperaban {int(n_esperado)} ({columna})"
-                            )
+            fila = val[(val["fold"] == fold_v) & (val["repeat"] == repeat_v)]
+            if not fila.empty:
+                esperado = fila.iloc[0]
+                for split_name, columna in (
+                    ("fit", "n_fit"), ("inner_val", "n_inner_val"), ("outer_val", "n_outer_val")
+                ):
+                    n_esperado = int(esperado[columna])
+                    if len(sets[split_name]) != n_esperado:
+                        problems.append(
+                            f"f{fold_v}r{repeat_v}: {split_name} tiene {len(sets[split_name])} "
+                            f"sujetos en folds{suffix}.csv, se esperaban {n_esperado} ({columna})"
+                        )
+
+        # El conjunto total de sujetos (fit ∪ inner_val ∪ outer_val) debe ser
+        # el mismo en todos los folds y repeticiones — todas parten de la
+        # misma cohorte, solo cambia cómo se reparte.
+        if len(set(conjuntos_por_grupo.values())) > 1:
+            problems.append(
+                f"folds{suffix}.csv: el conjunto total de sujetos no es el mismo en todos "
+                "los folds/repeticiones"
+            )
+    except (TypeError, ValueError, KeyError) as exc:
+        # Red de seguridad: cualquier corrupción de contenido no anticipada
+        # por las comprobaciones anteriores se convierte en un diagnóstico
+        # legible en vez de propagarse como una excepción sin contexto.
+        problems.append(
+            f"{run_dir.name}{suffix}: error inesperado validando el contenido "
+            f"({type(exc).__name__}: {exc})"
+        )
 
     return problems
 
@@ -675,13 +788,23 @@ def _check_early_stopping_ab(base: pd.DataFrame) -> None:
 
 def methodological_group_columns(df: pd.DataFrame) -> list[str]:
     candidates = [
-        "site", "roi_set", "model", "arch_json", "representation", "connectivity_mode",
+        "site", "roi_set", "model", "arch_json", "representation", "representation_seed",
+        "connectivity_mode", "windowing_preset",
         "window_tr", "step_tr", "window_seconds", "step_seconds",
+        "requested_window_seconds", "requested_step_seconds", "requested_overlap",
         "effective_overlap", "window_shape", "gaussian_sigma", "fisher_z",
         "constant_policy", "lr", "batch_size", "epochs", "patience", "clipnorm",
         "inner_val_frac", "class_weight", "deterministic", "mixed_precision",
+        "start_from_epoch", "random_subset", "n_random_sets", "exclude_roi_set",
         "early_stopping_monitor", "early_stopping_min_delta",
+        "seed", "n_splits", "n_repeats", "split_fingerprint",
+        "roi_indices_hash", "bold_hash", "atlas_hash", "data_code_hash", "runner_code_hash",
     ]
+    # Versiones de software y GPU quedan fuera a propósito: son metadatos del
+    # entorno de ejecución, no parte de la identidad de la corrida en
+    # run_experiment.py (config_hash no las incluye), así que agrupar por
+    # ellas separaría corridas metodológicamente idénticas solo porque
+    # corrieron con distinto Keras o distinta GPU.
     return [c for c in candidates if c in df.columns]
 
 
