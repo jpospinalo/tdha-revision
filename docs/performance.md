@@ -31,3 +31,13 @@ Every architecture declares a `float32` output, so the loss and sigmoid stay sta
 ## Configuration and aggregation
 
 Parameters live in a single configuration per run, which keeps executions consistent and errors rare. Metrics are written during the run and aggregated only after all repetitions finish.
+
+## Artifact validation
+
+`validate_run_artifacts()` (used by `collect(strict=True)`, `verify_setup.py`, and the
+notebook's pre-export gate) reads all five CSVs of a `config_schema_version >= 4` run and
+checks row counts, key sets, and numeric ranges across them — more than a single
+existence check, but still small next to a training run: it is one `pandas` read per
+file plus vectorized checks, not a per-row Python loop, so it stays well under a second
+even for `n_splits=10, n_repeats=5`. Runs older than schema 4 skip these checks and only
+get the existence/non-empty check, unchanged from before.

@@ -5,6 +5,7 @@ Technical documentation for the current version of the ADHD-200 dynamic function
 | Document | Description |
 |----------|-------------|
 | `architecture.md` | Modules and data flow. |
+| `guia-experimentacion-colaborativa.md` | Operational guide for the Colab notebook (Spanish): running, validating, downloading, and pushing a run. |
 | `methodology.md` | How data are processed and experiments run. |
 | `validation.md` | What has been verified in the implementation. |
 | `performance.md` | Computational optimizations. |

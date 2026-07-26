@@ -15,8 +15,14 @@ pip install -r ../requirements.txt
 
 python verify_setup.py                                       # comprueba el entorno
 python run_experiment.py --list-roi-sets
-python run_experiment.py --site NYU --roi-set 12 --dry-run   # valida sin entrenar
-python run_experiment.py --site NYU --roi-set 12             # una corrida completa
+
+# --representation y --window-seconds/--step-seconds explícitos: sin ellos, el script
+# cae en el enventanado legado (70/2 TR) por compatibilidad hacia atrás, no en los
+# 120 s recomendados — ver "La ventana física por defecto" más abajo.
+python run_experiment.py --site NYU --roi-set 12 --representation ordered \
+    --window-seconds 120 --step-seconds 12 --dry-run   # valida sin entrenar
+python run_experiment.py --site NYU --roi-set 12 --representation ordered \
+    --window-seconds 120 --step-seconds 12             # una corrida completa
 python compile_results.py --site NYU --model lstm --stats
 
 python run_queue.py --sites NYU --roi-sets 12 18 39 116      # varias encadenadas
@@ -79,8 +85,12 @@ redondeo de `float32`.
 **Una corrida por carpeta.** El nombre incluye un hash de la configuración completa
 (`NYU_rois12_w70s2_lstm_2136273e`). Varias personas pueden correr en paralelo y hacer
 push al mismo repositorio sin conflictos, porque nadie escribe en un archivo
-compartido. Si alguien repite una configuración idéntica, el script lo advierte en
-lugar de sobrescribir.
+compartido. Repetir una configuración ya completada en la misma carpeta detiene la
+ejecución (`ESTA_CONFIGURACION_YA_SE_EJECUTO`) en vez de sobrescribirla: `--tag`
+distingue la repetición como una carpeta nueva sin cambiar `config_hash`, y
+`--overwrite` reemplaza deliberadamente la carpeta existente. Una corrida incompleta
+(sin `metrics_val.csv`, por ejemplo tras una desconexión de Colab a mitad) sí se rehace
+sola, con un aviso impreso.
 
 **Comparaciones pareadas.** Con la misma `--seed` y las mismas etiquetas, todas las
 configuraciones usan exactamente las mismas particiones. Eso permite contrastes
@@ -185,10 +195,19 @@ ATHENA del Neuro Bureau.
 |---|---|---|
 | `config.json` | configuración, hashes, commit, entorno | reproducibilidad (fuente de verdad) |
 | `resumen.md` | vista legible del config y las métricas titulares, derivada de `config.json` | hojear muchas corridas de un vistazo |
-| `metrics_train.csv`, `metrics_val.csv` | métricas por pliegue | tablas de desempeño |
-| `history.csv` | pérdida y accuracy por época | curvas de convergencia |
-| `predictions_val.csv` | probabilidad por sujeto | matrices de confusión, ROC |
-| `folds.csv` | sujetos de cada partición: `fit`, `inner_val`, `outer_val` | auditoría de fuga |
+| `metrics_train.csv`, `metrics_val.csv` | una fila por fold externo (`N_SPLITS x N_REPEATS` filas) | diagnóstico de dispersión entre pliegues |
+| `history.csv` | una fila por época de cada fold | curvas de convergencia |
+| `predictions_val.csv` | una fila por sujeto evaluado OOF en cada repetición | matrices de confusión, ROC, métricas OOF |
+| `folds.csv` | una fila por sujeto, fold y partición (`fit`, `inner_val`, `outer_val`) | auditoría de fuga |
+
+`metrics_val.csv` da una fila por pliegue externo: con `N_SPLITS=10`/`N_REPEATS=5` son
+50 estimaciones ruidosas del mismo modelo. La estimación de referencia de una corrida no
+es su media, es el **resumen OOF por repetición**: agrupar las predicciones de
+`predictions_val.csv` por `repeat` y calcular cada métrica sobre la muestra completa
+reconstruida, dando `N_REPEATS` valores en vez de `N_SPLITS x N_REPEATS`. Lo calcula
+`compile_results.oof_metrics_per_repetition()`, lo compila `compile_results.py` en la
+tabla agregada (`oof_auc_mean`, `oof_f1_macro_mean`, …), y el notebook lo muestra primero
+en la sección de resultados, con la tabla por pliegue como diagnóstico secundario.
 
 Con `--random-subset` los archivos llevan el sufijo `_setNN` y se añade
 `random_subsets_summary.csv`.
@@ -261,7 +280,8 @@ el atlas AAL116, los nombres y una descripción. Los índices se validan al carg
 1. Usar `--seed 42` en todo lo que se vaya a comparar.
 2. Hacer commit del código antes de correr; el script avisa si el árbol está sucio.
 3. Nunca editar a mano un CSV de `results/`. Si un resultado está mal, se vuelve a
-   correr y se versiona la corrida nueva.
+   correr con `--tag` (carpeta nueva) o `--overwrite` (reemplaza la existente) y se
+   versiona la corrida resultante.
 4. Ejecutar `--dry-run` antes de una corrida larga.
 
 ## Documentación adicional
@@ -271,6 +291,8 @@ contexto que un asistente de IA debería cargar antes de tocar el código, así 
 mantiene sincronizado con `src/` en cada cambio:
 
 - `architecture.md` — módulos, responsabilidades, flujo de datos.
+- `guia-experimentacion-colaborativa.md` — cómo usar el notebook para correr, validar,
+  descargar y subir una corrida en Colab; qué corregir si algo falla a mitad de camino.
 - `methodology.md` — qué representaciones de conectividad existen, por qué, y cómo se
   evalúa (incluye las métricas OOF por repetición y la corrección de Nadeau-Bengio en
   `compile_results.py`).

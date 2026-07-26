@@ -95,14 +95,32 @@ The monitor and its `min_delta` are part of the run's identity (`config_hash`/`r
 
 Classification metrics are computed per repetition, stored per run, and aggregated afterwards. Reproducibility rests on fixed seeds (identical partitions across machines), the configuration and metadata exported with every run, and a standardized output layout.
 
+Each run's five CSV artifacts have a different unit of observation: `metrics_train.csv`
+and `metrics_val.csv` have one row per outer fold (`n_splits * n_repeats` rows); `history.csv` has one row per epoch of each fold; `predictions_val.csv` has one row per subject evaluated out-of-fold within a repetition; `folds.csv` has one row per subject, fold, and partition (`fit`/`inner_val`/`outer_val`). None of them is one row per repetition on its own — the per-repetition OOF view below is a specific aggregation over `predictions_val.csv`, not a sixth file.
+
 `compile_results.py` reports two views of validation performance. Per-fold mean±sd
 (`val_*_mean`/`val_*_sd`) averages the metric computed on each outer fold separately —
 noisy when folds are small (e.g. ~18 subjects per fold at `n_splits=10`). Per-repetition
 out-of-fold metrics (`oof_*_mean`/`oof_*_sd`) instead pool every fold's predictions
 within a repetition — in a `RepeatedStratifiedKFold`, each repetition's folds partition
-the whole sample exactly once — and score AUC, F1-macro, balanced accuracy, log-loss,
-and Brier on that pooled repetition before averaging across repetitions. This is less
-sensitive to individual small-fold sampling variance.
+the whole sample exactly once — and score accuracy, AUC, F1-macro, balanced accuracy,
+log-loss, and Brier on that pooled repetition before averaging across repetitions. This
+is less sensitive to individual small-fold sampling variance, and is the estimate the
+notebook shows first when reviewing a single run's results, ahead of the per-fold table.
+
+`summarize()` also flattens the run's full identity into the compiled table, not just the
+metrics: `arch_json` (the architecture hyperparameters, canonically serialized, so two
+runs with the same JSON have the same architecture regardless of key order), `lr`,
+`batch_size`, `epochs`, `patience`, `clipnorm`, `inner_val_frac`, `class_weight`,
+`deterministic`, `mixed_precision`, `start_from_epoch`, and the recorded software
+versions (`python_version`, `tensorflow_version`, `keras_version`, `sklearn_version`,
+`gpu`). `methodological_group_columns()` includes all of these when grouping runs for
+`aggregate_table()`, so two runs that only match on site/ROIs/model/representation but
+differ in, say, `lr` or `arch_json` no longer get averaged together as if they were the
+same configuration. As a second, independent check, `aggregate_table()` also verifies
+that every row inside a methodological group shares one `config_hash`; if it finds more
+than one, it raises instead of silently averaging two configurations that happen to share
+the grouping columns it knows about but differ in something it doesn't group by.
 
 Paired comparisons (`--stats`) additionally correct the resampled t-test for the fact
 that folds from a repeated k-fold are not independent observations — their training sets

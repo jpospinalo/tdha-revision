@@ -329,48 +329,72 @@ def check_particiones():
 
 
 def _write_schema4_fixture(run_dir: Path) -> None:
-    """Escribe los 5 artefactos mínimos (un pliegue, una fila) de una corrida
-    de esquema 4 completa y válida, sin entrenar nada — usado por
+    """Escribe los artefactos de una corrida de esquema 4 completa y
+    coherente (2 pliegues, 6 sujetos), sin entrenar nada — usada por
     check_schema4_artifact_validation() para mutar copias y probar que
-    _validate_schema4_artifacts()/collect() rechazan lo que deben rechazar.
+    compile_results.validate_run_artifacts()/collect() rechazan lo que deben
+    rechazar. Las particiones son reales — fit/inner_val/outer_val disjuntas,
+    outer_val cubre los 6 sujetos exactamente una vez en la repetición — para
+    que la corrida "sana" también pase las comprobaciones semánticas de H12
+    (conteo de filas, claves compartidas, cobertura OOF, tamaños de
+    partición), no solo las de columnas/finitud.
     """
     import pandas as pd
 
     run_dir.mkdir(parents=True, exist_ok=True)
     cfg = {
         "run_id": run_dir.name, "config_schema_version": 4, "site": "NYU",
+        "n_splits": 2, "n_repeats": 1, "n_subjects": 6,
         "early_stopping_monitor": "val_loss", "early_stopping_ab_hash": "fixture0000000",
     }
     (run_dir / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
-    common = {
-        "fold": [1], "repeat": [1], "n_epochs": [3], "best_epoch": [2],
-        "early_stopping_monitor": ["val_loss"],
-        "best_monitor_value": [0.5], "restored_monitor_value": [0.5],
-        "accuracy": [0.7], "loss": [0.5],
+
+    folds_spec = {
+        1: {"outer_val": ["s1", "s2", "s3"], "fit": ["s4", "s5"], "inner_val": ["s6"]},
+        2: {"outer_val": ["s4", "s5", "s6"], "fit": ["s1", "s2"], "inner_val": ["s3"]},
     }
-    pd.DataFrame(common).to_csv(run_dir / "metrics_train.csv", index=False)
-    pd.DataFrame(common).to_csv(run_dir / "metrics_val.csv", index=False)
-    pd.DataFrame({
-        "fold": [1], "repeat": [1], "epoch": [1],
-        "loss": [0.5], "inner_val_loss": [0.5], "bce": [0.4], "inner_val_bce": [0.4],
-    }).to_csv(run_dir / "history.csv", index=False)
-    pd.DataFrame({
-        "fold": [1], "repeat": [1], "subject_id": ["s1"], "y_true": [1], "y_prob": [0.6],
-    }).to_csv(run_dir / "predictions_val.csv", index=False)
-    pd.DataFrame({
-        "fold": [1], "repeat": [1], "subject_id": ["s1"], "split": ["fit"],
-    }).to_csv(run_dir / "folds.csv", index=False)
+    metrics_rows, history_rows, prediction_rows, fold_rows = [], [], [], []
+    for fold, parts in folds_spec.items():
+        metrics_rows.append({
+            "fold": fold, "repeat": 1, "n_epochs": 3, "best_epoch": 2,
+            "n_fit": len(parts["fit"]), "n_inner_val": len(parts["inner_val"]),
+            "n_outer_val": len(parts["outer_val"]),
+            "early_stopping_monitor": "val_loss",
+            "best_monitor_value": 0.5, "restored_monitor_value": 0.5,
+            "accuracy": 0.7, "loss": 0.5,
+        })
+        for epoch in (1, 2, 3):
+            history_rows.append({
+                "fold": fold, "repeat": 1, "epoch": epoch,
+                "loss": 0.6 - 0.05 * epoch, "inner_val_loss": 0.5,
+                "bce": 0.5 - 0.05 * epoch, "inner_val_bce": 0.45,
+            })
+        for subject in parts["outer_val"]:
+            prediction_rows.append({
+                "fold": fold, "repeat": 1, "subject_id": subject,
+                "y_true": 1 if subject in ("s1", "s4") else 0, "y_prob": 0.6,
+            })
+        for split_name in ("fit", "inner_val", "outer_val"):
+            for subject in parts[split_name]:
+                fold_rows.append({"fold": fold, "repeat": 1, "subject_id": subject, "split": split_name})
+
+    pd.DataFrame(metrics_rows).to_csv(run_dir / "metrics_train.csv", index=False)
+    pd.DataFrame(metrics_rows).to_csv(run_dir / "metrics_val.csv", index=False)
+    pd.DataFrame(history_rows).to_csv(run_dir / "history.csv", index=False)
+    pd.DataFrame(prediction_rows).to_csv(run_dir / "predictions_val.csv", index=False)
+    pd.DataFrame(fold_rows).to_csv(run_dir / "folds.csv", index=False)
 
 
 def check_schema4_artifact_validation():
-    """Regresiones de _validate_schema4_artifacts()/collect() con fixtures
-    CSV escritos a mano, sin entrenar ni importar TensorFlow. Cubre los dos
-    defectos de la corrección v11 (ver docs/validation.md): (1)
-    predictions_val.csv/folds.csv no tenían ninguna columna obligatoria, así
-    que podían perder subject_id/split/epoch sin que nada lo detectara; (2)
-    la comprobación de finitud usaba frame[present].stack(), que descarta los
-    NaN por defecto (dropna=True) antes de que np.isfinite() los viera, así
-    que un best_monitor_value=NaN pasaba inadvertido.
+    """Regresiones de compile_results.validate_run_artifacts()/collect() con
+    fixtures CSV escritos a mano, sin entrenar ni importar TensorFlow.
+
+    Caso A prueba un fixture sano; B, columnas estructurales ausentes; C,
+    NaN en un campo numérico obligatorio; D, compatibilidad con esquemas
+    anteriores a 4; E, las comprobaciones semánticas más nuevas (duplicados,
+    cobertura OOF incompleta, probabilidad fuera de rango, solape entre
+    particiones, y predicciones que no coinciden con el outer_val real —
+    ver docs/validation.md).
     """
     seccion("Validación de artefactos de esquema 4 (fixtures, sin entrenar)")
     import shutil
@@ -387,9 +411,9 @@ def check_schema4_artifact_validation():
     root_a = root / "caso_a"
     run_a = root_a / "run_valido"
     _write_schema4_fixture(run_a)
-    problems = C._validate_schema4_artifacts(run_a, "")
+    problems = C.validate_run_artifacts(run_a, "")
     (ok if not problems else fail)(
-        "caso A (válido): _validate_schema4_artifacts() devuelve []"
+        "caso A (válido): validate_run_artifacts() devuelve []"
         + (f" — {problems}" if problems else "")
     )
     try:
@@ -418,11 +442,11 @@ def check_schema4_artifact_validation():
         path = run_b / filename
         pd.read_csv(path).drop(columns=[column]).to_csv(path, index=False)
 
-    problems = C._validate_schema4_artifacts(run_b, "")
+    problems = C.validate_run_artifacts(run_b, "")
     texto = " | ".join(problems)
     detectadas = sum(1 for _, column in drops if column in texto)
     (ok if detectadas == len(drops) else fail)(
-        f"caso B: _validate_schema4_artifacts() informa las {len(drops)} columnas ausentes"
+        f"caso B: validate_run_artifacts() informa las {len(drops)} columnas ausentes"
         + (f" — solo detectó {detectadas}/{len(drops)}: {problems}" if detectadas != len(drops) else "")
     )
     try:
@@ -470,11 +494,11 @@ def check_schema4_artifact_validation():
         frame.loc[0, column] = float("nan")
         frame.to_csv(path, index=False)
 
-        problems = C._validate_schema4_artifacts(run_c, "")
+        problems = C.validate_run_artifacts(run_c, "")
         base_name = filename.replace(".csv", "")
         detectado = any(base_name in p and column in p for p in problems)
         (ok if detectado else fail)(
-            f"caso C ({filename}/{column}=NaN): _validate_schema4_artifacts() señala "
+            f"caso C ({filename}/{column}=NaN): validate_run_artifacts() señala "
             f"{filename} y {column}" + ("" if detectado else f" — problems={problems}")
         )
         try:
@@ -522,7 +546,141 @@ def check_schema4_artifact_validation():
         + (f" — {'; '.join(prob)}" if prob else "")
     )
 
+    # --- Caso E: comprobaciones semánticas de H12, cada una en su propia mutación ---
+    def _semantica(nombre: str, mutar) -> None:
+        root_e = root / f"caso_e_{nombre}"
+        run_e = root_e / "run_mutado"
+        _write_schema4_fixture(run_e)
+        mutar(run_e)
+        problems = C.validate_run_artifacts(run_e, "")
+        (ok if problems else fail)(
+            f"caso E ({nombre}): validate_run_artifacts() detecta el problema"
+            + ("" if problems else " — devolvió []")
+        )
+        try:
+            C.collect(root_e, strict=True)
+            fail(f"caso E ({nombre}): collect(strict=True) no lanzó ValueError")
+        except ValueError as e:
+            msg = str(e)
+            (ok if run_e.name in msg else fail)(
+                f"caso E ({nombre}): collect(strict=True) lanza ValueError identificando la corrida"
+                + ("" if run_e.name in msg else f" — mensaje={msg!r}")
+            )
+
+    def _subject_id_duplicado(run_dir: Path) -> None:
+        p = run_dir / "predictions_val.csv"
+        frame = pd.read_csv(p)
+        pd.concat([frame, frame.iloc[[0]]], ignore_index=True).to_csv(p, index=False)
+
+    def _cobertura_oof_incompleta(run_dir: Path) -> None:
+        p = run_dir / "predictions_val.csv"
+        pd.read_csv(p).drop(index=0).to_csv(p, index=False)
+
+    def _probabilidad_fuera_de_rango(run_dir: Path) -> None:
+        p = run_dir / "predictions_val.csv"
+        frame = pd.read_csv(p)
+        frame.loc[0, "y_prob"] = 1.5
+        frame.to_csv(p, index=False)
+
+    def _solape_fit_outer_val(run_dir: Path) -> None:
+        p = run_dir / "folds.csv"
+        frame = pd.read_csv(p)
+        fuga = pd.DataFrame([{"fold": 1, "repeat": 1, "subject_id": "s1", "split": "fit"}])
+        pd.concat([frame, fuga], ignore_index=True).to_csv(p, index=False)
+
+    def _prediccion_no_coincide_con_outer_val(run_dir: Path) -> None:
+        # s6 pertenece a inner_val en el pliegue 1 (ver folds_spec de
+        # _write_schema4_fixture); sustituirlo por s1 en predictions_val.csv
+        # deja un sujeto de outer_val sin predicción y uno ajeno con predicción.
+        p = run_dir / "predictions_val.csv"
+        frame = pd.read_csv(p)
+        frame.loc[(frame["fold"] == 1) & (frame["subject_id"] == "s1"), "subject_id"] = "s6"
+        frame.to_csv(p, index=False)
+
+    _semantica("subject_id_duplicado_oof", _subject_id_duplicado)
+    _semantica("cobertura_oof_incompleta", _cobertura_oof_incompleta)
+    _semantica("y_prob_fuera_de_rango", _probabilidad_fuera_de_rango)
+    _semantica("solape_fit_outer_val", _solape_fit_outer_val)
+    _semantica("prediccion_no_coincide_outer_val", _prediccion_no_coincide_con_outer_val)
+
     shutil.rmtree(root)
+
+
+def check_aggregate_table_gate():
+    """Regresión de la compuerta de aggregate_table() (H11): dos filas
+    idénticas en las columnas de methodological_group_columns() pero con
+    config_hash distinto no deben promediarse en silencio — señalarían un eje
+    metodológico que la lista de columnas no cubrió. Con datos sintéticos
+    (sin CSV ni entrenamiento): primero confirma que lr/arch_json/
+    deterministic ya están en esa lista; luego, para cada uno de esos tres
+    campos por separado, confirma que dos corridas que solo difieren ahí
+    caen en grupos distintos de aggregate_table() (no solo que el campo
+    está listado); por último confirma que, si dos filas comparten todas
+    las columnas agrupadas y aun así traen config_hash distinto,
+    aggregate_table() aborta en vez de promediar.
+    """
+    seccion("Compuerta de aggregate_table() ante config_hash mixto (H11)")
+    sys.path.insert(0, str(REPO / "src"))
+    import compile_results as C
+    import pandas as pd
+
+    base = {
+        "site": "NYU", "roi_set": "12", "model": "brainnetcnn",
+        "arch_json": '{"dropout":0.7}', "representation": "ordered",
+        "connectivity_mode": "dynamic", "lr": 1e-4, "batch_size": 32,
+        "epochs": 300, "patience": 25, "clipnorm": None, "inner_val_frac": 0.15,
+        "class_weight": False, "deterministic": False, "mixed_precision": False,
+        "early_stopping_monitor": "val_loss", "early_stopping_min_delta": 1e-5,
+        "val_accuracy_mean": 0.7, "oof_accuracy_mean": 0.7,
+    }
+
+    groups = C.methodological_group_columns(pd.DataFrame([base]))
+    prob = [c for c in ("lr", "arch_json", "deterministic") if c not in groups]
+    (ok if not prob else fail)(
+        "methodological_group_columns() incluye lr/arch_json/deterministic"
+        + (f" — faltan {prob}" if prob else "")
+    )
+
+    # Dos filas que solo difieren en un campo de entrenamiento/arquitectura:
+    # con ese campo ya en la lista de columnas, deben quedar en grupos
+    # separados, no promediarse como si fueran la misma corrida. Se repite
+    # para lr, arch_json y deterministic — los tres que motivaron H11 — no
+    # solo se confirma que están en la lista, sino que aggregate_table()
+    # realmente los usa para separar los grupos.
+    variantes = {
+        "lr": 5e-4,
+        "arch_json": '{"dropout":0.5}',
+        "deterministic": True,
+    }
+    for campo, valor_distinto in variantes.items():
+        fila_a = {**base, "config_hash": f"hashA_{campo}", "base_run_id": f"runA_{campo}"}
+        fila_b = {**base, "config_hash": f"hashB_{campo}", "base_run_id": f"runB_{campo}",
+                  campo: valor_distinto}
+        agregada = C.aggregate_table(pd.DataFrame([fila_a, fila_b]))
+        (ok if len(agregada) == 2 else fail)(
+            f"dos corridas que solo difieren en {campo} quedan en grupos separados"
+            + (f" — se esperaban 2 grupos, hay {len(agregada)}" if len(agregada) != 2 else "")
+        )
+
+    # Dos filas idénticas en las columnas agrupadas pero con config_hash
+    # distinto: el eje que las diferencia no está cubierto por esa lista, y
+    # promediarlas produciría una media entre configuraciones distintas.
+    fila_c = {**base, "config_hash": "hashC1", "base_run_id": "runC1"}
+    fila_d = {**base, "config_hash": "hashC2", "base_run_id": "runC2"}
+    try:
+        C.aggregate_table(pd.DataFrame([fila_c, fila_d]))
+        fail("aggregate_table() no abortó ante config_hash mixto dentro de un mismo grupo")
+    except SystemExit as e:
+        msg = str(e)
+        prob = []
+        if "runC1" not in msg or "runC2" not in msg:
+            prob.append("el mensaje no identifica ambos run_id")
+        if "hashC1" not in msg or "hashC2" not in msg:
+            prob.append("el mensaje no identifica ambos config_hash")
+        (ok if not prob else fail)(
+            "aggregate_table() aborta ante config_hash mixto, identificando el grupo y "
+            "los run_id/config_hash en conflicto" + (f" — {'; '.join(prob)}" if prob else "")
+        )
 
 
 def check_modelos(full):
@@ -683,16 +841,19 @@ def _run_early_stopping_smoke(root: Path, monitor: str) -> Path | None:
 
 
 def _audit_early_stopping_artifacts(run_dir: Path, monitor: str):
-    """Audita una corrida (config.json/history.csv/metrics_val.csv/predictions_val.csv/
-    folds.csv) SIN volver a asumir que la época correcta es el mínimo global de la
-    serie monitoreada — esa era la comprobación circular que este chequeo reemplaza
-    (ver docs/methodology.md, 'Early-stopping monitor'). Se limita a verificar que
-    los metadatos son internamente consistentes y están respaldados por la
-    reevaluación no circular (`restored_monitor_value`). Devuelve el config.json
-    leído, o None si algo esencial faltó.
+    """Audita una corrida de la comparación val_loss/val_bce.
+
+    Los campos que describen qué se le pidió a ESTA corrida en particular
+    (el monitor, min_delta) se comprueban aquí. El resto de la validez del
+    artefacto — columnas, finitud, consistencia entre best_epoch/history/
+    restored_monitor_value, cobertura OOF, particiones disjuntas — se delega
+    en compile_results.validate_run_artifacts(), la misma función que usa
+    collect(strict=True) y la celda de validación del notebook: no hay una
+    segunda implementación de esas reglas (ver H12, docs/validation.md).
+    Devuelve el config.json leído, o None si algo esencial faltó.
     """
-    import numpy as np
-    import pandas as pd
+    sys.path.insert(0, str(REPO / "src"))
+    import compile_results as C
 
     try:
         cfg = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
@@ -714,114 +875,11 @@ def _audit_early_stopping_artifacts(run_dir: Path, monitor: str):
         + (f" — {'; '.join(prob)}" if prob else "")
     )
 
-    try:
-        hist = pd.read_csv(run_dir / "history.csv")
-        train = pd.read_csv(run_dir / "metrics_train.csv")
-        val = pd.read_csv(run_dir / "metrics_val.csv")
-        pred = pd.read_csv(run_dir / "predictions_val.csv")
-        folds = pd.read_csv(run_dir / "folds.csv")
-    except Exception as e:
-        fail(f"{monitor}: no se pudieron leer los artefactos: {type(e).__name__}: {e}")
-        return cfg
-
-    prob = [c for c in ("early_stopping_monitor", "best_monitor_value", "restored_monitor_value")
-            if c not in train.columns]
-    if len(train) != len(val):
-        prob.append(f"metrics_train.csv tiene {len(train)} filas, metrics_val.csv tiene {len(val)}")
-    (fail if prob else ok)(
-        f"{monitor}: metrics_train.csv presente, mismo número de filas que "
-        "metrics_val.csv y con metadatos de esquema 4" + (f" — {prob}" if prob else "")
-    )
-
-    prob = [c for c in ("bce", "inner_val_bce", "loss", "inner_val_loss") if c not in hist.columns]
-    if hist.empty:
-        prob.append("history.csv está vacío")
-    (fail if prob else ok)(
-        f"{monitor}: history.csv no vacío, con bce/inner_val_bce/loss/inner_val_loss"
-        + (f" — {prob}" if prob else "")
-    )
-
-    numeric_hist = hist.select_dtypes(include=[np.number]).to_numpy()
-    if numeric_hist.size == 0 or not np.isfinite(numeric_hist).all():
-        fail(f"{monitor}: history.csv contiene valores no finitos")
-    else:
-        ok(f"{monitor}: history.csv sin NaN/inf")
-
-    prob = [c for c in ("early_stopping_monitor", "best_monitor_value", "restored_monitor_value")
-            if c not in val.columns]
-    (fail if prob else ok)(
-        f"{monitor}: metrics_val.csv contiene early_stopping_monitor/best_monitor_value/"
-        "restored_monitor_value" + (f" — faltan {prob}" if prob else "")
-    )
-
-    # Consistencia interna: best_epoch dentro de rango, valor registrado en
-    # history.csv coincide con best_monitor_value, y restored_monitor_value (la
-    # reevaluación posterior a fit(), no derivada de best_epoch) también coincide
-    # — esta última es la prueba no circular de qué pesos quedaron restaurados.
-    prob = []
-    inner_col = "inner_val_loss" if monitor == "val_loss" else "inner_val_bce"
-    for _, row in val.iterrows():
-        fold_v, repeat_v = row["fold"], row["repeat"]
-        fold_hist = hist[(hist["fold"] == fold_v) & (hist["repeat"] == repeat_v)].sort_values("epoch")
-        if fold_hist.empty:
-            prob.append(f"f{fold_v}r{repeat_v}: sin filas en history.csv")
-            continue
-        n_epochs_fold = int(row["n_epochs"])
-        best_epoch = int(row["best_epoch"])
-        if not (1 <= best_epoch <= n_epochs_fold):
-            prob.append(f"f{fold_v}r{repeat_v}: best_epoch={best_epoch} fuera de [1,{n_epochs_fold}]")
-            continue
-        recorded = fold_hist.loc[fold_hist["epoch"] == best_epoch, inner_col]
-        if recorded.empty:
-            prob.append(f"f{fold_v}r{repeat_v}: no hay fila de history.csv para epoch={best_epoch}")
-            continue
-        if abs(float(recorded.iloc[0]) - float(row["best_monitor_value"])) > 1e-6:
-            prob.append(
-                f"f{fold_v}r{repeat_v}: history[{inner_col}][{best_epoch}]={float(recorded.iloc[0])} "
-                f"!= best_monitor_value={row['best_monitor_value']}"
-            )
-        if not np.isfinite(row["restored_monitor_value"]):
-            prob.append(f"f{fold_v}r{repeat_v}: restored_monitor_value no finito")
-        elif abs(float(row["restored_monitor_value"]) - float(row["best_monitor_value"])) > 1e-4:
-            prob.append(
-                f"f{fold_v}r{repeat_v}: restored_monitor_value={row['restored_monitor_value']} "
-                f"se aleja de best_monitor_value={row['best_monitor_value']} (pesos no consistentes)"
-            )
-    (fail if prob else ok)(
-        f"{monitor}: best_epoch en rango, y best_monitor_value/restored_monitor_value consistentes"
-        + (f" — {'; '.join(prob)}" if prob else "")
-    )
-
-    # Cobertura de outer_val: cada sujeto exactamente una vez por repetición.
-    prob = []
-    n_subjects = cfg.get("n_subjects")
-    for repeat, group in pred.groupby("repeat"):
-        n_dup = int(group["subject_id"].duplicated().sum())
-        if n_dup:
-            prob.append(f"repetición {repeat}: {n_dup} subject_id duplicados en outer_val")
-        if n_subjects is not None and group["subject_id"].nunique() != n_subjects:
-            prob.append(
-                f"repetición {repeat}: {group['subject_id'].nunique()} sujetos, "
-                f"se esperaban {n_subjects}"
-            )
-    (fail if prob else ok)(
-        f"{monitor}: validación externa cubre cada sujeto exactamente una vez por repetición"
-        + (f" — {'; '.join(prob)}" if prob else "")
-    )
-
-    # Sin sujetos compartidos entre fit/inner_val/outer_val dentro de un mismo pliegue.
-    prob = []
-    for (fold_v, repeat_v), g in folds.groupby(["fold", "repeat"]):
-        sets = {s: set(g.loc[g["split"] == s, "subject_id"]) for s in ("fit", "inner_val", "outer_val")}
-        if sets["fit"] & sets["inner_val"]:
-            prob.append(f"f{fold_v}r{repeat_v}: fit∩inner_val no vacío")
-        if sets["fit"] & sets["outer_val"]:
-            prob.append(f"f{fold_v}r{repeat_v}: fit∩outer_val no vacío")
-        if sets["inner_val"] & sets["outer_val"]:
-            prob.append(f"f{fold_v}r{repeat_v}: inner_val∩outer_val no vacío")
-    (fail if prob else ok)(
-        f"{monitor}: sin sujetos compartidos entre fit/inner_val/outer_val"
-        + (f" — {'; '.join(prob)}" if prob else "")
+    problems = C.validate_run_artifacts(run_dir, cfg=cfg)
+    (fail if problems else ok)(
+        f"{monitor}: validate_run_artifacts() sin problemas (columnas, finitud, "
+        "best_epoch/history/restored_monitor_value, cobertura OOF y particiones "
+        "disjuntas)" + (f" — {problems}" if problems else "")
     )
 
     return cfg
@@ -889,6 +947,7 @@ def main():
         check_representaciones_fold_aware()
         check_particiones()
         check_schema4_artifact_validation()
+        check_aggregate_table_gate()
         check_modelos(args.full)
         if args.full:
             check_entrenamiento()
