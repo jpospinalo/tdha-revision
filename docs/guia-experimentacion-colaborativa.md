@@ -319,6 +319,11 @@ Una corrida **incompleta** (existe `config.json` pero no `metrics_val.csv` — p
 Colab se desconectó a mitad) no necesita ni `TAG` ni `OVERWRITE`: se rehace sola, con un
 aviso impreso, la próxima vez que se ejecute esa configuración.
 
+**La carpeta de una corrida no debe renombrarse manualmente.** Su nombre es parte de su
+identidad operativa y debe coincidir exactamente con `run_id` en `config.json`. Para
+esquema 4, `validate_run_artifacts()` lo comprueba: una carpeta renombrada a mano queda
+invisible para `compile_results.py --stats` aunque sus artefactos sigan siendo válidos.
+
 ## Trabajar en paralelo sin chocar
 
 Cada corrida vive en su propia carpeta dentro de `results/runs/<ROI_SET>/`, así que dos personas

@@ -402,7 +402,12 @@ def check_schema4_artifact_validation():
     split desconocidos, un fold completo ausente específicamente de
     folds.csv, y una clave (repeat, fold) en predictions_val.csv que no
     existe en metrics_val.csv); F, restored_monitor_value no numérico sin que
-    escape TypeError. T1-T4 (correcciones v9): T1 exige n_splits/n_repeats/
+    escape TypeError; G, el nombre de la carpeta debe coincidir con
+    config["run_id"] (carpeta renombrada a mano — collect(strict=True) debe
+    lanzar ValueError, collect(strict=False) debe descartarla y dejar el
+    diagnóstico en collection_warnings); H, una corrida bien nombrada sigue
+    aceptándose en ambos layouts (plano histórico y anidado por ROI), y
+    _find_run_dir() ubica correctamente la del layout anidado. T1-T4 (correcciones v9): T1 exige n_splits/n_repeats/
     n_subjects válidos en config.json (ausentes, booleanos o fuera de rango,
     individualmente y los tres a la vez); T2 exige config_schema_version
     válido (texto, booleano o cero, sin que escape TypeError); T3 reproduce
@@ -717,6 +722,87 @@ def check_schema4_artifact_validation():
             "caso F (restored_monitor_value no numérico): collect(strict=True) dejó "
             f"escapar TypeError: {e} en vez de ValueError"
         )
+
+    # Bug C4 #6 (v12): el nombre de la carpeta es la identidad operativa de
+    # la corrida — collect() y _find_run_dir() la ubican por ese nombre, no
+    # por el contenido de config.json. Si alguien la renombra a mano (o
+    # queda desincronizada por cualquier otro motivo), los artefactos siguen
+    # siendo válidos pero la corrida se vuelve invisible para --stats y
+    # comparaciones futuras por run_id. Se prueba por separado de los casos
+    # A-F porque no es un problema de contenido de los CSV, sino de la
+    # correspondencia entre el nombre de la carpeta y config.json["run_id"].
+    root_g = root / "caso_g_carpeta_no_coincide_con_run_id"
+    run_g_src = root_g / "run_id_original"
+    _write_schema4_fixture(run_g_src)
+    run_g = root_g / "carpeta_renombrada_a_mano"
+    run_g_src.rename(run_g)
+    problems_g = C.validate_run_artifacts(run_g, "")
+    ok_g = (
+        len(problems_g) == 1
+        and "carpeta_renombrada_a_mano" in problems_g[0]
+        and "run_id_original" in problems_g[0]
+    )
+    (ok if ok_g else fail)(
+        "caso G (carpeta ≠ run_id): validate_run_artifacts() devuelve un diagnóstico "
+        "que menciona el nombre real de la carpeta y el run_id declarado"
+        + ("" if ok_g else f" — {problems_g}")
+    )
+    try:
+        C.collect(root_g, strict=True)
+        fail("caso G (carpeta ≠ run_id): collect(strict=True) no lanzó ValueError")
+    except ValueError:
+        ok("caso G (carpeta ≠ run_id): collect(strict=True) lanza ValueError")
+    df_g = C.collect(root_g, strict=False)
+    prob_g = []
+    if len(df_g) != 0:
+        prob_g.append(f"se esperaba 0 filas (la corrida mal nombrada se descarta), hay {len(df_g)}")
+    avisos_g = df_g.attrs.get("collection_warnings", [])
+    if not any("carpeta_renombrada_a_mano" in w and "run_id_original" in w for w in avisos_g):
+        prob_g.append(f"collection_warnings no menciona ambos nombres: {avisos_g}")
+    (ok if not prob_g else fail)(
+        "caso G (carpeta ≠ run_id): collect(strict=False) descarta la corrida y "
+        "conserva el diagnóstico en collection_warnings"
+        + (f" — {'; '.join(prob_g)}" if prob_g else "")
+    )
+
+    # Una corrida correctamente nombrada (carpeta == run_id) debe seguir
+    # aceptándose sin cambios — no es una regla nueva sobre corridas sanas,
+    # solo un rechazo de las mal nombradas. Se prueba en ambos layouts
+    # (plano histórico y anidado por ROI) porque _find_run_dir() y
+    # collect() deben aceptar los dos cuando la carpeta final es correcta.
+    root_h = root / "caso_h_layouts_compatibles"
+
+    run_h_plano = root_h / "plano" / "NYU_run_layout_plano"
+    _write_schema4_fixture(run_h_plano)
+    problems_h1 = C.validate_run_artifacts(run_h_plano, "")
+    (ok if not problems_h1 else fail)(
+        "caso H (layout plano, bien nombrada): validate_run_artifacts() devuelve []"
+        + (f" — {problems_h1}" if problems_h1 else "")
+    )
+    df_h1 = C.collect(root_h / "plano", strict=True)
+    (ok if len(df_h1) == 1 else fail)(
+        f"caso H (layout plano): collect(strict=True) acepta 1 fila, hay {len(df_h1)}"
+    )
+
+    run_id_anidado = "NYU_run_layout_anidado"
+    run_h_anidado = root_h / "anidado" / "12" / run_id_anidado
+    _write_schema4_fixture(run_h_anidado)
+    problems_h2 = C.validate_run_artifacts(run_h_anidado, "")
+    (ok if not problems_h2 else fail)(
+        "caso H (layout anidado por ROI, bien nombrada): validate_run_artifacts() devuelve []"
+        + (f" — {problems_h2}" if problems_h2 else "")
+    )
+    df_h2 = C.collect(root_h / "anidado", strict=True)
+    (ok if len(df_h2) == 1 else fail)(
+        f"caso H (layout anidado): collect(strict=True) acepta 1 fila, hay {len(df_h2)}"
+    )
+
+    encontrada = C._find_run_dir(root_h / "anidado", run_id_anidado)
+    esperada = root_h / "anidado" / "12" / run_id_anidado
+    (ok if encontrada == esperada else fail)(
+        f"caso H: _find_run_dir(root, run_id) == root/roi_set/run_id — se obtuvo {encontrada}, "
+        f"se esperaba {esperada}"
+    )
 
     # --- T1: n_splits/n_repeats/n_subjects ausentes o inválidos en config.json ---
     def _config_case(nombre: str, mutar_cfg, campos_esperados: list[str]) -> None:

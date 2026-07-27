@@ -96,6 +96,10 @@ distingue la repetición como una carpeta nueva sin cambiar `config_hash`, y
 sola, con un aviso impreso. `compile_results.py` sigue reconociendo corridas guardadas
 con el layout plano anterior (`results/runs/<run_id>/`, sin subcarpeta de ROI).
 
+**La carpeta de una corrida no debe renombrarse manualmente.** Su nombre es parte de su
+identidad operativa y debe coincidir exactamente con `run_id` en `config.json`; si no
+coincide, `validate_run_artifacts()` la rechaza (`collect(strict=True)` lanza `ValueError`).
+
 **Comparaciones pareadas.** Con la misma `--seed` y las mismas etiquetas, todas las
 configuraciones usan exactamente las mismas particiones. Eso permite contrastes
 pareados con bastante más potencia que sus equivalentes para muestras independientes.

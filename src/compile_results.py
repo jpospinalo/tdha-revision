@@ -386,6 +386,25 @@ def validate_run_artifacts(
     if schema < 4:
         return problems
 
+    # El nombre de la carpeta es la identidad operativa de la corrida:
+    # collect() y _find_run_dir() la ubican por ese nombre, no por el
+    # contenido de config.json. Si alguien renombra la carpeta a mano (o el
+    # runner y el nombre quedan desincronizados por cualquier otro motivo),
+    # la corrida sigue teniendo artefactos válidos pero queda invisible para
+    # comparaciones futuras por run_id — se rechaza aquí en vez de dejar que
+    # falle en silencio más adelante.
+    run_id_cfg = cfg.get("run_id")
+    if "run_id" not in cfg or not isinstance(run_id_cfg, str) or not run_id_cfg:
+        problems.append(
+            f"config.json: run_id debe ser una cadena no vacía; se recibió {run_id_cfg!r}"
+        )
+    elif run_dir.name != run_id_cfg:
+        problems.append(
+            f"la carpeta de la corrida se llama '{run_dir.name}', pero config.json "
+            f"declara run_id='{run_id_cfg}'; renombre la carpeta para que coincida "
+            "con run_id (no cambie run_id en config.json para ocultar el problema)"
+        )
+
     # n_splits/n_repeats/n_subjects activan las comprobaciones de cobertura
     # de más abajo (filas esperadas, unión de particiones); si faltan o son
     # inválidos, esas comprobaciones se desactivaban en silencio en vez de
