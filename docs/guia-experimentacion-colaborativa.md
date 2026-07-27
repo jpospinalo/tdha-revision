@@ -276,12 +276,12 @@ de problemas — no hay forma de continuar a la descarga o el push sin resolverl
 
 ## Descarga y subida
 
-**Descarga** (opcional): comprime `results/runs/<RUN_ID>` en
+**Descarga** (opcional): comprime `results/runs/<ROI_SET>/<RUN_ID>` en
 `/content/<RUN_ID>.zip` y lo ofrece para bajar desde el navegador; si la descarga
 automática de Colab falla, el zip queda en esa ruta para bajarlo manualmente desde el
 panel de archivos.
 
-**Subida**: hace `git add results/runs/<RUN_ID>`, commit, `git pull --no-rebase` y
+**Subida**: hace `git add results/runs/<ROI_SET>/<RUN_ID>`, commit, `git pull --no-rebase` y
 `git push`. El token de GitHub nunca se escribe en el notebook: se lee del panel de
 secretos de Colab (`GITHUB_TOKEN`) o, si no está configurado, se pide con
 `getpass.getpass()` (no queda visible en pantalla ni en el historial de celdas). Si el
@@ -321,7 +321,7 @@ aviso impreso, la próxima vez que se ejecute esa configuración.
 
 ## Trabajar en paralelo sin chocar
 
-Cada corrida vive en su propia carpeta dentro de `results/runs/`, así que dos personas
+Cada corrida vive en su propia carpeta dentro de `results/runs/<ROI_SET>/`, así que dos personas
 corriendo configuraciones distintas pueden hacer `git add`/`commit`/`push` sin conflicto
 de fusión — están tocando archivos distintos. La celda de subida ya hace `git pull
 --no-rebase origin main` antes del push por esta razón.

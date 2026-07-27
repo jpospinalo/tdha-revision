@@ -1683,12 +1683,17 @@ def _run_early_stopping_smoke(root: Path, monitor: str) -> Path | None:
     check_early_stopping_ab() para que --full solo entrene dos veces. La
     carpeta nueva se detecta por diferencia de contenido antes/después de
     correr (no por orden alfabético ni por `run_dirs[-1]`, que se vuelven
-    ambiguos con un root compartido). Devuelve la carpeta de la corrida, o
-    None si algo falló.
+    ambiguos con un root compartido). La comparación se hace sobre los
+    `config.json` encontrados con `rglob` (no `root.iterdir()`), porque
+    `run_experiment.py` escribe en `root/<roi_set>/<run_id>/`: diferenciar
+    solo el primer nivel de `root` detectaría la subcarpeta de ROI (p. ej.
+    `root/12`) como "nueva" la primera vez, y ninguna carpeta nueva en
+    corridas posteriores con el mismo ROI. Devuelve la carpeta de la
+    corrida, o None si algo falló.
     """
     import subprocess
 
-    antes = {p for p in root.iterdir() if p.is_dir()} if root.exists() else set()
+    antes = {p for p in root.rglob("config.json")} if root.exists() else set()
     r = subprocess.run(
         [sys.executable, "run_experiment.py", "--site", "NYU", "--roi-set", "12",
          "--model", "brainnetcnn", "--representation", "ordered",
@@ -1707,15 +1712,15 @@ def _run_early_stopping_smoke(root: Path, monitor: str) -> Path | None:
         return None
     ok(f"la corrida con --early-stopping-monitor {monitor} se ejecuta sin errores")
 
-    despues = {p for p in root.iterdir() if p.is_dir()} if root.exists() else set()
+    despues = {p for p in root.rglob("config.json")} if root.exists() else set()
     nuevas = sorted(despues - antes)
     if len(nuevas) != 1:
         fail(
-            f"se esperaba exactamente 1 carpeta nueva en {root} tras "
+            f"se esperaba exactamente 1 config.json nuevo en {root} tras "
             f"--early-stopping-monitor {monitor}, hubo {len(nuevas)}"
         )
         return None
-    return nuevas[0]
+    return nuevas[0].parent
 
 
 def _audit_early_stopping_artifacts(run_dir: Path, monitor: str):

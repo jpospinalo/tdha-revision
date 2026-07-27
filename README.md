@@ -51,7 +51,8 @@ Desde Colab, el notebook `tdha_experimentos.ipynb` hace todo lo anterior.
 │   ├── compile_results.py    compilación y estadística
 │   ├── verify_setup.py       comprobación del repositorio y del entorno
 │   └── kerasmodels/          registro de arquitecturas
-├── results/runs/             una carpeta por corrida
+├── results/runs/             subcarpeta por ROI_SET (12/18/39/116), una carpeta por
+│                              corrida dentro de cada una
 └── docs/                     arquitectura, metodología, validación, límites y eficiencia
                                del pipeline actual; además, auditoría histórica de un
                                manuscrito anterior (docs/auditoria-metricas.md)
@@ -82,15 +83,18 @@ redondeo de `float32`.
 
 ## Diseño experimental
 
-**Una corrida por carpeta.** El nombre incluye un hash de la configuración completa
-(`NYU_rois12_w70s2_lstm_2136273e`). Varias personas pueden correr en paralelo y hacer
-push al mismo repositorio sin conflictos, porque nadie escribe en un archivo
-compartido. Repetir una configuración ya completada en la misma carpeta detiene la
-ejecución (`ESTA_CONFIGURACION_YA_SE_EJECUTO`) en vez de sobrescribirla: `--tag`
+**Una corrida por carpeta, agrupadas por ROI_SET.** El nombre incluye un hash de la
+configuración completa (`NYU_rois12_w70s2_lstm_2136273e`) y vive dentro de
+`results/runs/<roi_set>/` (`12`, `18`, `39` o `116`, según `--roi-set`), para no mezclar
+en una sola carpeta corridas de tamaños de ROI distintos. Varias personas pueden correr
+en paralelo y hacer push al mismo repositorio sin conflictos, porque nadie escribe en un
+archivo compartido. Repetir una configuración ya completada en la misma carpeta detiene
+la ejecución (`ESTA_CONFIGURACION_YA_SE_EJECUTO`) en vez de sobrescribirla: `--tag`
 distingue la repetición como una carpeta nueva sin cambiar `config_hash`, y
 `--overwrite` reemplaza deliberadamente la carpeta existente. Una corrida incompleta
 (sin `metrics_val.csv`, por ejemplo tras una desconexión de Colab a mitad) sí se rehace
-sola, con un aviso impreso.
+sola, con un aviso impreso. `compile_results.py` sigue reconociendo corridas guardadas
+con el layout plano anterior (`results/runs/<run_id>/`, sin subcarpeta de ROI).
 
 **Comparaciones pareadas.** Con la misma `--seed` y las mismas etiquetas, todas las
 configuraciones usan exactamente las mismas particiones. Eso permite contrastes

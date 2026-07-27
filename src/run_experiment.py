@@ -1647,7 +1647,10 @@ def main(argv: Sequence[str] | None = None) -> str | None:
         + " ".join(argv if argv is not None else sys.argv[1:]),
     }
 
-    outdir = Path(args.out) / run_id
+    # Subcarpeta por ROI_SET: separa los resultados de 12/18/39/116 ROIs
+    # dentro de la misma carpeta --out, para no mezclar corridas de distinto
+    # tamaño de ROI en un solo directorio plano.
+    outdir = Path(args.out) / str(args.roi_set) / run_id
     print(json.dumps(config, indent=2, ensure_ascii=False))
     print(f"\n corrida: {run_id}")
 

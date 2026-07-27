@@ -721,13 +721,44 @@ def validate_run_artifacts(
     return problems
 
 
+def _find_run_dir(root: str | Path, run_id: str) -> Path:
+    """Ubica la carpeta de una corrida por su ``run_id``, soportando tanto el
+    layout plano histórico (``root/<run_id>/``) como el layout actual anidado
+    por ROI (``root/<roi_set>/<run_id>/`` — ver ``run_experiment.py``, que
+    escribe ahí desde que ``results/`` se organiza por tamaño de ROI). Prueba
+    primero el layout plano y, si no existe, busca un único candidato bajo
+    cualquier subcarpeta de primer nivel.
+    """
+    root = Path(root)
+    plano = root / run_id
+    if plano.exists():
+        return plano
+    candidatos = sorted(root.glob(f"*/{run_id}"))
+    if len(candidatos) == 1:
+        return candidatos[0]
+    if len(candidatos) > 1:
+        raise FileNotFoundError(
+            f"{run_id}: aparece en más de una subcarpeta bajo {root}: "
+            f"{[str(c) for c in candidatos]}"
+        )
+    raise FileNotFoundError(f"{run_id}: no se encontró bajo {root} (ni layout plano ni por ROI)")
+
+
 def collect(root: str | Path, *, strict: bool = False) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     errors: list[str] = []
     notices: list[str] = []
     seen_schema_notice: set[str] = set()
     root = Path(root)
-    for cfg_path in sorted(root.glob("*/config.json")):
+    # results/ organiza las corridas por subcarpeta de ROI
+    # (root/<roi_set>/<run_id>/config.json); root.glob("*/*/config.json")
+    # cubre ese layout. root.glob("*/config.json") sigue aceptando el layout
+    # plano histórico (root/<run_id>/config.json) para no dejar invisibles
+    # corridas ya subidas antes de este cambio. cfg_path.parent.name da el
+    # run_id en ambos casos (es el último segmento de la ruta), así que el
+    # resto de la función no necesita distinguir un layout del otro.
+    cfg_paths = sorted(root.glob("*/config.json")) + sorted(root.glob("*/*/config.json"))
+    for cfg_path in cfg_paths:
         try:
             cfg = _read_json(cfg_path)
             run_dir = cfg_path.parent
@@ -985,7 +1016,7 @@ def paired_stats(root: str | Path, runs: dict[Any, str], metric: str = "accuracy
     splits: set[int] = set()
     reference_index: pd.Index | None = None
     for key, run_id in runs.items():
-        frame = pd.read_csv(Path(root) / run_id / "metrics_val.csv")
+        frame = pd.read_csv(_find_run_dir(root, run_id) / "metrics_val.csv")
         required = {"repeat", "fold", metric}
         missing_columns = required - set(frame.columns)
         if missing_columns:
