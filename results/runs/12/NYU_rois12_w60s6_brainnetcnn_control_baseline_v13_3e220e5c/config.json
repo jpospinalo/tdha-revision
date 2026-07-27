@@ -1,8 +1,8 @@
 {
   "config_schema_version": 4,
-  "run_id": "NYU_rois12_w60s6_brainnetcnn_control_baseline_repeat_300_clean_a88f2eb7",
-  "config_hash": "a88f2eb7",
-  "early_stopping_ab_hash": "2a4b6f1211c78ffc",
+  "run_id": "NYU_rois12_w60s6_brainnetcnn_control_baseline_v13_3e220e5c",
+  "config_hash": "3e220e5c",
+  "early_stopping_ab_hash": "b6e67cdb5b44667e",
   "site": "NYU",
   "roi_set": "12",
   "n_subjects": 177,
@@ -92,9 +92,9 @@
   "bold_hash": "1a8fcd6f312913f9",
   "atlas_hash": "104b6c37ad9b7299",
   "data_code_hash": "845dfa9c50f977fd",
-  "runner_code_hash": "7afcf34e3188a457",
+  "runner_code_hash": "fd015396024f70f7",
   "git": {
-    "commit": "5aeadf38de84d2aa6a7583fdcaab14199071936c",
+    "commit": "6afa7ceffe271127acbbeb780844b02cc83b130a",
     "clean": true,
     "user": "Juan"
   },
@@ -106,12 +106,10 @@
     "scikit_learn": "1.6.1",
     "tensorflow": "2.20.0",
     "keras": "3.13.2",
-    "gpu": [
-      "Tesla T4"
-    ]
+    "gpu": "sin GPU"
   },
-  "timestamp": "2026-07-27 03:02:55",
-  "command": "run_experiment.py --site NYU --roi-set 12 --model brainnetcnn --representation ordered --window-seconds 120 --step-seconds 12 --model-arg e2e=4 e2n=8 dense=8 dropout=0.7 leaky=0.33 l2_reg=0.05 inter_dropout=0.6 --lr 0.0001 --batch-size 32 --epochs 300 --patience 25 --inner-val-frac 0.15 --start-from-epoch 0 --early-stopping-monitor val_loss --early-stopping-min-delta 1e-05 --seed 42 --n-splits 10 --n-repeats 5 --tag control_baseline_repeat_300_clean --verbose",
+  "timestamp": "2026-07-27 16:13:02",
+  "command": "run_experiment.py --site NYU --roi-set 12 --model brainnetcnn --representation ordered --window-seconds 120 --step-seconds 12 --model-arg e2e=4 e2n=8 dense=8 dropout=0.7 leaky=0.33 l2_reg=0.05 inter_dropout=0.6 --lr 0.0001 --batch-size 32 --epochs 300 --patience 25 --inner-val-frac 0.15 --start-from-epoch 0 --early-stopping-monitor val_loss --early-stopping-min-delta 1e-05 --seed 42 --n-splits 10 --n-repeats 5 --tag control_baseline_v13 --verbose",
   "n_features": 66,
   "input_shape": [
     19,

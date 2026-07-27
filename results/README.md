@@ -26,15 +26,16 @@ Configuración que debe mantenerse fija al evaluar un cambio:
 - `lr=1e-4`, batch 32, máximo 300 épocas, paciencia 25 y monitor `val_loss`.
 - Validación 10 × 5, `inner_val_frac=0.15`, semilla 42 y sin `class_weight`.
 
-Corrida de referencia:
-`NYU_rois12_w60s6_brainnetcnn_control_baseline_repeat_300_clean_a88f2eb7`.
+Corrida de referencia formal de la versión 13:
+`NYU_rois12_w60s6_brainnetcnn_control_baseline_v13_3e220e5c`.
 
-Resultado OOF: accuracy 56.95 ± 1.89 %, AUC 58.98 ± 2.48 %, F1-macro
-56.91 ± 1.93 % y balanced accuracy 56.98 ± 1.89 %.
+Resultado OOF: accuracy 57.40 ± 2.79 %, AUC 59.05 ± 2.73 %, F1-macro
+57.31 ± 2.77 % y balanced accuracy 57.45 ± 2.78 %.
 
-La repetición independiente de la misma configuración produjo accuracy 57.18 % y AUC
-58.99 %. La concordancia es buena: la referencia es reproducible y no conviene seguir
-repitiéndola salvo como control de una modificación del entorno.
+La referencia histórica `a88f2eb7`, ejecutada antes del cambio operativo de layout de
+resultados, produjo accuracy OOF 56.95 % y AUC OOF 58.98 %. La concordancia es buena y la
+comparación pareada no detectó diferencias; `3e220e5c` queda como control formal porque
+comparte `runner_code_hash` con los nuevos experimentos de v13.
 
 ## Qué se probó
 
@@ -78,8 +79,9 @@ ver las predicciones sesgaría la estimación de desempeño.
 Prioridad sugerida, siempre cambiando un solo factor respecto a la referencia:
 
 1. **Ventana gaussiana:** misma ventana 120 s/paso 12 s, con
-   `WINDOW_SHAPE="gaussian"` y `GAUSSIAN_SIGMA=None`. Es la prueba pendiente más directa
-   para enriquecer la estimación dinámica sin cambiar datos, arquitectura ni validación.
+   `WINDOW_SHAPE="gaussian"` y dos corridas separadas con `GAUSSIAN_SIGMA=20.0` y
+   `GAUSSIAN_SIGMA=30.0` (sigma se expresa en TR). No usar `None` en esta prueba: el valor
+   automático `window/6` concentra demasiado los pesos para el ancho de banda de Athena.
 2. **Ventana algo más larga:** `WINDOW_SECONDS=140`, `STEP_SECONDS=14`,
    `WINDOW_TR=STEP_TR=None` y forma rectangular. Solo si la gaussiana no ayuda; compara
    estabilidad de la correlación frente al número de ventanas.
