@@ -30,6 +30,8 @@ python run_queue.py --sites NYU --roi-sets 12 18 39 116      # varias encadenada
 
 Desde Colab, el notebook `tdha_experimentos.ipynb` hace todo lo anterior.
 
+Antes de proponer una nueva corrida, consulte el [registro breve de experimentación](results/README.md): resume qué se ha probado, qué no conviene repetir y cuáles son las siguientes pruebas recomendadas.
+
 ## Estructura
 
 ```
