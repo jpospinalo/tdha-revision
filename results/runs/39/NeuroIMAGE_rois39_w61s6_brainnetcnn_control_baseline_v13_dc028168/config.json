@@ -1,8 +1,8 @@
 {
   "config_schema_version": 4,
-  "run_id": "NeuroIMAGE_rois39_w61s6_brainnetcnn_control_baseline_v13_99b8dfba",
-  "config_hash": "99b8dfba",
-  "early_stopping_ab_hash": "7734bf7678facfbf",
+  "run_id": "NeuroIMAGE_rois39_w61s6_brainnetcnn_control_baseline_v13_dc028168",
+  "config_hash": "dc028168",
+  "early_stopping_ab_hash": "ef77c16c33b7c35b",
   "site": "NeuroIMAGE",
   "roi_set": "39",
   "n_subjects": 39,
@@ -79,7 +79,7 @@
   "patience": 25,
   "clipnorm": null,
   "inner_val_frac": 0.15,
-  "class_weight": true,
+  "class_weight": false,
   "start_from_epoch": 0,
   "early_stopping_monitor": "val_loss",
   "early_stopping_min_delta": 1e-05,
@@ -93,7 +93,7 @@
   "data_code_hash": "845dfa9c50f977fd",
   "runner_code_hash": "fd015396024f70f7",
   "git": {
-    "commit": "b594e847d8e9088515817f553eb5066028705334",
+    "commit": "e7f4fa0bd2022ac391ed17bfb2e9356a2ef9072a",
     "clean": true,
     "user": "Juan"
   },
@@ -105,12 +105,10 @@
     "scikit_learn": "1.6.1",
     "tensorflow": "2.20.0",
     "keras": "3.13.2",
-    "gpu": [
-      "Tesla T4"
-    ]
+    "gpu": "sin GPU"
   },
-  "timestamp": "2026-07-29 15:16:43",
-  "command": "run_experiment.py --site NeuroIMAGE --roi-set 39 --model brainnetcnn --representation ordered --window-seconds 120 --step-seconds 12 --model-arg e2e=4 e2n=8 dense=8 dropout=0.7 leaky=0.33 l2_reg=0.05 inter_dropout=0.6 --lr 0.0001 --batch-size 32 --epochs 300 --patience 25 --inner-val-frac 0.15 --start-from-epoch 0 --early-stopping-monitor val_loss --early-stopping-min-delta 1e-05 --seed 42 --n-splits 10 --n-repeats 5 --class-weight --tag control_baseline_v13 --verbose",
+  "timestamp": "2026-07-29 16:20:37",
+  "command": "run_experiment.py --site NeuroIMAGE --roi-set 39 --model brainnetcnn --representation ordered --window-seconds 120 --step-seconds 12 --model-arg e2e=4 e2n=8 dense=8 dropout=0.7 leaky=0.33 l2_reg=0.05 inter_dropout=0.6 --lr 0.0001 --batch-size 32 --epochs 300 --patience 25 --inner-val-frac 0.15 --start-from-epoch 0 --early-stopping-monitor val_loss --early-stopping-min-delta 1e-05 --seed 42 --n-splits 10 --n-repeats 5 --tag control_baseline_v13 --verbose",
   "n_features": 741,
   "input_shape": [
     33,
