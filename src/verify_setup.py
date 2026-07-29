@@ -388,6 +388,44 @@ def _write_schema4_fixture(run_dir: Path) -> None:
     pd.DataFrame(fold_rows).to_csv(run_dir / "folds.csv", index=False)
 
 
+def _write_stats_fixture_run(run_dir: Path, **cfg_overrides) -> None:
+    """Corrida de esquema 4 estructuralmente válida (reutiliza
+    ``_write_schema4_fixture``: 2 pliegues, 6 sujetos, particiones disjuntas)
+    con los campos metodológicos que ``--stats``/``_check_stats_methodology()``
+    necesitan (site, roi_set, class_weight, arquitectura, ventana, hashes de
+    código, ...), fijados a un valor de referencia común y sobrescribibles
+    corrida por corrida mediante ``cfg_overrides`` — usada por
+    ``check_stats_methodology_gate()`` para su prueba de integración real a
+    través de ``compile_results.main()``.
+    """
+    _write_schema4_fixture(run_dir)
+    cfg_path = run_dir / "config.json"
+    cfg = json.loads(cfg_path.read_text())
+    cfg.update({
+        "site": "OHSU", "roi_set": "12", "n_rois": 12, "n_timepoints": 100,
+        "model": "brainnetcnn", "arch": {"dropout": 0.7}, "seed": 42,
+        "split_fingerprint": "splitfp0000",
+        "lr": 1e-4, "batch_size": 32, "epochs": 300, "patience": 25, "clipnorm": None,
+        "inner_val_frac": 0.15, "class_weight": False, "deterministic": False,
+        "mixed_precision": False, "start_from_epoch": 0, "early_stopping_min_delta": 1e-5,
+        "random_subset": None, "n_random_sets": None, "exclude_roi_set": None,
+        "bold_hash": "bold0000000000", "data_code_hash": "datacode00000000",
+        "runner_code_hash": "runnercode000000", "representation": "ordered",
+        "representation_seed": None, "windowing_preset": "custom",
+        "windowing": {
+            "window_tr": 48, "step_tr": 5, "window_seconds": 120.0, "step_seconds": 12.0,
+            "requested_window_seconds": 120.0, "requested_step_seconds": 12.0,
+            "requested_overlap": None, "effective_overlap": 0.9,
+            "shape": "rectangular", "fisher_z": False, "gaussian_sigma": None,
+        },
+        "fisher_z": False, "constant_policy": "zero",
+        "roi_indices_hash": "roi12hash", "config_hash": "cfg12hash", "atlas_hash": "atlas12",
+        "git": {"commit": "aaaaaaaaaaaa", "clean": True, "user": "tester"},
+    })
+    cfg.update(cfg_overrides)
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+
 def check_schema4_artifact_validation():
     """Regresiones de compile_results.validate_run_artifacts()/collect() con
     fixtures CSV escritos a mano, sin entrenar ni importar TensorFlow.
@@ -1696,6 +1734,222 @@ def check_aggregate_table_gate():
     )
 
 
+def check_stats_methodology_gate():
+    """Regresión de la compuerta metodológica de ``--stats``
+    (``compile_results._check_stats_methodology()``, v16): reproduce y cierra
+    el caso reportado donde ``--stats-by roi_set`` solo exigía site/model/
+    representation fijos y aceptaba corridas que además diferían en
+    ``class_weight`` (o cualquier otro factor metodológico) como
+    "compatibles para comparación pareada".
+
+    Casos negativos (deben abortar con ``SystemExit``, mencionar el campo
+    responsable y ambos ``run_id``): ``--stats-by roi_set`` con una
+    diferencia adicional en ``class_weight``, ``lr``, ``arch_json``, un
+    parámetro de ventana, o ``runner_code_hash``; ``--stats-by
+    representation`` con una diferencia adicional en ``class_weight``; una
+    columna fija presente en una corrida y ausente (``NaN``) en otra.
+
+    Casos positivos (deben pasar sin abortar): variar solo roi_set/n_rois/
+    roi_indices_hash/config_hash; un ``atlas_hash`` distinto por sí solo no
+    debe bloquear una comparación por ``roi_set`` (corridas anteriores y
+    posteriores a la corrección de ``roi_sets.json``); dos representaciones
+    dinámicas con la misma ventana; el eje ``early_stopping_monitor`` con la
+    config básica fija (la guardia fuerte específica de ese eje,
+    ``_check_early_stopping_ab()``, se prueba aparte y no se debilita aquí).
+
+    Al final, una prueba de integración real a través de
+    ``compile_results.main()`` — dos corridas completas en disco, sin
+    entrenar, con ``paired_stats()`` sustituido por un contador de llamadas
+    (no se ejecuta estadística real) — confirma que el caso negativo aborta
+    ANTES de invocar ``paired_stats()`` (0 llamadas, así que tampoco se
+    imprime ningún ANOVA/contraste: todo ese cálculo e impresión vive dentro
+    de ``paired_stats()``) y que el caso positivo sí llega a invocarlo
+    (1 llamada). No reimplementa la lógica de ``main()``: la ejecuta.
+    """
+    seccion("Compuerta metodológica de --stats (v16, sin entrenar)")
+    sys.path.insert(0, str(REPO / "src"))
+    import compile_results as C
+    import pandas as pd
+
+    base = {
+        "config_schema_version": 4, "site": "OHSU", "n_subjects": 79, "n_timepoints": 100,
+        "model": "brainnetcnn", "arch_json": '{"dropout":0.7}', "seed": 42,
+        "n_splits": 10, "n_repeats": 5, "split_fingerprint": "splitfp0000",
+        "lr": 1e-4, "batch_size": 32, "epochs": 300, "patience": 25, "clipnorm": None,
+        "inner_val_frac": 0.15, "class_weight": False, "deterministic": False,
+        "mixed_precision": False, "start_from_epoch": 0, "early_stopping_min_delta": 1e-5,
+        "random_subset": None, "n_random_sets": None, "exclude_roi_set": None,
+        "bold_hash": "bold0000000000", "data_code_hash": "datacode00000000",
+        "runner_code_hash": "runnercode000000", "representation": "ordered",
+        "representation_seed": None, "connectivity_mode": "dynamic",
+        "windowing_preset": "custom", "window_tr": 48, "step_tr": 5,
+        "window_seconds": 120.0, "step_seconds": 12.0, "requested_window_seconds": 120.0,
+        "requested_step_seconds": 12.0, "requested_overlap": None, "effective_overlap": 0.9,
+        "window_shape": "rectangular", "gaussian_sigma": None, "fisher_z": False,
+        "constant_policy": "zero", "early_stopping_monitor": "val_loss",
+    }
+
+    def fila(roi_set, n_rois, run_id, **overrides):
+        return {
+            **base, "roi_set": roi_set, "n_rois": n_rois,
+            "roi_indices_hash": f"roi{roi_set}hash", "config_hash": f"cfg{roi_set}hash",
+            "atlas_hash": f"atlas{roi_set}", "base_run_id": run_id,
+            **overrides,
+        }
+
+    # --- Negativos, --stats-by roi_set: diferencia adicional a roi_set ---
+    negativos_roi_set = {
+        "class_weight": True,
+        "lr": 5e-4,
+        "arch_json": '{"dropout":0.5}',
+        "window_seconds": 140.0,
+        "runner_code_hash": "otrocodigo00000",
+    }
+    for campo, valor in negativos_roi_set.items():
+        filas = pd.DataFrame([fila("12", 12, "RUN_A"), fila("18", 18, "RUN_B", **{campo: valor})])
+        try:
+            C._check_stats_methodology(filas, "roi_set")
+            fail(f"--stats-by roi_set con diferencia adicional en {campo}: no abortó")
+        except SystemExit as e:
+            msg = str(e)
+            ok_msg = campo in msg and "RUN_A" in msg and "RUN_B" in msg
+            (ok if ok_msg else fail)(
+                f"--stats-by roi_set con diferencia adicional en {campo}: aborta "
+                "mencionando el campo y ambos run_id"
+                + ("" if ok_msg else f" — mensaje={msg!r}")
+            )
+
+    # --- Negativo, --stats-by representation ---
+    filas_rep = pd.DataFrame([
+        fila("12", 12, "RUN_A", representation="ordered"),
+        fila("12", 12, "RUN_B", representation="permuted", class_weight=True),
+    ])
+    try:
+        C._check_stats_methodology(filas_rep, "representation")
+        fail("--stats-by representation con diferencia adicional en class_weight: no abortó")
+    except SystemExit as e:
+        msg = str(e)
+        ok_msg = "class_weight" in msg and "RUN_A" in msg and "RUN_B" in msg
+        (ok if ok_msg else fail)(
+            "--stats-by representation con diferencia adicional en class_weight: aborta "
+            "mencionando el campo y ambos run_id" + ("" if ok_msg else f" — mensaje={msg!r}")
+        )
+
+    # --- Negativo: columna fija ausente (NaN) en una corrida ---
+    fila_nan_a = fila("12", 12, "RUN_A")
+    fila_nan_b = fila("18", 18, "RUN_B")
+    fila_nan_b["lr"] = float("nan")
+    filas_nan = pd.DataFrame([fila_nan_a, fila_nan_b])
+    try:
+        C._check_stats_methodology(filas_nan, "roi_set")
+        fail("--stats-by roi_set con lr ausente (NaN) en una corrida: no abortó")
+    except SystemExit as e:
+        msg = str(e)
+        ok_msg = "lr" in msg and "RUN_A" in msg and "RUN_B" in msg
+        (ok if ok_msg else fail)(
+            "--stats-by roi_set con lr ausente (NaN) en una corrida: aborta mencionando "
+            "el campo y ambos run_id" + ("" if ok_msg else f" — mensaje={msg!r}")
+        )
+
+    # --- Positivos ---
+    filas_pos = pd.DataFrame(
+        [fila("12", 12, "RUN_12"), fila("18", 18, "RUN_18"), fila("39", 39, "RUN_39")]
+    )
+    try:
+        C._check_stats_methodology(filas_pos, "roi_set")
+        ok("--stats-by roi_set: tres corridas que solo difieren en roi_set/n_rois/"
+           "roi_indices_hash/config_hash/atlas_hash pasan sin abortar")
+    except SystemExit as e:
+        fail(f"--stats-by roi_set: comparación válida abortó — {e}")
+
+    filas_atlas = pd.DataFrame([
+        fila("12", 12, "RUN_A", atlas_hash="atlas_viejo"),
+        fila("18", 18, "RUN_B", atlas_hash="atlas_nuevo"),
+    ])
+    try:
+        C._check_stats_methodology(filas_atlas, "roi_set")
+        ok("--stats-by roi_set: atlas_hash distinto por sí solo no bloquea la comparación")
+    except SystemExit as e:
+        fail(f"--stats-by roi_set: atlas_hash distinto bloqueó indebidamente — {e}")
+
+    filas_rep_ok = pd.DataFrame([
+        fila("12", 12, "RUN_A", representation="ordered"),
+        fila("12", 12, "RUN_B", representation="permuted", representation_seed=1),
+    ])
+    try:
+        C._check_stats_methodology(filas_rep_ok, "representation")
+        ok("--stats-by representation: dos representaciones dinámicas con la misma "
+           "ventana y el resto de la metodología fija pasan sin abortar")
+    except SystemExit as e:
+        fail(f"--stats-by representation: comparación dinámica válida abortó — {e}")
+
+    filas_monitor_ok = pd.DataFrame([
+        fila("12", 12, "RUN_A", early_stopping_monitor="val_loss"),
+        fila("12", 12, "RUN_B", early_stopping_monitor="val_bce"),
+    ])
+    try:
+        C._check_stats_methodology(filas_monitor_ok, "early_stopping_monitor")
+        ok("--stats-by early_stopping_monitor: la config básica fija pasa "
+           "_check_stats_methodology() (la guardia fuerte específica es "
+           "_check_early_stopping_ab(), probada aparte)")
+    except SystemExit as e:
+        fail(f"--stats-by early_stopping_monitor: comparación básica válida abortó — {e}")
+
+    # --- Integración real a través de main(): paired_stats() sustituido por
+    # un contador, corridas completas en disco (sin entrenar) ---
+    import tempfile
+
+    tmp_int = tempfile.TemporaryDirectory(prefix="verify_stats_gate_")
+    root_int = Path(tmp_int.name)
+    llamadas = {"n": 0}
+
+    def _paired_stats_espia(*args, **kwargs):
+        llamadas["n"] += 1
+
+    original_paired_stats = C.paired_stats
+    C.paired_stats = _paired_stats_espia
+    try:
+        root_neg = root_int / "negativo"
+        _write_stats_fixture_run(root_neg / "12" / "RUN_A", roi_set="12",
+                                  config_hash="cfgA", roi_indices_hash="roiA")
+        _write_stats_fixture_run(root_neg / "18" / "RUN_B", roi_set="18", class_weight=True,
+                                  n_rois=18, config_hash="cfgB", roi_indices_hash="roiB")
+        llamadas["n"] = 0
+        try:
+            C.main([
+                "--root", str(root_neg), "--site", "OHSU", "--model", "brainnetcnn",
+                "--representation", "ordered", "--stats", "--stats-by", "roi_set",
+            ])
+            fail("integración: main() con corridas metodológicamente distintas no abortó")
+        except SystemExit as e:
+            condicion = "class_weight" in str(e) and llamadas["n"] == 0
+            (ok if condicion else fail)(
+                "integración: main() aborta antes de paired_stats() (0 llamadas) y el "
+                "mensaje menciona class_weight"
+                + ("" if condicion else f" — llamadas={llamadas['n']}, mensaje={e!r}")
+            )
+
+        root_pos = root_int / "positivo"
+        _write_stats_fixture_run(root_pos / "12" / "RUN_C", roi_set="12",
+                                  config_hash="cfgC", roi_indices_hash="roiC")
+        _write_stats_fixture_run(root_pos / "18" / "RUN_D", roi_set="18", n_rois=18,
+                                  config_hash="cfgD", roi_indices_hash="roiD")
+        llamadas["n"] = 0
+        codigo = C.main([
+            "--root", str(root_pos), "--site", "OHSU", "--model", "brainnetcnn",
+            "--representation", "ordered", "--stats", "--stats-by", "roi_set",
+        ])
+        condicion_pos = codigo == 0 and llamadas["n"] == 1
+        (ok if condicion_pos else fail)(
+            "integración: main() con corridas metodológicamente equivalentes llega a "
+            "paired_stats() exactamente una vez"
+            + ("" if condicion_pos else f" — código={codigo}, llamadas={llamadas['n']}")
+        )
+    finally:
+        C.paired_stats = original_paired_stats
+        tmp_int.cleanup()
+
+
 def _extraer_celda_notebook(nb, cell_id):
     for cell in nb["cells"]:
         if cell.get("id") == cell_id:
@@ -2472,6 +2726,7 @@ def main():
         check_schema4_artifact_validation()
         check_ensemble_analysis()
         check_aggregate_table_gate()
+        check_stats_methodology_gate()
         check_notebook_state_machine()
         check_modelos(args.full)
         if args.full:

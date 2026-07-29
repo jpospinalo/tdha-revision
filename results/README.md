@@ -31,8 +31,8 @@ conjuntos de ROIs o sitios entre sí se prioriza siempre el OOF por repetición.
 | Sitio | 12 ROIs | 18 ROIs | 39 ROIs, baseline |
 |---|---:|---:|---:|
 | NYU | 59.05 / 57.45 / 57.40 | 60.00 / 56.70 / 56.72 | 52.83 / 52.27 / 52.20 |
-| NeuroIMAGE | 47.38 / 44.33 / 45.64 | 61.98 / 57.65 / 57.95 | — |
-| OHSU | 54.92 / 53.57 / 54.55 | 52.22 / 51.07 / 52.42 | — |
+| NeuroIMAGE | 47.38 / 44.33 / 45.64 | 61.98 / 57.65 / 57.95 | 50.75 / 53.72 / 54.87 |
+| OHSU | 54.92 / 53.57 / 54.55 | 52.22 / 51.07 / 52.42 | 50.13 / 46.95 / 47.58 |
 | Peking | 56.37 / 54.11 / 55.52 | 56.75 / 53.98 / 55.41 | 62.22 / 60.31 / 61.20 |
 
 - Las tres corridas activas de Peking usan `class_weight=True`; ya no hay una diferencia de
@@ -44,17 +44,79 @@ conjuntos de ROIs o sitios entre sí se prioriza siempre el OOF por repetición.
 - El conjunto de 39 tiene una composición anatómica diferente; no es una ampliación del de
   12 o 18 (ver `data/atlas/roi_sets.json`).
 - Las corridas realizadas con `git.clean=false` son descriptivas y tienen hashes de código,
-  pero su procedencia es menos fuerte que la de una corrida ejecutada con árbol limpio.
+  pero su procedencia es menos fuerte que la de una corrida ejecutada con árbol limpio. No
+  son corridas inválidas. Tres de ellas (`2b729a8c`, `299719fe`, `bc841110`) tienen además
+  una nota de procedencia del equipo que las acepta para análisis formal sin exigir réplica
+  — ver "Nota de procedencia" más abajo.
 
 **Conclusión (prudente):** el conjunto de 12 ROIs es la opción más parsimoniosa y sigue
 siendo competitivo, en particular en NYU, pero los resultados no demuestran que sea
 universalmente el conjunto más informativo. El mejor conjunto cambia según el sitio. No se
 declara superioridad estadística ni generalización entre sitios.
 
+### Comparabilidad y procedencia por sitio
+
+`class_weight` y `git.clean` de las tres corridas activas (12/18/39 ROIs) de cada sitio:
+
+- NYU 12/18/39: `class_weight=False`, configuraciones comparables y árbol limpio en las tres.
+- NeuroIMAGE 12/18/39: `class_weight=False`; 18 y 39 con árbol limpio, 12 (`2b729a8c`) con
+  `git.clean=false`.
+- OHSU 12/18/39: `class_weight=False`; 12 y 18 con árbol limpio, 39 (`299719fe`) con
+  `git.clean=false`.
+- Peking 12/18/39: `class_weight=True`; 18 y 39 con árbol limpio, 12 (`bc841110`) con
+  `git.clean=false` (detalle completo en la sección siguiente).
+
+### Nota de procedencia: `git.clean=false` en `2b729a8c`, `299719fe` y `bc841110`
+
+`git.clean=false` en NeuroIMAGE–12 `2b729a8c`, OHSU–39 `299719fe` y Peking–12 `bc841110` se
+debió exclusivamente a archivos nuevos o modificados bajo `results/` o documentación en el
+momento de esas corridas. No había cambios sin confirmar en `run_experiment.py`, `data.py`,
+BrainNetCNN, las representaciones ni el protocolo de entrenamiento — así lo confirmó el
+equipo posteriormente.
+
+Evidencia disponible que respalda esa declaración, verificada contra los `config.json`
+reales:
+
+- las tres corridas pasan `validate_run_artifacts()` (esquema 4, artefactos completos y
+  estructuralmente válidos);
+- dentro de cada sitio, `runner_code_hash`, `data_code_hash`, `bold_hash` y
+  `split_fingerprint` son idénticos entre la corrida `git.clean=false` y sus dos
+  comparadoras de árbol limpio — mismo código de ejecución, mismo código de datos, misma
+  señal BOLD, mismas particiones;
+- `arch_json`, `lr`, `batch_size`, `epochs`, `patience`, `seed`, `n_splits`, `n_repeats`,
+  `early_stopping_monitor` y `class_weight` también coinciden dentro de cada sitio.
+
+Limitación reconocida: `git.clean=false` por sí solo no guarda la lista histórica de qué
+archivo estaba modificado en el momento de la corrida; la declaración anterior depende de la
+memoria/registro del equipo, no de un artefacto verificable automáticamente con el estado
+actual del repositorio.
+
+Decisión: estas tres corridas se aceptan para análisis y comparación formal con esta
+salvedad de trazabilidad documentada, sin exigir una réplica de árbol limpio. No se
+reescribe `config.json` de ninguna de las tres, y no se repiten únicamente para cambiar
+`git.clean=false` a `true`, buscar una semilla favorable, ni para crear una copia con
+metadatos alterados. Una repetición futura solo estaría justificada por evidencia de
+cambios ejecutables no declarados, un cambio de protocolo científico, o una réplica
+independiente por una razón experimental nueva — ninguna de esas condiciones aplica hoy.
+
+### NeuroIMAGE–39 y OHSU–39: corridas nuevas
+
+- NeuroIMAGE–39 `dc028168`: `class_weight=False`, `git.clean=true`.
+- OHSU–39 `299719fe`: `class_weight=False`, `git.clean=false` — cubierta por la nota de
+  procedencia anterior; no se repite.
+
+Métricas completas:
+
+| Corrida | Accuracy | AUC | F1-macro | Balanced accuracy |
+|---|---:|---:|---:|---:|
+| NeuroIMAGE–39 `dc028168` | 54.87% | 50.75% | 53.52% | 53.72% |
+| OHSU–39 `299719fe` | 47.58% | 50.13% | 46.68% | 46.95% |
+
 ### Peking: corridas activas y su procedencia
 
-- Peking–12 `bc841110`: `class_weight=True`, `git.clean=false` (procedencia histórica,
-  descriptiva; sigue siendo la única referencia actual de 12 ROIs para este sitio).
+- Peking–12 `bc841110`: `class_weight=True`, `git.clean=false` — cubierta por la nota de
+  procedencia de más arriba; sigue siendo la única referencia actual de 12 ROIs para este
+  sitio y no se repite.
 - Peking–18 `0bf7fa0e`: `class_weight=True`, `git.clean=true`, baseline vigente. Sustituye a
   la corrida histórica `b8e8a44d` (`class_weight=False`), que no forma parte de esta versión
   del compendio.
@@ -99,19 +161,29 @@ particiones, arquitectura e hiperparámetros. No se modifica retroactivamente ni
 
 ## Próximas corridas (todo el compendio)
 
-Documentadas aquí, sin ejecutarlas salvo que se indique lo contrario, en este orden:
+Documentadas aquí, sin ejecutarlas salvo que se indique lo contrario.
 
-1. ~~Peking–18 baseline con `class_weight=True`~~ — **completada** (`0bf7fa0e`); no es
-   necesario repetirla en esta fase.
-2. Resolver una única política de folds para NeuroIMAGE y OHSU antes de comparaciones
+**`NeuroIMAGE–12` `2b729a8c`, `OHSU–39` `299719fe` y `Peking–12` `bc841110` NO están en esta
+lista.** Su `git.clean=false` ya está explicado y aceptado por la nota de procedencia de
+más arriba; no se repiten solo para cambiar `git.clean=false` a `true`, y no hay ninguna
+instrucción pendiente de replicarlas en esta versión.
+
+Tareas metodológicas todavía abiertas — decisiones que corresponden al equipo, no
+correcciones de artefactos:
+
+1. Resolver una única política de folds para NeuroIMAGE y OHSU antes de comparaciones
    definitivas; no comparar `5×5` con `10×5` como si la única diferencia fueran los ROIs.
-3. Evaluar OHSU `static` con 12 y 18 ROIs usando exactamente el mismo protocolo.
-4. Evaluar el ensamble NYU 12+18.
-5. ~~Después de corregir Peking–18, evaluar el ensamble Peking 18+39~~ — **evaluado
-   exploratoriamente** (ver arriba); no se promueve a referencia y no es necesario repetirlo
-   en esta fase.
-6. Ejecutar 116 ROIs como baseline diagnóstico, primero en Peking y después en NYU; no
+2. Evaluar OHSU `static` con 12 y 18 ROIs usando exactamente el mismo protocolo.
+3. Evaluar el ensamble NYU 12+18.
+4. Ejecutar 116 ROIs como baseline diagnóstico, primero en Peking y después en NYU; no
    iniciar un barrido de hiperparámetros de 116 antes de conocer esos baselines.
+
+Ya completadas en una actualización anterior:
+
+- ~~Peking–18 baseline con `class_weight=True`~~ — completada (`0bf7fa0e`); no es necesario
+  repetirla en esta fase.
+- ~~Ensamble Peking 18+39~~ — evaluado exploratoriamente (ver arriba); no se promueve a
+  referencia y no es necesario repetirlo en esta fase.
 
 Configuración usada en Peking–18 `0bf7fa0e` (ya ejecutada; la única diferencia frente a la
 corrida histórica `b8e8a44d` fue `class_weight=False → True` y la etiqueta de la nueva

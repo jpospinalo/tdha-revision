@@ -915,6 +915,121 @@ def _check_early_stopping_ab(base: pd.DataFrame) -> None:
         )
 
 
+# Campos que --stats debe exigir fijos sin importar el eje de --stats-by: si
+# cualquiera de ellos difiere entre las corridas seleccionadas, el contraste
+# pareado dejaría de aislar únicamente la dimensión pedida. split_fingerprint
+# ya se comprueba aparte en main() antes de llamar a esta función, pero se
+# repite aquí para que _check_stats_methodology() sea correcta también si se
+# llama de forma independiente. Deliberadamente NO incluye versiones de
+# Python/TensorFlow/Keras, GPU o usuario (metadatos del entorno, no identidad
+# metodológica) ni atlas_hash (se trata aparte por eje, ver más abajo).
+STATS_BASE_FIELDS = (
+    "config_schema_version", "site", "n_subjects", "n_timepoints", "model", "arch_json",
+    "seed", "n_splits", "n_repeats", "split_fingerprint", "lr", "batch_size", "epochs",
+    "patience", "clipnorm", "inner_val_frac", "class_weight", "deterministic",
+    "mixed_precision", "start_from_epoch", "early_stopping_min_delta", "random_subset",
+    "n_random_sets", "exclude_roi_set", "bold_hash", "data_code_hash", "runner_code_hash",
+)
+
+# --stats-by roi_set: además de los campos básicos, toda la metodología de
+# ventana/representación/monitor debe quedar fija — solo puede variar lo que
+# es propio del conjunto anatómico (roi_set, n_rois, n_features,
+# roi_indices_hash, config_hash, early_stopping_ab_hash, run_id,
+# base_run_id). atlas_hash queda fuera a propósito: las corridas vigentes
+# anteriores y posteriores a la corrección textual de roi_sets.json tienen
+# atlas_hash distinto aunque compartan exactamente los mismos índices, ya
+# documentado mediante roi_indices_hash.
+STATS_ROI_SET_EXTRA_FIELDS = (
+    "representation", "representation_seed", "connectivity_mode", "windowing_preset",
+    "window_tr", "step_tr", "window_seconds", "step_seconds", "requested_window_seconds",
+    "requested_step_seconds", "requested_overlap", "effective_overlap", "window_shape",
+    "gaussian_sigma", "fisher_z", "constant_policy", "early_stopping_monitor",
+)
+
+# --stats-by representation: campos que siempre deben quedar fijos además de
+# los básicos.
+STATS_REPRESENTATION_EXTRA_FIELDS = (
+    "roi_set", "n_rois", "roi_indices_hash", "atlas_hash", "early_stopping_monitor",
+    "fisher_z", "constant_policy",
+)
+# Parámetros de ventana: solo se exigen cuando TODAS las representaciones
+# comparadas usan ventanas. Si alguna es una representación estática (sin
+# ventanas), esos campos no le aplican y no deben producir un rechazo falso.
+STATS_REPRESENTATION_WINDOW_FIELDS = (
+    "window_tr", "step_tr", "window_seconds", "step_seconds", "requested_window_seconds",
+    "requested_step_seconds", "requested_overlap", "effective_overlap", "window_shape",
+    "gaussian_sigma",
+)
+NON_WINDOWED_REPRESENTATIONS = {"static", "partial", "shrunk", "tangent"}
+
+
+def _check_stats_methodology(base: pd.DataFrame, group_col: str) -> None:
+    """Compuerta metodológica de ``--stats``: todo lo que no sea ``group_col``
+    debe quedar fijo entre las corridas seleccionadas, o el contraste pareado
+    (ANOVA/Nadeau-Bengio/Wilcoxon/Holm) mediría una diferencia confundida con
+    un segundo factor en vez de aislar solo ``group_col``.
+
+    Reproduce y cierra el caso reportado: ``--stats-by roi_set`` solo exigía
+    site/model/representation fijos (ver ``fixed`` en ``main()``), así que dos
+    corridas que además difirieran en ``class_weight`` (o arquitectura,
+    ventana, tasa de aprendizaje, hashes de código, etc.) se aceptaban como
+    "compatibles para comparación pareada" sin más aviso.
+
+    No relee métricas ni reimplementa nada de ``collect()``: solo compara
+    columnas ya normalizadas en ``base``. Usa ``nunique(dropna=False)`` para
+    que una columna presente en una corrida y ausente (``NaN``) en otra
+    también cuente como una diferencia, no como un empate accidental.
+
+    Se llama SIEMPRE antes de construir ``runs`` y de invocar
+    ``paired_stats()`` — incluso sin ``--strict-comparability``: una
+    comparación estadística confundida por un segundo factor debe fallar de
+    forma cerrada, no quedar como un aviso opcional.
+    """
+    if base.empty or len(base) < 2:
+        return
+
+    fields = list(STATS_BASE_FIELDS)
+    if group_col == "roi_set":
+        fields += list(STATS_ROI_SET_EXTRA_FIELDS)
+    elif group_col == "representation":
+        fields += list(STATS_REPRESENTATION_EXTRA_FIELDS)
+        representations = set(base["representation"].dropna()) if "representation" in base else set()
+        if representations and not (representations & NON_WINDOWED_REPRESENTATIONS):
+            fields += list(STATS_REPRESENTATION_WINDOW_FIELDS)
+    # early_stopping_monitor: solo los campos básicos — _check_early_stopping_ab()
+    # ya exige un único early_stopping_ab_hash, una garantía más fuerte que
+    # cualquier lista de columnas (cubre también campos que esa lista pudiera
+    # omitir), así que no se duplica aquí un contrato paralelo más débil.
+
+    vistos: set[str] = set()
+    fields_final: list[str] = []
+    for field in fields:
+        if field == group_col or field in vistos:
+            continue
+        vistos.add(field)
+        fields_final.append(field)
+
+    problems: list[tuple[str, str]] = []
+    for field in sorted(fields_final):
+        if field not in base.columns:
+            continue
+        if base[field].nunique(dropna=False) <= 1:
+            continue
+        detalle = base[["base_run_id", field]].sort_values("base_run_id")
+        valores = "; ".join(
+            f"{run_id}={value!r}" for run_id, value in zip(detalle["base_run_id"], detalle[field])
+        )
+        problems.append((field, valores))
+
+    if problems:
+        cuerpo = "\n".join(f"  · {campo}: {valores}" for campo, valores in problems)
+        raise SystemExit(
+            f"Comparación abortada: para --stats-by {group_col}, las corridas seleccionadas "
+            "difieren en campos metodológicos ajenos a ese eje, así que el contraste no "
+            f"aislaría únicamente '{group_col}':\n{cuerpo}"
+        )
+
+
 def methodological_group_columns(df: pd.DataFrame) -> list[str]:
     candidates = [
         "site", "roi_set", "model", "arch_json", "representation", "representation_seed",
@@ -1216,7 +1331,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.stats:
         base = df[df["random_subset"].isna()] if "random_subset" in df else df
         group_col = args.stats_by
-        # Todo lo que no sea la dimensión a comparar debe quedar fijo.
+        # Filtro mínimo: fija las columnas usadas para narrowear --site/--model/
+        # --representation/--roi-set a un solo grupo antes de indexar 'runs' por
+        # group_col (si quedaran dos sites mezclados, por ejemplo, la
+        # comprensión de diccionario de más abajo se quedaría con uno solo sin
+        # avisar). La igualdad metodológica completa —todo lo que no sea
+        # group_col— la exige _check_stats_methodology() más abajo; esta lista
+        # corta no es esa garantía.
         if group_col == "representation":
             fixed = ["site", "model", "roi_set"]  # comparar representaciones dentro de un mismo roi_set
         elif group_col == "early_stopping_monitor":
@@ -1234,6 +1355,8 @@ def main(argv: list[str] | None = None) -> int:
                 )
         if "split_fingerprint" in base and base["split_fingerprint"].dropna().nunique() > 1:
             raise SystemExit("Las corridas no comparten la misma huella de particiones.")
+
+        _check_stats_methodology(base, group_col)
 
         if group_col == "early_stopping_monitor":
             _check_early_stopping_ab(base)
