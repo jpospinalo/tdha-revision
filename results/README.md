@@ -33,10 +33,11 @@ conjuntos de ROIs o sitios entre sí se prioriza siempre el OOF por repetición.
 | NYU | 59.05 / 57.45 / 57.40 | 60.00 / 56.70 / 56.72 | 52.83 / 52.27 / 52.20 |
 | NeuroIMAGE | 47.38 / 44.33 / 45.64 | 61.98 / 57.65 / 57.95 | — |
 | OHSU | 54.92 / 53.57 / 54.55 | 52.22 / 51.07 / 52.42 | — |
-| Peking | 56.37 / 54.11 / 55.52 | 58.33 / 55.39 / 58.91* | 60.32 / 57.58 / 58.36 |
+| Peking | 56.37 / 54.11 / 55.52 | 56.75 / 53.98 / 55.41 | 62.22 / 60.31 / 61.20 |
 
-- `*` Peking–18 usa `class_weight=False`; Peking–12 y Peking–39 usan `True`. No atribuir la
-  diferencia únicamente al número de ROIs.
+- Las tres corridas activas de Peking usan `class_weight=True`; ya no hay una diferencia de
+  `class_weight` entre columnas de esta fila (ver la sección "Peking: corridas activas y su
+  procedencia" más abajo).
 - Las corridas OHSU actuales usan `ordered`, producen solo seis ventanas y están registradas
   como exploratorias mientras se decide el baseline estático.
 - No hay resultados de 116 ROIs en el compendio.
@@ -50,22 +51,71 @@ siendo competitivo, en particular en NYU, pero los resultados no demuestran que 
 universalmente el conjunto más informativo. El mejor conjunto cambia según el sitio. No se
 declara superioridad estadística ni generalización entre sitios.
 
+### Peking: corridas activas y su procedencia
+
+- Peking–12 `bc841110`: `class_weight=True`, `git.clean=false` (procedencia histórica,
+  descriptiva; sigue siendo la única referencia actual de 12 ROIs para este sitio).
+- Peking–18 `0bf7fa0e`: `class_weight=True`, `git.clean=true`, baseline vigente. Sustituye a
+  la corrida histórica `b8e8a44d` (`class_weight=False`), que no forma parte de esta versión
+  del compendio.
+- Peking–39 `396e34d2`: `class_weight=True`, `git.clean=true`, baseline vigente.
+
+Métricas completas de las dos corridas nuevas:
+
+| Corrida | Accuracy | AUC | F1-macro | Balanced accuracy |
+|---|---:|---:|---:|---:|
+| Peking–18 `0bf7fa0e` | 55.41% | 56.75% | 53.89% | 53.98% |
+| Peking–39 `396e34d2` | 61.20% | 62.22% | 60.10% | 60.31% |
+
+- Con `class_weight=True`, Peking–18 elevó sensibilidad respecto a la ejecución histórica sin
+  pesos, pero no mejoró AUC ni balanced accuracy.
+- Peking–39 es el mejor modelo individual actual de Peking, aunque conserva una brecha alta
+  entre entrenamiento y validación.
+- No se declara generalización externa ni superioridad estadística a partir de estas cifras.
+
+### Ensamble exploratorio Peking 18+39
+
+Análisis post hoc con `analyze_ensemble.py` (pesos iguales, umbral fijo 0.5, sin optimizar
+nada), combinando `0bf7fa0e` y `396e34d2`:
+
+```text
+Peking 18+39, pesos iguales:
+accuracy 61.09%
+AUC 62.80%
+F1-macro 59.99%
+balanced accuracy 60.18%
+```
+
+Frente al modelo Peking–39 individual, el ensamble solo mejora AUC en aproximadamente 0.58
+puntos porcentuales y no mejora accuracy ni balanced accuracy. Se registra como análisis
+exploratorio, no como nueva referencia: no se promueve todavía.
+
+### Nota sobre `atlas_hash`
+
+Las corridas anteriores y posteriores a la corrección textual de `roi_sets.json` pueden tener
+`atlas_hash` y `config_hash` distintos aunque compartan exactamente los mismos índices ROI.
+Para establecer equivalencia científica se comprobaron `roi_indices_hash`, `bold_hash`,
+particiones, arquitectura e hiperparámetros. No se modifica retroactivamente ningún hash.
+
 ## Próximas corridas (todo el compendio)
 
-Documentadas aquí, sin ejecutarlas, en este orden:
+Documentadas aquí, sin ejecutarlas salvo que se indique lo contrario, en este orden:
 
-1. **Peking–18 baseline con `class_weight=True`**, manteniendo todos los demás parámetros
-   iguales a la corrida `b8e8a44d`.
+1. ~~Peking–18 baseline con `class_weight=True`~~ — **completada** (`0bf7fa0e`); no es
+   necesario repetirla en esta fase.
 2. Resolver una única política de folds para NeuroIMAGE y OHSU antes de comparaciones
    definitivas; no comparar `5×5` con `10×5` como si la única diferencia fueran los ROIs.
 3. Evaluar OHSU `static` con 12 y 18 ROIs usando exactamente el mismo protocolo.
 4. Evaluar el ensamble NYU 12+18.
-5. Después de corregir Peking–18, evaluar el ensamble Peking 18+39.
+5. ~~Después de corregir Peking–18, evaluar el ensamble Peking 18+39~~ — **evaluado
+   exploratoriamente** (ver arriba); no se promueve a referencia y no es necesario repetirlo
+   en esta fase.
 6. Ejecutar 116 ROIs como baseline diagnóstico, primero en Peking y después en NYU; no
    iniciar un barrido de hiperparámetros de 116 antes de conocer esos baselines.
 
-Configuración prescrita para Peking–18 (la única diferencia frente a `b8e8a44d` es
-`class_weight=False → True` y la etiqueta de la nueva corrida):
+Configuración usada en Peking–18 `0bf7fa0e` (ya ejecutada; la única diferencia frente a la
+corrida histórica `b8e8a44d` fue `class_weight=False → True` y la etiqueta de la nueva
+corrida):
 
 ```text
 site=Peking

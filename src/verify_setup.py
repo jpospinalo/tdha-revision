@@ -1098,18 +1098,23 @@ def check_ensemble_analysis():
     B A producen el mismo nombre de carpeta de salida, el mismo source_runs/
     weights y las mismas predicciones. 16: campos estructurales inválidos en
     config.json (n_repeats ausente, n_splits booleano, n_subjects=0) fallan
-    mencionando el requisito de entero.
+    mencionando el requisito de entero. 17 (v14): dentro de UNA misma
+    corrida, dos repeticiones con el mismo número de sujetos pero conjuntos
+    (subject, subject_id) distintos fallan sin crear ninguna carpeta de
+    salida — las dos corridas fuente comparten la misma anomalía para
+    confirmar que cada una se valida por separado.
     """
     seccion("Ensamble de probabilidades OOF (analyze_ensemble.py, sin entrenar)")
-    import shutil
+    import tempfile
     import pandas as pd
     sys.path.insert(0, str(REPO / "src"))
     import analyze_ensemble as E
 
-    root = Path("/tmp/verify_ensemble_fixtures")
-    if root.exists():
-        shutil.rmtree(root)
-    root.mkdir(parents=True)
+    # Directorio único por ejecución (en vez de la ruta fija anterior bajo
+    # /tmp): evita colisiones si dos verificaciones corren a la vez y
+    # garantiza que la limpieza final solo borra lo que esta ejecución creó.
+    tmp = tempfile.TemporaryDirectory(prefix="verify_ensemble_")
+    root = Path(tmp.name)
 
     # Partición compartida de referencia: 4 sujetos, 1 repetición, 2 folds
     # (s1/s2 en el fold 1, s3/s4 en el fold 2) — analyze_ensemble.py no lee
@@ -1508,7 +1513,50 @@ def check_ensemble_analysis():
                 + ("" if "entero" in str(e) else f" — mensaje={e!r}")
             )
 
-    shutil.rmtree(root)
+    # --- Caso 17: cobertura longitudinal distinta entre repeticiones DENTRO
+    # de una misma corrida — mismo número de sujetos por repetición, pero
+    # conjuntos distintos (repetición 1: s1/s2; repetición 2: s1/s3). Las
+    # comprobaciones de conteo (_check_coverage) no lo detectan por sí
+    # solas; ambas corridas fuente comparten la misma anomalía para
+    # demostrar que cada una se valida internamente antes de comparar contra
+    # la otra. ---
+    root17 = root / "caso17"
+    run_a17 = root17 / "12" / "RUN_A"
+    run_b17 = root17 / "18" / "RUN_B"
+    prob_17 = {(1, "s1"): 0.7, (1, "s2"): 0.3, (2, "s1"): 0.6, (2, "s3"): 0.4}
+    y_true_17 = {(1, "s1"): 1, (1, "s2"): 0, (2, "s1"): 1, (2, "s3"): 0}
+    folds_17 = {(1, "s1"): 1, (1, "s2"): 2, (2, "s1"): 1, (2, "s3"): 2}
+    for run_dir17, roi_set17, config_hash17 in (
+        (run_a17, "12", "aaaa1111"), (run_b17, "18", "bbbb2222"),
+    ):
+        _write_ensemble_source_run(run_dir17, roi_set=roi_set17, config_hash=config_hash17,
+                                    y_prob_by_subject=prob_17, y_true_by_subject=y_true_17,
+                                    fold_by_subject=folds_17, n_splits=2, n_repeats=2)
+        # El helper calcula n_subjects como el total de subject_id distintos
+        # en TODA la corrida (s1, s2, s3 = 3), pero cada repetición solo
+        # tiene 2 filas — hay que declarar n_subjects=2 explícitamente para
+        # que _check_coverage() (conteo) pase y la prueba llegue a ejercitar
+        # la comprobación nueva de cobertura longitudinal, no una anterior.
+        cfg_path17 = run_dir17 / "config.json"
+        cfg17 = json.loads(cfg_path17.read_text())
+        cfg17["n_subjects"] = 2
+        cfg_path17.write_text(json.dumps(cfg17), encoding="utf-8")
+    analyses17 = root17 / "analyses"
+    try:
+        E.run_ensemble(root17, ["RUN_A", "RUN_B"], analyses17, overwrite=False)
+        fail("caso 17 (cobertura longitudinal distinta entre repeticiones): no lanzó EnsembleError")
+    except E.EnsembleError as e:
+        condicion17 = "conjunto" in str(e) and "repetici" in str(e)
+        (ok if condicion17 else fail)(
+            "caso 17 (cobertura longitudinal distinta entre repeticiones): EnsembleError "
+            "señala la repetición y el conjunto de sujetos que no coincide"
+            + ("" if condicion17 else f" — mensaje={e!r}")
+        )
+    (ok if not analyses17.exists() else fail)(
+        "caso 17: no se creó ninguna carpeta de ensamble tras el rechazo"
+    )
+
+    tmp.cleanup()
 
 
 def check_aggregate_table_gate():

@@ -209,9 +209,10 @@ def _check_coverage(run_id: str, pred: pd.DataFrame, cfg: dict[str, Any]) -> Non
 
 def _check_longitudinal_consistency(run_id: str, pred: pd.DataFrame) -> None:
     """Dentro de UNA misma corrida: (subject, subject_id) debe ser una
-    correspondencia estable 1 a 1 entre repeticiones, y cada sujeto debe
-    tener un único y_true en todo el archivo. Se comprueba antes de
-    comparar nada contra la otra corrida fuente.
+    correspondencia estable 1 a 1 entre repeticiones, cada sujeto debe tener
+    un único y_true en todo el archivo, y todas las repeticiones deben cubrir
+    exactamente el mismo conjunto de sujetos. Se comprueba antes de comparar
+    nada contra la otra corrida fuente.
     """
     por_par = pred.groupby(["subject", "subject_id"])["y_true"].nunique()
     inconsistentes = por_par[por_par > 1]
@@ -239,6 +240,38 @@ def _check_longitudinal_consistency(run_id: str, pred: pd.DataFrame) -> None:
             f"{run_id}: subject con más de un subject_id asociado: "
             f"{ambiguos2.index.tolist()[:5]}"
         )
+
+    # Las comprobaciones anteriores (y _check_coverage(), que ya verificó la
+    # CANTIDAD de sujetos por repetición) no bastan para detectar que dos
+    # repeticiones tengan el mismo número de sujetos pero conjuntos
+    # distintos — p. ej. repetición 1 con sujetos A y B, repetición 2 con A
+    # y C. El ensamble exige cobertura longitudinal idéntica: cada
+    # repetición debe contener exactamente el mismo conjunto de pares
+    # (subject, subject_id) que la primera.
+    repeticiones = sorted(int(r) for r in pred["repeat"].unique())
+    if repeticiones:
+        referencia = repeticiones[0]
+        conjunto_referencia = set(
+            map(
+                tuple,
+                pred.loc[pred["repeat"] == referencia, ["subject", "subject_id"]].to_numpy(),
+            )
+        )
+        for repeat in repeticiones[1:]:
+            conjunto_actual = set(
+                map(
+                    tuple,
+                    pred.loc[pred["repeat"] == repeat, ["subject", "subject_id"]].to_numpy(),
+                )
+            )
+            if conjunto_actual != conjunto_referencia:
+                faltantes = sorted(conjunto_referencia - conjunto_actual, key=str)[:5]
+                adicionales = sorted(conjunto_actual - conjunto_referencia, key=str)[:5]
+                raise EnsembleError(
+                    f"{run_id}: la repetición {repeat} no cubre el mismo conjunto de "
+                    f"sujetos (subject, subject_id) que la repetición {referencia} — "
+                    f"faltan {faltantes}, sobran {adicionales}"
+                )
 
 
 def _load_run(root: Path, run_id: str) -> dict[str, Any]:
