@@ -1,6 +1,6 @@
 # Registro breve de experimentación
 
-Última actualización: 2026-07-27  
+Última actualización: 2026-07-29  
 Alcance actual: NYU, Peking, NeuroIMAGE y OHSU; conjuntos de 12, 18 y 39 ROIs; BrainNetCNN.
 
 ## Para qué sirve este archivo

@@ -1013,6 +1013,8 @@ def _write_ensemble_source_run(
     y_prob_by_subject: dict,
     y_true_by_subject: dict,
     fold_by_subject: dict | None = None,
+    subject_index_by_subject_id: dict | None = None,
+    run_id_override: str | None = None,
     site: str = "NYU",
     bold_hash: str = "bold0000000000",
     split_fingerprint: str = "split00000000",
@@ -1025,24 +1027,42 @@ def _write_ensemble_source_run(
     esa utilidad no lee. subject_id/y_prob/y_true vienen de diccionarios
     {(repeat, subject_id): valor} para que las pruebas puedan construir
     exactamente el desacuerdo o la coincidencia que necesitan.
+
+    predictions_val.csv incluye la columna `subject` (índice interno), que
+    analyze_ensemble.py exige desde la validación reforzada. Por defecto se
+    deriva de forma determinista de `subject_id` (los dígitos finales, p. ej.
+    "s3" -> 3) para que dos corridas fuente con los mismos subject_id
+    compartan el mismo subject sin tener que pasarlo explícitamente en cada
+    prueba; `subject_index_by_subject_id` fuerza una asignación distinta
+    cuando la prueba necesita justamente esa discrepancia.
+    `run_id_override` escribe un run_id distinto del nombre de la carpeta en
+    config.json, para las pruebas de identidad carpeta/run_id.
     """
     import pandas as pd
 
     run_dir.mkdir(parents=True, exist_ok=True)
     n_subjects = len({sid for (_, sid) in y_prob_by_subject})
     cfg = {
-        "run_id": run_dir.name, "config_schema_version": 4, "config_hash": config_hash,
+        "run_id": run_id_override if run_id_override is not None else run_dir.name,
+        "config_schema_version": 4, "config_hash": config_hash,
         "site": site, "roi_set": roi_set, "bold_hash": bold_hash,
         "split_fingerprint": split_fingerprint, "seed": seed,
         "n_splits": n_splits, "n_repeats": n_repeats, "n_subjects": n_subjects,
     }
     (run_dir / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
 
+    def _subject_index(subject_id: str) -> int:
+        if subject_index_by_subject_id and subject_id in subject_index_by_subject_id:
+            return subject_index_by_subject_id[subject_id]
+        digitos = "".join(ch for ch in subject_id if ch.isdigit())
+        return int(digitos) if digitos else abs(hash(subject_id)) % 1_000_000
+
     rows = []
     for (repeat, subject_id), y_prob in y_prob_by_subject.items():
         fold = (fold_by_subject or {}).get((repeat, subject_id), 1)
         rows.append({
-            "repeat": repeat, "fold": fold, "subject_id": subject_id,
+            "repeat": repeat, "fold": fold, "subject": _subject_index(subject_id),
+            "subject_id": subject_id,
             "y_true": y_true_by_subject[(repeat, subject_id)], "y_prob": y_prob,
         })
     pd.DataFrame(rows).to_csv(run_dir / "predictions_val.csv", index=False)
@@ -1064,6 +1084,21 @@ def check_ensemble_analysis():
     métrica, no promedian las métricas de cada fold por separado — se
     construye un caso donde ambos cálculos dan números distintos y se
     confirma cuál de los dos se reportó.
+
+    Casos 10-16 (validación reforzada, v13): 10: config.json declara más
+    repeticiones que las presentes en predictions_val.csv, falla mencionando
+    la cobertura de repeticiones. 11: dentro de una repetición hay menos
+    folds distintos que n_splits, falla mencionando fold. 12: config.json
+    declara un run_id distinto del nombre de carpeta, falla señalando la
+    discrepancia. 13: mismo subject_id pero distinto subject (índice interno)
+    entre las dos corridas, falla por clave JOIN_KEYS incompatible (igual que
+    el caso 3, pero variando subject en vez de subject_id). 14: dentro de UNA
+    corrida, el mismo sujeto tiene y_true distinto entre dos repeticiones,
+    falla antes de comparar contra la otra corrida. 15: --runs A B y --runs
+    B A producen el mismo nombre de carpeta de salida, el mismo source_runs/
+    weights y las mismas predicciones. 16: campos estructurales inválidos en
+    config.json (n_repeats ausente, n_splits booleano, n_subjects=0) fallan
+    mencionando el requisito de entero.
     """
     seccion("Ensamble de probabilidades OOF (analyze_ensemble.py, sin entrenar)")
     import shutil
@@ -1294,6 +1329,184 @@ def check_ensemble_analysis():
         f"caso 9: accuracy agrupada por repetición es 0.5 (2/4), no la media ingenua de folds "
         f"(≈0.333) — se obtuvo {acc_agrupada}"
     )
+
+    # --- Caso 10: repetición ausente (config.json declara n_repeats=2, solo
+    # hay datos de la repetición 1) ---
+    root10 = root / "caso10"
+    run_a10 = root10 / "12" / "RUN_A"
+    run_b10 = root10 / "18" / "RUN_B"
+    _write_ensemble_source_run(run_a10, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                fold_by_subject=folds, n_repeats=2)
+    _write_ensemble_source_run(run_b10, roi_set="18", config_hash="bbbb2222",
+                                y_prob_by_subject=prob_b, y_true_by_subject=y_true,
+                                fold_by_subject=folds, n_repeats=2)
+    try:
+        E.run_ensemble(root10, ["RUN_A", "RUN_B"], root10 / "analyses", overwrite=False)
+        fail("caso 10 (repetición ausente): no lanzó EnsembleError")
+    except E.EnsembleError as e:
+        (ok if "repeticiones" in str(e) else fail)(
+            "caso 10 (repetición ausente): EnsembleError menciona la cobertura de repeticiones"
+            + ("" if "repeticiones" in str(e) else f" — mensaje={e!r}")
+        )
+
+    # --- Caso 11: fold ausente (n_splits=2, pero todos los sujetos caen en
+    # el mismo fold dentro de la repetición) ---
+    root11 = root / "caso11"
+    run_a11 = root11 / "12" / "RUN_A"
+    run_b11 = root11 / "18" / "RUN_B"
+    folds_un_solo_fold = {clave: 1 for clave in folds}
+    _write_ensemble_source_run(run_a11, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                fold_by_subject=folds_un_solo_fold, n_splits=2)
+    _write_ensemble_source_run(run_b11, roi_set="18", config_hash="bbbb2222",
+                                y_prob_by_subject=prob_b, y_true_by_subject=y_true,
+                                fold_by_subject=folds_un_solo_fold, n_splits=2)
+    try:
+        E.run_ensemble(root11, ["RUN_A", "RUN_B"], root11 / "analyses", overwrite=False)
+        fail("caso 11 (fold ausente): no lanzó EnsembleError")
+    except E.EnsembleError as e:
+        (ok if "fold" in str(e) else fail)(
+            "caso 11 (fold ausente): EnsembleError menciona fold"
+            + ("" if "fold" in str(e) else f" — mensaje={e!r}")
+        )
+
+    # --- Caso 12: run_id inconsistente entre config.json y la carpeta ---
+    root12 = root / "caso12"
+    run_a12 = root12 / "12" / "RUN_A"
+    run_b12 = root12 / "18" / "RUN_B"
+    _write_ensemble_source_run(run_a12, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                fold_by_subject=folds, run_id_override="RUN_A_OTRO")
+    _write_ensemble_source_run(run_b12, roi_set="18", config_hash="bbbb2222",
+                                y_prob_by_subject=prob_b, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    try:
+        E.run_ensemble(root12, ["RUN_A", "RUN_B"], root12 / "analyses", overwrite=False)
+        fail("caso 12 (run_id inconsistente): no lanzó EnsembleError")
+    except E.EnsembleError as e:
+        (ok if "no coinciden" in str(e) else fail)(
+            "caso 12 (run_id inconsistente): EnsembleError señala la discrepancia"
+            + ("" if "no coinciden" in str(e) else f" — mensaje={e!r}")
+        )
+
+    # --- Caso 13: mismo subject_id, distinto subject (índice interno) entre
+    # las dos corridas ---
+    root13 = root / "caso13"
+    run_a13 = root13 / "12" / "RUN_A"
+    run_b13 = root13 / "18" / "RUN_B"
+    _write_ensemble_source_run(run_a13, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    _write_ensemble_source_run(run_b13, roi_set="18", config_hash="bbbb2222",
+                                y_prob_by_subject=prob_b, y_true_by_subject=y_true,
+                                fold_by_subject=folds,
+                                subject_index_by_subject_id={"s1": 999})
+    try:
+        E.run_ensemble(root13, ["RUN_A", "RUN_B"], root13 / "analyses", overwrite=False)
+        fail("caso 13 (subject incompatible): no lanzó EnsembleError")
+    except E.EnsembleError as e:
+        (ok if "claves" in str(e) else fail)(
+            "caso 13 (subject incompatible): EnsembleError menciona las claves"
+            + ("" if "claves" in str(e) else f" — mensaje={e!r}")
+        )
+
+    # --- Caso 14: y_true inconsistente entre repeticiones DENTRO de una
+    # misma corrida (no llega a compararse contra la otra) ---
+    root14 = root / "caso14"
+    run_a14 = root14 / "12" / "RUN_A"
+    run_b14 = root14 / "18" / "RUN_B"
+    y_true_2rep = {
+        (1, "s1"): 1, (1, "s2"): 0, (1, "s3"): 1, (1, "s4"): 0,
+        (2, "s1"): 0, (2, "s2"): 0, (2, "s3"): 1, (2, "s4"): 0,  # s1 cambia de 1 a 0
+    }
+    prob_2rep = {
+        (1, "s1"): 0.8, (1, "s2"): 0.2, (1, "s3"): 0.6, (1, "s4"): 0.3,
+        (2, "s1"): 0.7, (2, "s2"): 0.25, (2, "s3"): 0.55, (2, "s4"): 0.35,
+    }
+    folds_2rep = {
+        (1, "s1"): 1, (1, "s2"): 1, (1, "s3"): 2, (1, "s4"): 2,
+        (2, "s1"): 1, (2, "s2"): 1, (2, "s3"): 2, (2, "s4"): 2,
+    }
+    _write_ensemble_source_run(run_a14, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_2rep, y_true_by_subject=y_true_2rep,
+                                fold_by_subject=folds_2rep, n_repeats=2)
+    _write_ensemble_source_run(run_b14, roi_set="18", config_hash="bbbb2222",
+                                y_prob_by_subject=prob_2rep, y_true_by_subject=y_true_2rep,
+                                fold_by_subject=folds_2rep, n_repeats=2)
+    try:
+        E.run_ensemble(root14, ["RUN_A", "RUN_B"], root14 / "analyses", overwrite=False)
+        fail("caso 14 (y_true inconsistente entre repeticiones): no lanzó EnsembleError")
+    except E.EnsembleError as e:
+        condicion = "y_true" in str(e) and "repeticiones" in str(e)
+        (ok if condicion else fail)(
+            "caso 14 (y_true inconsistente entre repeticiones): EnsembleError señala la "
+            "inconsistencia dentro de la corrida"
+            + ("" if condicion else f" — mensaje={e!r}")
+        )
+
+    # --- Caso 15: orden canónico — --runs A B y --runs B A producen la misma
+    # combinación ---
+    root15 = root / "caso15"
+    run_a15 = root15 / "12" / "RUN_A"
+    run_b15 = root15 / "18" / "RUN_B"
+    _write_ensemble_source_run(run_a15, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    _write_ensemble_source_run(run_b15, roi_set="18", config_hash="bbbb2222",
+                                y_prob_by_subject=prob_b, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    out_ab = E.run_ensemble(root15, ["RUN_A", "RUN_B"], root15 / "analyses_ab", overwrite=False)
+    out_ba = E.run_ensemble(root15, ["RUN_B", "RUN_A"], root15 / "analyses_ba", overwrite=False)
+    mismo_nombre = out_ab.name == out_ba.name
+    (ok if mismo_nombre else fail)(
+        "caso 15 (orden canónico): --runs A B y --runs B A producen el mismo nombre de carpeta"
+        + ("" if mismo_nombre else f" — {out_ab.name} != {out_ba.name}")
+    )
+    cfg_ab = json.loads((out_ab / "config.json").read_text())
+    cfg_ba = json.loads((out_ba / "config.json").read_text())
+    mismo_source_runs = cfg_ab["source_runs"] == cfg_ba["source_runs"]
+    mismos_pesos = cfg_ab["weights"] == cfg_ba["weights"]
+    (ok if mismo_source_runs and mismos_pesos else fail)(
+        "caso 15 (orden canónico): source_runs y weights de config.json son idénticos en "
+        "ambos órdenes"
+        + ("" if mismo_source_runs and mismos_pesos else
+           f" — source_runs_ab={cfg_ab['source_runs']}, source_runs_ba={cfg_ba['source_runs']}")
+    )
+    pred_ab = pd.read_csv(out_ab / "predictions_val.csv")
+    pred_ba = pd.read_csv(out_ba / "predictions_val.csv")
+    predicciones_iguales = pred_ab.equals(pred_ba)
+    (ok if predicciones_iguales else fail)(
+        "caso 15 (orden canónico): predictions_val.csv es idéntico en ambos órdenes"
+    )
+
+    # --- Caso 16: campos estructurales inválidos en config.json ---
+    for nombre, mutador in (
+        ("n_repeats_ausente", lambda cfg: cfg.pop("n_repeats")),
+        ("n_splits_booleano", lambda cfg: cfg.__setitem__("n_splits", True)),
+        ("n_subjects_cero", lambda cfg: cfg.__setitem__("n_subjects", 0)),
+    ):
+        root16 = root / f"caso16_{nombre}"
+        run_a16 = root16 / "12" / "RUN_A"
+        run_b16 = root16 / "18" / "RUN_B"
+        _write_ensemble_source_run(run_a16, roi_set="12", config_hash="aaaa1111",
+                                    y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                    fold_by_subject=folds)
+        _write_ensemble_source_run(run_b16, roi_set="18", config_hash="bbbb2222",
+                                    y_prob_by_subject=prob_b, y_true_by_subject=y_true,
+                                    fold_by_subject=folds)
+        cfg_path16 = run_a16 / "config.json"
+        cfg16 = json.loads(cfg_path16.read_text())
+        mutador(cfg16)
+        cfg_path16.write_text(json.dumps(cfg16), encoding="utf-8")
+        try:
+            E.run_ensemble(root16, ["RUN_A", "RUN_B"], root16 / "analyses", overwrite=False)
+            fail(f"caso 16 ({nombre}): no lanzó EnsembleError")
+        except E.EnsembleError as e:
+            (ok if "entero" in str(e) else fail)(
+                f"caso 16 ({nombre}): EnsembleError menciona el requisito de entero"
+                + ("" if "entero" in str(e) else f" — mensaje={e!r}")
+            )
 
     shutil.rmtree(root)
 

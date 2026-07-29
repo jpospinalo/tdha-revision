@@ -1,13 +1,13 @@
 {
   "config_schema_version": 4,
-  "run_id": "Peking_rois18_w60s6_brainnetcnn_control_baseline_v13_b8e8a44d",
-  "config_hash": "b8e8a44d",
-  "early_stopping_ab_hash": "c9ba18a285b2964b",
+  "run_id": "Peking_rois39_w60s6_brainnetcnn_control_baseline_v13_396e34d2",
+  "config_hash": "396e34d2",
+  "early_stopping_ab_hash": "779ba5c4f837c69c",
   "site": "Peking",
-  "roi_set": "18",
+  "roi_set": "39",
   "n_subjects": 183,
   "n_timepoints": 232,
-  "n_rois": 18,
+  "n_rois": 39,
   "n_windows": 29,
   "window": 60,
   "step": 6,
@@ -42,7 +42,7 @@
     "window_seconds": 120.0,
     "step_seconds": 12.0,
     "scan_seconds": 464.0,
-    "median_adjacent_similarity": 0.9771378638324906,
+    "median_adjacent_similarity": 0.9732736993523615,
     "mode": "dynamic",
     "window_shape": "rectangular",
     "fisher_z": false,
@@ -55,7 +55,7 @@
     "0": 109,
     "1": 74
   },
-  "roi_indices_hash": "2d67f7d1b693a33a",
+  "roi_indices_hash": "3f7657c228ed0f19",
   "representation_seed": null,
   "fisher_z": false,
   "constant_policy": "zero",
@@ -79,7 +79,7 @@
   "patience": 25,
   "clipnorm": null,
   "inner_val_frac": 0.15,
-  "class_weight": false,
+  "class_weight": true,
   "start_from_epoch": 0,
   "early_stopping_monitor": "val_loss",
   "early_stopping_min_delta": 1e-05,
@@ -89,12 +89,12 @@
   "deterministic": false,
   "mixed_precision": false,
   "bold_hash": "191b53a860b3a750",
-  "atlas_hash": "104b6c37ad9b7299",
+  "atlas_hash": "eb7675377cec20c2",
   "data_code_hash": "845dfa9c50f977fd",
   "runner_code_hash": "fd015396024f70f7",
   "git": {
-    "commit": "90aee34f9da337921081d8b7b285ca4ecff67c45",
-    "clean": false,
+    "commit": "543fe013f9dd0fbcae037631a4e36ba40f94d738",
+    "clean": true,
     "user": "Juan"
   },
   "env": {
@@ -105,13 +105,15 @@
     "scikit_learn": "1.6.1",
     "tensorflow": "2.20.0",
     "keras": "3.13.2",
-    "gpu": "sin GPU"
+    "gpu": [
+      "Tesla T4"
+    ]
   },
-  "timestamp": "2026-07-28 20:09:34",
-  "command": "run_experiment.py --site Peking --roi-set 18 --model brainnetcnn --representation ordered --window-seconds 120 --step-seconds 12 --model-arg e2e=4 e2n=8 dense=8 dropout=0.7 leaky=0.33 l2_reg=0.05 inter_dropout=0.6 --lr 0.0001 --batch-size 32 --epochs 300 --patience 25 --inner-val-frac 0.15 --start-from-epoch 0 --early-stopping-monitor val_loss --early-stopping-min-delta 1e-05 --seed 42 --n-splits 10 --n-repeats 5 --tag control_baseline_v13 --verbose",
-  "n_features": 153,
+  "timestamp": "2026-07-29 13:57:16",
+  "command": "run_experiment.py --site Peking --roi-set 39 --model brainnetcnn --representation ordered --window-seconds 120 --step-seconds 12 --model-arg e2e=4 e2n=8 dense=8 dropout=0.7 leaky=0.33 l2_reg=0.05 inter_dropout=0.6 --lr 0.0001 --batch-size 32 --epochs 300 --patience 25 --inner-val-frac 0.15 --start-from-epoch 0 --early-stopping-monitor val_loss --early-stopping-min-delta 1e-05 --seed 42 --n-splits 10 --n-repeats 5 --class-weight --tag control_baseline_v13 --verbose",
+  "n_features": 741,
   "input_shape": [
     29,
-    153
+    741
   ]
 }

@@ -41,7 +41,15 @@ import run_experiment as R
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent / "results" / "runs"
 DEFAULT_OUT = Path(__file__).resolve().parent.parent / "results" / "analyses" / "ensembles"
 
-REQUIRED_PRED_COLUMNS = {"fold", "repeat", "subject_id", "y_true", "y_prob"}
+REQUIRED_PRED_COLUMNS = {"fold", "repeat", "subject", "subject_id", "y_true", "y_prob"}
+
+# Clave externa completa de una predicción: `subject` es el índice interno
+# (posición del sujeto en los datos del sitio, estable entre corridas del
+# mismo sitio con distinto roi_set — verificado empíricamente sobre NYU 12 vs
+# 18: coincide en 885/885 claves) y `subject_id` es la identidad legible.
+# Exigir ambos —no sustituir uno por el otro— reduce el riesgo de un
+# pareamiento silenciosamente incorrecto si algún día dejan de coincidir.
+JOIN_KEYS = ("repeat", "fold", "subject", "subject_id")
 
 # Campos que las corridas fuente deben compartir exactamente antes de
 # combinarse. roi_set/n_rois/n_features/config_hash quedan fuera a propósito:
@@ -49,6 +57,12 @@ REQUIRED_PRED_COLUMNS = {"fold", "repeat", "subject_id", "y_true", "y_prob"}
 IDENTITY_FIELDS = (
     "site", "bold_hash", "split_fingerprint", "seed", "n_splits", "n_repeats", "n_subjects",
 )
+
+# n_splits/n_repeats/n_subjects deben ser enteros (no booleanos) en o por
+# encima de este mínimo — mismos umbrales que exige compile_results.py para
+# config.json de corridas de esquema 4, para no inventar un contrato distinto
+# para el mismo campo.
+STRUCTURAL_INT_FIELDS = (("n_splits", 2), ("n_repeats", 1), ("n_subjects", 1))
 
 
 class EnsembleError(ValueError):
@@ -88,6 +102,145 @@ def _locate_run_dir(root: Path, run_id: str) -> Path:
     return candidatos[0]
 
 
+def _check_structural_fields(run_id: str, cfg: dict[str, Any]) -> None:
+    """Campos obligatorios de config.json antes de aceptar la corrida.
+
+    site/bold_hash/split_fingerprint/seed deben estar presentes (la igualdad
+    entre corridas se exige aparte, en _check_compatibility()).
+    n_splits/n_repeats/n_subjects deben ser enteros — no booleanos — en o por
+    encima del mínimo correspondiente; mismos umbrales que
+    compile_results.validate_run_artifacts() usa para config_schema_version
+    >= 4, para no inventar un contrato distinto para el mismo campo.
+    """
+    for campo in ("site", "bold_hash", "split_fingerprint", "seed"):
+        if cfg.get(campo) is None:
+            raise EnsembleError(f"{run_id}: config.json: falta el campo {campo!r}")
+    for campo, minimo in STRUCTURAL_INT_FIELDS:
+        valor = cfg.get(campo)
+        if (
+            campo not in cfg
+            or isinstance(valor, bool)
+            or not isinstance(valor, (int, np.integer))
+            or int(valor) < minimo
+        ):
+            raise EnsembleError(
+                f"{run_id}: config.json: {campo} debe ser un entero >= {minimo}; "
+                f"se recibió {valor!r}"
+            )
+
+
+def _check_run_identity(run_id: str, run_dir: Path, cfg: dict[str, Any]) -> None:
+    """El run_id solicitado, el nombre de la carpeta y config.json['run_id']
+    deben ser exactamente el mismo texto. _locate_run_dir() ya garantiza que
+    la carpeta encontrada se llama ``run_id`` (así es como la busca), así que
+    lo único que falta comprobar es que config.json no declare uno distinto
+    — la misma protección que compile_results.validate_run_artifacts() exige
+    para las corridas guardadas en resultados/runs, aplicada aquí a las
+    corridas fuente de un ensamble.
+    """
+    declarado = cfg.get("run_id")
+    if not isinstance(declarado, str) or not declarado:
+        raise EnsembleError(
+            f"{run_id}: config.json: run_id debe ser una cadena no vacía; "
+            f"se recibió {declarado!r} (carpeta: {run_dir.name})"
+        )
+    if declarado != run_id or run_dir.name != run_id:
+        raise EnsembleError(
+            f"identificador solicitado={run_id!r}, carpeta={run_dir.name!r}, "
+            f"config.json declara run_id={declarado!r} — no coinciden"
+        )
+
+
+def _check_coverage(run_id: str, pred: pd.DataFrame, cfg: dict[str, Any]) -> None:
+    """Cobertura completa de repeticiones y folds declarados por config.json.
+
+    Reproduce y corrige el caso reportado (n_repeats=2 en config.json, pero
+    predictions_val.csv solo contiene la repetición 1): antes solo se
+    validaba el número de sujetos DENTRO de las repeticiones presentes, sin
+    comprobar que estuvieran las n_repeats repeticiones ni los n_splits
+    folds de cada una.
+
+    Los identificadores de repetición sí son 1..n_repeats en los datos
+    reales del proyecto y se exigen así. Los de fold NO: run_experiment.py
+    numera los folds de forma corrida a lo largo de toda la validación
+    repetida (con n_splits=10, la repetición 2 usa los folds 11-20, no
+    1-10 — verificado en corridas reales), así que aquí solo se exige la
+    CANTIDAD de folds distintos por repetición, no una etiqueta concreta.
+    """
+    n_splits = int(cfg["n_splits"])
+    n_repeats = int(cfg["n_repeats"])
+    n_subjects = int(cfg["n_subjects"])
+
+    repeticiones_presentes = sorted(int(r) for r in pred["repeat"].unique())
+    esperadas = list(range(1, n_repeats + 1))
+    if repeticiones_presentes != esperadas:
+        faltantes = sorted(set(esperadas) - set(repeticiones_presentes))
+        sobrantes = sorted(set(repeticiones_presentes) - set(esperadas))
+        raise EnsembleError(
+            f"{run_id}: cobertura de repeticiones incompleta — se esperaban "
+            f"{esperadas}, hay {repeticiones_presentes} (faltan {faltantes}, "
+            f"sobran {sobrantes})"
+        )
+
+    pares_totales = 0
+    for repeat, group in pred.groupby("repeat"):
+        folds_repeticion = group["fold"].unique()
+        if len(folds_repeticion) != n_splits:
+            raise EnsembleError(
+                f"{run_id}: repetición {int(repeat)} tiene {len(folds_repeticion)} "
+                f"fold(s) distinto(s), se esperaban exactamente {n_splits} "
+                "(cobertura de folds incompleta)"
+            )
+        pares_totales += len(folds_repeticion)
+        for columna in ("subject", "subject_id"):
+            n_unico = group[columna].nunique()
+            if len(group) != n_subjects or n_unico != n_subjects:
+                raise EnsembleError(
+                    f"{run_id}: repetición {int(repeat)} tiene {len(group)} predicciones "
+                    f"({n_unico} valores únicos de {columna}), se esperaban exactamente "
+                    f"{n_subjects} (un sujeto faltante, adicional o duplicado)"
+                )
+    if pares_totales != n_splits * n_repeats:
+        raise EnsembleError(
+            f"{run_id}: {pares_totales} pares (repeat, fold) distintos en total, "
+            f"se esperaban {n_splits * n_repeats} (= n_splits × n_repeats)"
+        )
+
+
+def _check_longitudinal_consistency(run_id: str, pred: pd.DataFrame) -> None:
+    """Dentro de UNA misma corrida: (subject, subject_id) debe ser una
+    correspondencia estable 1 a 1 entre repeticiones, y cada sujeto debe
+    tener un único y_true en todo el archivo. Se comprueba antes de
+    comparar nada contra la otra corrida fuente.
+    """
+    por_par = pred.groupby(["subject", "subject_id"])["y_true"].nunique()
+    inconsistentes = por_par[por_par > 1]
+    if not inconsistentes.empty:
+        ejemplos = inconsistentes.index.tolist()[:5]
+        raise EnsembleError(
+            f"{run_id}: y_true no es consistente entre repeticiones para "
+            f"(subject, subject_id) {ejemplos}"
+        )
+
+    # subject_id -> subject debe ser una función (y viceversa): un subject_id
+    # no puede apuntar a más de un subject interno dentro de la misma corrida,
+    # ni un subject a más de un subject_id.
+    por_subject_id = pred.groupby("subject_id")["subject"].nunique()
+    ambiguos = por_subject_id[por_subject_id > 1]
+    if not ambiguos.empty:
+        raise EnsembleError(
+            f"{run_id}: subject_id con más de un subject interno asociado: "
+            f"{ambiguos.index.tolist()[:5]}"
+        )
+    por_subject = pred.groupby("subject")["subject_id"].nunique()
+    ambiguos2 = por_subject[por_subject > 1]
+    if not ambiguos2.empty:
+        raise EnsembleError(
+            f"{run_id}: subject con más de un subject_id asociado: "
+            f"{ambiguos2.index.tolist()[:5]}"
+        )
+
+
 def _load_run(root: Path, run_id: str) -> dict[str, Any]:
     """Lee y valida una corrida fuente: config.json y predictions_val.csv."""
     run_dir = _locate_run_dir(root, run_id)
@@ -96,6 +249,9 @@ def _load_run(root: Path, run_id: str) -> dict[str, Any]:
     if not cfg_path.exists():
         raise EnsembleError(f"{run_id}: falta config.json en {run_dir}")
     cfg = C._read_json(cfg_path)
+
+    _check_run_identity(run_id, run_dir, cfg)
+    _check_structural_fields(run_id, cfg)
 
     pred_path = run_dir / "predictions_val.csv"
     if not pred_path.exists():
@@ -109,11 +265,11 @@ def _load_run(root: Path, run_id: str) -> dict[str, Any]:
     if missing:
         raise EnsembleError(f"{run_id}: predictions_val.csv: faltan columnas {sorted(missing)}")
 
-    dup = pred.duplicated(["repeat", "fold", "subject_id"])
+    dup = pred.duplicated(list(JOIN_KEYS))
     if dup.any():
         raise EnsembleError(
             f"{run_id}: predictions_val.csv tiene {int(dup.sum())} fila(s) duplicada(s) "
-            "para la misma clave (repeat, fold, subject_id)"
+            f"para la misma clave {JOIN_KEYS}"
         )
 
     y_prob = pd.to_numeric(pred["y_prob"], errors="coerce").to_numpy(dtype=float)
@@ -128,17 +284,8 @@ def _load_run(root: Path, run_id: str) -> dict[str, Any]:
     ) <= {0, 1}:
         raise EnsembleError(f"{run_id}: predictions_val.csv tiene y_true fuera de {{0, 1}}")
 
-    n_subjects = cfg.get("n_subjects")
-    if isinstance(n_subjects, (int, np.integer)) and not isinstance(n_subjects, bool):
-        for repeat, group in pred.groupby("repeat"):
-            n_rows = len(group)
-            n_unique = group["subject_id"].nunique()
-            if n_rows != n_subjects or n_unique != n_subjects:
-                raise EnsembleError(
-                    f"{run_id}: repetición {repeat!r} tiene {n_rows} predicciones "
-                    f"({n_unique} sujetos distintos), se esperaban exactamente "
-                    f"{n_subjects} (un sujeto faltante, adicional o duplicado)"
-                )
+    _check_coverage(run_id, pred, cfg)
+    _check_longitudinal_consistency(run_id, pred)
 
     return {"run_id": run_id, "run_dir": run_dir, "cfg": cfg, "pred": pred}
 
@@ -157,9 +304,9 @@ def _check_compatibility(runs: list[dict[str, Any]]) -> None:
             raise EnsembleError(f"las corridas no comparten {field!r}: {valores}")
 
     def _claves_y_verdad(r: dict[str, Any]) -> pd.Series:
-        p = r["pred"][["repeat", "fold", "subject_id", "y_true"]].copy()
+        p = r["pred"][list(JOIN_KEYS) + ["y_true"]].copy()
         p["y_true"] = pd.to_numeric(p["y_true"], errors="coerce").astype(int)
-        return p.set_index(["repeat", "fold", "subject_id"])["y_true"]
+        return p.set_index(list(JOIN_KEYS))["y_true"]
 
     base = runs[0]
     base_series = _claves_y_verdad(base)
@@ -169,7 +316,7 @@ def _check_compatibility(runs: list[dict[str, Any]]) -> None:
             faltan = sorted(set(base_series.index) - set(otra_series.index))[:5]
             sobran = sorted(set(otra_series.index) - set(base_series.index))[:5]
             raise EnsembleError(
-                f"{r['run_id']}: claves (repeat, fold, subject_id) no coinciden con "
+                f"{r['run_id']}: claves {JOIN_KEYS} no coinciden con "
                 f"{base['run_id']} — ejemplo de faltantes {faltan}, de sobrantes {sobran}"
             )
         alineada = otra_series.reindex(base_series.index)
@@ -183,19 +330,21 @@ def _check_compatibility(runs: list[dict[str, Any]]) -> None:
 
 
 def _combine(runs: list[dict[str, Any]]) -> pd.DataFrame:
-    """Promedio equiponderado de y_prob sobre la clave (repeat, fold, subject_id).
+    """Promedio equiponderado de y_prob sobre la clave JOIN_KEYS.
 
     _check_compatibility() ya garantizó que todas las corridas comparten
     exactamente el mismo conjunto de claves y el mismo y_true, así que
     reindexar sobre las claves de la primera corrida no pierde ni introduce
-    filas.
+    filas. El orden de `runs` no afecta el resultado (es un promedio), pero
+    run_ensemble() ya lo recibe canonicalizado para que la salida también
+    sea determinista en nombre y metadatos.
     """
     marcos = []
     for r in runs:
-        p = r["pred"][["repeat", "fold", "subject_id", "y_true", "y_prob"]].copy()
+        p = r["pred"][list(JOIN_KEYS) + ["y_true", "y_prob"]].copy()
         p["y_true"] = pd.to_numeric(p["y_true"], errors="coerce").astype(int)
         p["y_prob"] = pd.to_numeric(p["y_prob"], errors="coerce").astype(float)
-        marcos.append(p.set_index(["repeat", "fold", "subject_id"]))
+        marcos.append(p.set_index(list(JOIN_KEYS)))
 
     indice = marcos[0].index
     matriz_prob = np.column_stack([m.reindex(indice)["y_prob"].to_numpy() for m in marcos])
@@ -203,9 +352,7 @@ def _combine(runs: list[dict[str, Any]]) -> pd.DataFrame:
     y_prob_ensemble = matriz_prob.mean(axis=1)
 
     salida = pd.DataFrame({
-        "repeat": [k[0] for k in indice],
-        "fold": [k[1] for k in indice],
-        "subject_id": [k[2] for k in indice],
+        **{clave: [k[i] for k in indice] for i, clave in enumerate(JOIN_KEYS)},
         "y_true": y_true,
         "y_prob": y_prob_ensemble,
     })
@@ -265,12 +412,36 @@ def _summary_stats(per_repeat: pd.DataFrame) -> dict[str, dict[str, float]]:
     return resumen
 
 
+def _canonical_order(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ordena las corridas fuente de forma determinista, independiente del
+    orden con el que se hayan pasado en --runs. El promedio no depende del
+    orden, pero el nombre de la carpeta de salida, `source_runs` y `weights`
+    en config.json sí dependían del orden de entrada antes de esta función:
+    ``--runs A B`` y ``--runs B A`` podían producir dos carpetas de salida
+    distintas para el mismo análisis. La clave de orden es
+    (roi_set numérico si es posible, si no como texto; run_id) para que sea
+    estable y reproducible.
+    """
+    def clave(r: dict[str, Any]) -> tuple[Any, str]:
+        roi_set = r["cfg"].get("roi_set")
+        try:
+            roi_key: Any = (0, int(roi_set))
+        except (TypeError, ValueError):
+            roi_key = (1, str(roi_set))
+        return (roi_key, r["run_id"])
+
+    return sorted(runs, key=clave)
+
+
 def _ensemble_dir_name(runs: list[dict[str, Any]]) -> str:
+    """Asume que `runs` ya está en orden canónico (ver _canonical_order):
+    con eso, invertir --runs A B / --runs B A produce el mismo nombre.
+    """
     import hashlib
 
     site = runs[0]["cfg"].get("site", "site")
     rois = "-".join(str(r["cfg"].get("roi_set", "?")) for r in runs)
-    ids_ordenados = "|".join(sorted(r["run_id"] for r in runs))
+    ids_ordenados = "|".join(r["run_id"] for r in runs)
     h = hashlib.sha256(ids_ordenados.encode("utf-8")).hexdigest()[:8]
     return f"{site}_ensemble_rois{rois}_{h}"
 
@@ -292,7 +463,7 @@ def _write_config(out_dir: Path, runs: list[dict[str, Any]]) -> dict[str, Any]:
         "weights": {r["run_id"]: peso for r in runs},
         "weights_type": "equal",
         "threshold": 0.5,
-        "join_keys": ["repeat", "fold", "subject_id"],
+        "join_keys": list(JOIN_KEYS),
         "site": base_cfg.get("site"),
         "n_subjects": base_cfg.get("n_subjects"),
         "n_splits": base_cfg.get("n_splits"),
@@ -372,6 +543,12 @@ def run_ensemble(root: Path, run_ids: list[str], out_root: Path, *, overwrite: b
 
     runs = [_load_run(root, run_id) for run_id in run_ids]
     _check_compatibility(runs)
+    # A partir de aquí el orden es canónico (roi_set, run_id), no el orden en
+    # que se pasaron en --runs: --runs A B y --runs B A deben producir el
+    # mismo directorio de salida, el mismo source_runs/weights y las mismas
+    # probabilidades (el promedio ya era invariante al orden; lo que no lo
+    # era es el nombre y los metadatos).
+    runs = _canonical_order(runs)
 
     out_dir = out_root / _ensemble_dir_name(runs)
     if out_dir.exists():
