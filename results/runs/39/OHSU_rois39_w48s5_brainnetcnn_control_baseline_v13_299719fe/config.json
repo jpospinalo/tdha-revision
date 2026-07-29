@@ -1,8 +1,8 @@
 {
   "config_schema_version": 4,
-  "run_id": "OHSU_rois39_w48s5_brainnetcnn_control_baseline_v13_d326a15c",
-  "config_hash": "d326a15c",
-  "early_stopping_ab_hash": "f194b095e5e0194c",
+  "run_id": "OHSU_rois39_w48s5_brainnetcnn_control_baseline_v13_299719fe",
+  "config_hash": "299719fe",
+  "early_stopping_ab_hash": "ba7a994b45c4dd5b",
   "site": "OHSU",
   "roi_set": "39",
   "n_subjects": 66,
@@ -80,7 +80,7 @@
   "patience": 25,
   "clipnorm": null,
   "inner_val_frac": 0.15,
-  "class_weight": true,
+  "class_weight": false,
   "start_from_epoch": 0,
   "early_stopping_monitor": "val_loss",
   "early_stopping_min_delta": 1e-05,
@@ -95,7 +95,7 @@
   "runner_code_hash": "fd015396024f70f7",
   "git": {
     "commit": "4a03925b084121133a60e6fa8eba0ad67d11ddcd",
-    "clean": true,
+    "clean": false,
     "user": "Juan"
   },
   "env": {
@@ -108,8 +108,8 @@
     "keras": "3.13.2",
     "gpu": "sin GPU"
   },
-  "timestamp": "2026-07-29 15:18:07",
-  "command": "run_experiment.py --site OHSU --roi-set 39 --model brainnetcnn --representation ordered --window-seconds 120 --step-seconds 12 --model-arg e2e=4 e2n=8 dense=8 dropout=0.7 leaky=0.33 l2_reg=0.05 inter_dropout=0.6 --lr 0.0001 --batch-size 32 --epochs 300 --patience 25 --inner-val-frac 0.15 --start-from-epoch 0 --early-stopping-monitor val_loss --early-stopping-min-delta 1e-05 --seed 42 --n-splits 10 --n-repeats 5 --class-weight --tag control_baseline_v13 --verbose",
+  "timestamp": "2026-07-29 16:20:14",
+  "command": "run_experiment.py --site OHSU --roi-set 39 --model brainnetcnn --representation ordered --window-seconds 120 --step-seconds 12 --model-arg e2e=4 e2n=8 dense=8 dropout=0.7 leaky=0.33 l2_reg=0.05 inter_dropout=0.6 --lr 0.0001 --batch-size 32 --epochs 300 --patience 25 --inner-val-frac 0.15 --start-from-epoch 0 --early-stopping-monitor val_loss --early-stopping-min-delta 1e-05 --seed 42 --n-splits 10 --n-repeats 5 --tag control_baseline_v13 --verbose",
   "n_features": 741,
   "input_shape": [
     6,
