@@ -1,7 +1,7 @@
 # Registro breve de experimentación
 
 Última actualización: 2026-07-27  
-Alcance actual: NYU, 12 ROIs, BrainNetCNN, clasificación control/TDAH.
+Alcance actual: NYU, Peking, NeuroIMAGE y OHSU; conjuntos de 12, 18 y 39 ROIs; BrainNetCNN.
 
 ## Para qué sirve este archivo
 
@@ -10,10 +10,101 @@ Este documento evita repetir experimentos y orienta las siguientes corridas. No 
 fuente de verdad. Algunas corridas resumidas aquí todavía pueden estar almacenadas como ZIP
 fuera de este checkout; el `run_id` o el `config_hash` permite identificarlas.
 
-Las cifras de la tabla son métricas **OOF por repetición**: en cada una de las cinco
-repeticiones se agruparon las predicciones externas de los diez folds antes de calcular la
-métrica. Son preferibles al promedio de métricas de folds pequeños. Diferencias de unas
-décimas no deben interpretarse como mejora sin una comparación pareada.
+## Convención de métricas
+
+La tabla comparativa principal de este documento usa métricas **OOF por repetición**:
+
+1. dentro de cada repetición se reúnen las predicciones externas de todos los folds;
+2. se calcula cada métrica sobre todos los sujetos de esa repetición;
+3. se informa la media y la desviación estándar entre las cinco repeticiones.
+
+Esto es distinto de lo que informa `resumen.md` de cada corrida, que promedia las métricas
+calculadas fold a fold: con folds pequeños ese promedio es más ruidoso, así que puede mostrar
+una media y una desviación algo distintas de las de este documento. Ninguna de las dos
+salidas está mal — miden lo mismo con dos agregaciones distintas —, pero para comparar
+conjuntos de ROIs o sitios entre sí se prioriza siempre el OOF por repetición.
+
+## Resultados actuales
+
+`AUC / balanced accuracy / accuracy OOF` (porcentaje, media entre repeticiones):
+
+| Sitio | 12 ROIs | 18 ROIs | 39 ROIs, baseline |
+|---|---:|---:|---:|
+| NYU | 59.05 / 57.45 / 57.40 | 60.00 / 56.70 / 56.72 | 52.83 / 52.27 / 52.20 |
+| NeuroIMAGE | 47.38 / 44.33 / 45.64 | 61.98 / 57.65 / 57.95 | — |
+| OHSU | 54.92 / 53.57 / 54.55 | 52.22 / 51.07 / 52.42 | — |
+| Peking | 56.37 / 54.11 / 55.52 | 58.33 / 55.39 / 58.91* | 60.32 / 57.58 / 58.36 |
+
+- `*` Peking–18 usa `class_weight=False`; Peking–12 y Peking–39 usan `True`. No atribuir la
+  diferencia únicamente al número de ROIs.
+- Las corridas OHSU actuales usan `ordered`, producen solo seis ventanas y están registradas
+  como exploratorias mientras se decide el baseline estático.
+- No hay resultados de 116 ROIs en el compendio.
+- El conjunto de 39 tiene una composición anatómica diferente; no es una ampliación del de
+  12 o 18 (ver `data/atlas/roi_sets.json`).
+- Las corridas realizadas con `git.clean=false` son descriptivas y tienen hashes de código,
+  pero su procedencia es menos fuerte que la de una corrida ejecutada con árbol limpio.
+
+**Conclusión (prudente):** el conjunto de 12 ROIs es la opción más parsimoniosa y sigue
+siendo competitivo, en particular en NYU, pero los resultados no demuestran que sea
+universalmente el conjunto más informativo. El mejor conjunto cambia según el sitio. No se
+declara superioridad estadística ni generalización entre sitios.
+
+## Próximas corridas (todo el compendio)
+
+Documentadas aquí, sin ejecutarlas, en este orden:
+
+1. **Peking–18 baseline con `class_weight=True`**, manteniendo todos los demás parámetros
+   iguales a la corrida `b8e8a44d`.
+2. Resolver una única política de folds para NeuroIMAGE y OHSU antes de comparaciones
+   definitivas; no comparar `5×5` con `10×5` como si la única diferencia fueran los ROIs.
+3. Evaluar OHSU `static` con 12 y 18 ROIs usando exactamente el mismo protocolo.
+4. Evaluar el ensamble NYU 12+18.
+5. Después de corregir Peking–18, evaluar el ensamble Peking 18+39.
+6. Ejecutar 116 ROIs como baseline diagnóstico, primero en Peking y después en NYU; no
+   iniciar un barrido de hiperparámetros de 116 antes de conocer esos baselines.
+
+Configuración prescrita para Peking–18 (la única diferencia frente a `b8e8a44d` es
+`class_weight=False → True` y la etiqueta de la nueva corrida):
+
+```text
+site=Peking
+roi_set=18
+model=brainnetcnn
+representation=ordered
+window=60 TR / 120 s
+step=6 TR / 12 s
+e2e=4
+e2n=8
+dense=8
+dropout=0.7
+leaky=0.33
+l2_reg=0.05
+inter_dropout=0.6
+lr=1e-4
+batch_size=32
+epochs=300
+patience=25
+inner_val_frac=0.15
+start_from_epoch=0
+early_stopping_monitor=val_loss
+early_stopping_min_delta=1e-5
+n_splits=10
+n_repeats=5
+class_weight=True
+seed=42
+mixed_precision=False
+```
+
+## Historial: NYU, 12 ROIs (referencia previa a esta actualización)
+
+Las secciones siguientes documentan el trabajo de ablación y ajuste hecho exclusivamente
+sobre NYU con 12 ROIs, antes de ampliar el compendio a los demás sitios y conjuntos de ROIs
+listados arriba. Se conservan como registro histórico; no se reescriben.
+
+Las cifras de esta sección también son métricas **OOF por repetición** (ver la convención
+arriba). Diferencias de unas décimas no deben interpretarse como mejora sin una comparación
+pareada.
 
 ## Referencia vigente
 

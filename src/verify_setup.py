@@ -1005,6 +1005,299 @@ def check_schema4_artifact_validation():
     shutil.rmtree(root)
 
 
+def _write_ensemble_source_run(
+    run_dir: Path,
+    *,
+    roi_set: str,
+    config_hash: str,
+    y_prob_by_subject: dict,
+    y_true_by_subject: dict,
+    fold_by_subject: dict | None = None,
+    site: str = "NYU",
+    bold_hash: str = "bold0000000000",
+    split_fingerprint: str = "split00000000",
+    seed: int = 42,
+    n_splits: int = 2,
+    n_repeats: int = 1,
+) -> None:
+    """Escribe config.json + predictions_val.csv de una corrida fuente mínima
+    para analyze_ensemble.py — sin folds.csv/metrics_*.csv/history.csv, que
+    esa utilidad no lee. subject_id/y_prob/y_true vienen de diccionarios
+    {(repeat, subject_id): valor} para que las pruebas puedan construir
+    exactamente el desacuerdo o la coincidencia que necesitan.
+    """
+    import pandas as pd
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    n_subjects = len({sid for (_, sid) in y_prob_by_subject})
+    cfg = {
+        "run_id": run_dir.name, "config_schema_version": 4, "config_hash": config_hash,
+        "site": site, "roi_set": roi_set, "bold_hash": bold_hash,
+        "split_fingerprint": split_fingerprint, "seed": seed,
+        "n_splits": n_splits, "n_repeats": n_repeats, "n_subjects": n_subjects,
+    }
+    (run_dir / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+
+    rows = []
+    for (repeat, subject_id), y_prob in y_prob_by_subject.items():
+        fold = (fold_by_subject or {}).get((repeat, subject_id), 1)
+        rows.append({
+            "repeat": repeat, "fold": fold, "subject_id": subject_id,
+            "y_true": y_true_by_subject[(repeat, subject_id)], "y_prob": y_prob,
+        })
+    pd.DataFrame(rows).to_csv(run_dir / "predictions_val.csv", index=False)
+
+
+def check_ensemble_analysis():
+    """Regresiones de analyze_ensemble.py con fixtures pequeños (sin TensorFlow).
+
+    Caso 1: dos corridas válidas — la probabilidad resultante es exactamente
+    el promedio. Caso 2: split_fingerprint distinto falla. Caso 3: un sujeto
+    distinto entre corridas (clave (repeat, fold, subject_id) que no coincide)
+    falla. Caso 4: mismo sujeto, y_true distinto entre corridas, falla. Caso
+    5: clave duplicada dentro de una misma corrida falla. Caso 6: y_prob
+    ausente/infinito/fuera de [0,1] falla. Caso 7: el mismo run_id presente a
+    la vez en el layout plano y en el layout por ROI falla por ambigüedad (no
+    se elige una copia arbitrariamente). Caso 8: una salida existente sin
+    --overwrite falla y no la modifica. Caso 9: las métricas OOF por
+    repetición agrupan todos los folds de la repetición antes de calcular la
+    métrica, no promedian las métricas de cada fold por separado — se
+    construye un caso donde ambos cálculos dan números distintos y se
+    confirma cuál de los dos se reportó.
+    """
+    seccion("Ensamble de probabilidades OOF (analyze_ensemble.py, sin entrenar)")
+    import shutil
+    import pandas as pd
+    sys.path.insert(0, str(REPO / "src"))
+    import analyze_ensemble as E
+
+    root = Path("/tmp/verify_ensemble_fixtures")
+    if root.exists():
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+
+    # Partición compartida de referencia: 4 sujetos, 1 repetición, 2 folds
+    # (s1/s2 en el fold 1, s3/s4 en el fold 2) — analyze_ensemble.py no lee
+    # folds.csv, así que basta con que predictions_val.csv sea internamente
+    # consistente.
+    y_true = {(1, "s1"): 1, (1, "s2"): 0, (1, "s3"): 1, (1, "s4"): 0}
+    folds = {(1, "s1"): 1, (1, "s2"): 1, (1, "s3"): 2, (1, "s4"): 2}
+
+    # --- Caso 1: dos corridas válidas, promedio exacto ---
+    root1 = root / "caso1"
+    run_a = root1 / "12" / "RUN_A"
+    run_b = root1 / "18" / "RUN_B"
+    prob_a = {(1, "s1"): 0.8, (1, "s2"): 0.2, (1, "s3"): 0.6, (1, "s4"): 0.3}
+    prob_b = {(1, "s1"): 0.6, (1, "s2"): 0.4, (1, "s3"): 0.9, (1, "s4"): 0.1}
+    _write_ensemble_source_run(run_a, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    _write_ensemble_source_run(run_b, roi_set="18", config_hash="bbbb2222",
+                                y_prob_by_subject=prob_b, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    out_dir = E.run_ensemble(root1, ["RUN_A", "RUN_B"], root1 / "analyses", overwrite=False)
+    pred_out = pd.read_csv(out_dir / "predictions_val.csv")
+    esperado = {sid: (prob_a[(1, sid)] + prob_b[(1, sid)]) / 2 for (_, sid) in prob_a}
+    obtenido = dict(zip(pred_out["subject_id"], pred_out["y_prob"]))
+    coincide = all(abs(obtenido[sid] - esperado[sid]) < 1e-9 for sid in esperado)
+    (ok if coincide else fail)(
+        "caso 1 (dos corridas válidas): y_prob del ensamble es exactamente el promedio"
+        + ("" if coincide else f" — obtenido={obtenido}, esperado={esperado}")
+    )
+    for f in ("config.json", "predictions_val.csv", "metrics_oof_by_repeat.csv", "resumen.md"):
+        (ok if (out_dir / f).exists() else fail)(f"caso 1: {f} presente en la carpeta de análisis")
+    cfg_out = json.loads((out_dir / "config.json").read_text())
+    (ok if cfg_out.get("artifact_type") == "oof_probability_ensemble" else fail)(
+        "caso 1: config.json declara artifact_type=oof_probability_ensemble"
+    )
+    (ok if cfg_out.get("threshold") == 0.5 else fail)("caso 1: config.json declara threshold=0.5")
+
+    # --- Caso 2: split_fingerprint distinto ---
+    root2 = root / "caso2"
+    run_a2 = root2 / "12" / "RUN_A"
+    run_b2 = root2 / "18" / "RUN_B"
+    _write_ensemble_source_run(run_a2, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    _write_ensemble_source_run(run_b2, roi_set="18", config_hash="bbbb2222",
+                                y_prob_by_subject=prob_b, y_true_by_subject=y_true,
+                                fold_by_subject=folds, split_fingerprint="split_DISTINTA")
+    try:
+        E.run_ensemble(root2, ["RUN_A", "RUN_B"], root2 / "analyses", overwrite=False)
+        fail("caso 2 (split_fingerprint distinto): no lanzó EnsembleError")
+    except E.EnsembleError as e:
+        (ok if "split_fingerprint" in str(e) else fail)(
+            "caso 2 (split_fingerprint distinto): EnsembleError menciona split_fingerprint"
+            + ("" if "split_fingerprint" in str(e) else f" — mensaje={e!r}")
+        )
+
+    # --- Caso 3: sujeto distinto entre corridas ---
+    root3 = root / "caso3"
+    run_a3 = root3 / "12" / "RUN_A"
+    run_b3 = root3 / "18" / "RUN_B"
+    y_true_b3 = dict(y_true)
+    del y_true_b3[(1, "s4")]
+    y_true_b3[(1, "s5")] = 0
+    prob_b3 = dict(prob_b)
+    del prob_b3[(1, "s4")]
+    prob_b3[(1, "s5")] = 0.1
+    folds_b3 = dict(folds)
+    del folds_b3[(1, "s4")]
+    folds_b3[(1, "s5")] = 2
+    _write_ensemble_source_run(run_a3, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    _write_ensemble_source_run(run_b3, roi_set="18", config_hash="bbbb2222",
+                                y_prob_by_subject=prob_b3, y_true_by_subject=y_true_b3,
+                                fold_by_subject=folds_b3)
+    try:
+        E.run_ensemble(root3, ["RUN_A", "RUN_B"], root3 / "analyses", overwrite=False)
+        fail("caso 3 (sujeto distinto entre corridas): no lanzó EnsembleError")
+    except E.EnsembleError as e:
+        (ok if "claves" in str(e) else fail)(
+            "caso 3 (sujeto distinto entre corridas): EnsembleError menciona las claves"
+            + ("" if "claves" in str(e) else f" — mensaje={e!r}")
+        )
+
+    # --- Caso 4: y_true distinto para la misma clave ---
+    root4 = root / "caso4"
+    run_a4 = root4 / "12" / "RUN_A"
+    run_b4 = root4 / "18" / "RUN_B"
+    y_true_b4 = dict(y_true)
+    y_true_b4[(1, "s1")] = 0  # era 1 en run_a
+    _write_ensemble_source_run(run_a4, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    _write_ensemble_source_run(run_b4, roi_set="18", config_hash="bbbb2222",
+                                y_prob_by_subject=prob_b, y_true_by_subject=y_true_b4,
+                                fold_by_subject=folds)
+    try:
+        E.run_ensemble(root4, ["RUN_A", "RUN_B"], root4 / "analyses", overwrite=False)
+        fail("caso 4 (y_true distinto): no lanzó EnsembleError")
+    except E.EnsembleError as e:
+        (ok if "y_true" in str(e) else fail)(
+            "caso 4 (y_true distinto): EnsembleError menciona y_true"
+            + ("" if "y_true" in str(e) else f" — mensaje={e!r}")
+        )
+
+    # --- Caso 5: clave duplicada dentro de una corrida ---
+    root5 = root / "caso5"
+    run_a5 = root5 / "12" / "RUN_A"
+    run_b5 = root5 / "18" / "RUN_B"
+    _write_ensemble_source_run(run_a5, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    _write_ensemble_source_run(run_b5, roi_set="18", config_hash="bbbb2222",
+                                y_prob_by_subject=prob_b, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    pred_b5 = pd.read_csv(run_b5 / "predictions_val.csv")
+    pred_b5 = pd.concat([pred_b5, pred_b5.iloc[[0]]], ignore_index=True)
+    pred_b5.to_csv(run_b5 / "predictions_val.csv", index=False)
+    try:
+        E.run_ensemble(root5, ["RUN_A", "RUN_B"], root5 / "analyses", overwrite=False)
+        fail("caso 5 (clave duplicada): no lanzó EnsembleError")
+    except E.EnsembleError as e:
+        (ok if "duplicada" in str(e) else fail)(
+            "caso 5 (clave duplicada): EnsembleError menciona la duplicación"
+            + ("" if "duplicada" in str(e) else f" — mensaje={e!r}")
+        )
+
+    # --- Caso 6: y_prob ausente/infinito/fuera de rango ---
+    for nombre, valor_malo in (("nan", float("nan")), ("infinito", float("inf")), ("fuera_de_rango", 1.5)):
+        root6 = root / f"caso6_{nombre}"
+        run_a6 = root6 / "12" / "RUN_A"
+        run_b6 = root6 / "18" / "RUN_B"
+        _write_ensemble_source_run(run_a6, roi_set="12", config_hash="aaaa1111",
+                                    y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                    fold_by_subject=folds)
+        prob_b6 = dict(prob_b)
+        prob_b6[(1, "s1")] = valor_malo
+        _write_ensemble_source_run(run_b6, roi_set="18", config_hash="bbbb2222",
+                                    y_prob_by_subject=prob_b6, y_true_by_subject=y_true,
+                                    fold_by_subject=folds)
+        try:
+            E.run_ensemble(root6, ["RUN_A", "RUN_B"], root6 / "analyses", overwrite=False)
+            fail(f"caso 6 ({nombre}): no lanzó EnsembleError")
+        except E.EnsembleError as e:
+            (ok if "y_prob" in str(e) else fail)(
+                f"caso 6 ({nombre}): EnsembleError menciona y_prob"
+                + ("" if "y_prob" in str(e) else f" — mensaje={e!r}")
+            )
+
+    # --- Caso 7: mismo run_id en layout plano y por ROI a la vez ---
+    root7 = root / "caso7"
+    run_plano = root7 / "RUN_A"
+    run_anidado = root7 / "12" / "RUN_A"
+    run_b7 = root7 / "18" / "RUN_B"
+    _write_ensemble_source_run(run_plano, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    _write_ensemble_source_run(run_anidado, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    _write_ensemble_source_run(run_b7, roi_set="18", config_hash="bbbb2222",
+                                y_prob_by_subject=prob_b, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    try:
+        E.run_ensemble(root7, ["RUN_A", "RUN_B"], root7 / "analyses", overwrite=False)
+        fail("caso 7 (run_id en ambos layouts): no lanzó EnsembleError")
+    except E.EnsembleError as e:
+        (ok if "más de una ubicación" in str(e) else fail)(
+            "caso 7 (run_id en ambos layouts): EnsembleError señala la ambigüedad"
+            + ("" if "más de una ubicación" in str(e) else f" — mensaje={e!r}")
+        )
+
+    # --- Caso 8: salida existente sin --overwrite ---
+    root8 = root / "caso8"
+    run_a8 = root8 / "12" / "RUN_A"
+    run_b8 = root8 / "18" / "RUN_B"
+    _write_ensemble_source_run(run_a8, roi_set="12", config_hash="aaaa1111",
+                                y_prob_by_subject=prob_a, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    _write_ensemble_source_run(run_b8, roi_set="18", config_hash="bbbb2222",
+                                y_prob_by_subject=prob_b, y_true_by_subject=y_true,
+                                fold_by_subject=folds)
+    out_dir8 = E.run_ensemble(root8, ["RUN_A", "RUN_B"], root8 / "analyses", overwrite=False)
+    contenido_antes = (out_dir8 / "config.json").read_text()
+    try:
+        E.run_ensemble(root8, ["RUN_A", "RUN_B"], root8 / "analyses", overwrite=False)
+        fail("caso 8 (salida existente sin --overwrite): no lanzó EnsembleError")
+    except E.EnsembleError as e:
+        contenido_despues = (out_dir8 / "config.json").read_text()
+        sin_cambios = contenido_antes == contenido_despues
+        (ok if "overwrite" in str(e) and sin_cambios else fail)(
+            "caso 8 (salida existente sin --overwrite): EnsembleError menciona --overwrite "
+            "y no modifica la salida existente"
+            + ("" if "overwrite" in str(e) and sin_cambios else f" — mensaje={e!r}, "
+               f"sin_cambios={sin_cambios}")
+        )
+    # con --overwrite sí debe completarse
+    E.run_ensemble(root8, ["RUN_A", "RUN_B"], root8 / "analyses", overwrite=True)
+    ok("caso 8: con --overwrite, la misma combinación se puede regenerar")
+
+    # --- Caso 9: OOF por repetición agrupa folds, no promedia sus métricas ---
+    # repeat 1: fold 1 con 3 sujetos (2 aciertos), fold 2 con 1 sujeto (0 aciertos).
+    # media ingenua de folds = (2/3 + 0/1) / 2 = 1/3; agrupado (correcto) = 2/4 = 0.5.
+    df9 = pd.DataFrame([
+        {"repeat": 1, "fold": 1, "subject_id": "s1", "y_true": 1, "y_prob": 0.9},  # acierto
+        {"repeat": 1, "fold": 1, "subject_id": "s2", "y_true": 0, "y_prob": 0.1},  # acierto
+        {"repeat": 1, "fold": 1, "subject_id": "s3", "y_true": 1, "y_prob": 0.4},  # fallo
+        {"repeat": 1, "fold": 2, "subject_id": "s4", "y_true": 1, "y_prob": 0.2},  # fallo
+    ])
+    por_repeticion = E._metrics_oof_by_repeat(df9)
+    n_filas_correctas = len(por_repeticion) == 1  # una fila por repetición, no por fold
+    acc_agrupada = float(por_repeticion.loc[por_repeticion["repeat"] == 1, "accuracy"].iloc[0])
+    (ok if n_filas_correctas else fail)(
+        f"caso 9: una fila por repetición en metrics_oof_by_repeat, hay {len(por_repeticion)}"
+    )
+    (ok if abs(acc_agrupada - 0.5) < 1e-9 else fail)(
+        f"caso 9: accuracy agrupada por repetición es 0.5 (2/4), no la media ingenua de folds "
+        f"(≈0.333) — se obtuvo {acc_agrupada}"
+    )
+
+    shutil.rmtree(root)
+
+
 def check_aggregate_table_gate():
     """Regresión de la compuerta de aggregate_table() (H11): dos filas
     idénticas en las columnas de methodological_group_columns() pero con
@@ -1916,6 +2209,7 @@ def main():
         check_representaciones_fold_aware()
         check_particiones()
         check_schema4_artifact_validation()
+        check_ensemble_analysis()
         check_aggregate_table_gate()
         check_notebook_state_machine()
         check_modelos(args.full)

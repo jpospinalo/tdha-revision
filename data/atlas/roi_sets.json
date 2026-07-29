@@ -1,7 +1,7 @@
 {
  "12": {
   "n": 12,
-  "description": "Subconjunto anatómico principal del artículo: nodos compartidos entre los grupos de 18 y 39 ROIs, pertenecientes a DMN, ECN, SN, DAN y FST.",
+  "description": "Subconjunto anatómico principal del proyecto, con ROIs de las redes DMN, ECN, SN, DAN y FST.",
   "indices": [
    2,
    29,
@@ -33,7 +33,7 @@
  },
  "18": {
   "n": 18,
-  "description": "Reducción intermedia del análisis de ablación.",
+  "description": "Ampliación del conjunto de 12 ROIs: contiene sus 12 ROIs y añade 6 más, con mayor cobertura de las mismas redes (DMN, ECN, SN, DAN, FST).",
   "indices": [
    0,
    1,
@@ -77,7 +77,7 @@
  },
  "39": {
   "n": 39,
-  "description": "ROIs de las cinco redes implicadas en la fisiopatología del TDAH.",
+  "description": "Conjunto anatómico independiente de ROIs de las cinco redes implicadas en la fisiopatología del TDAH (DMN, ECN, SN, DAN, FST); no es una ampliación de los conjuntos de 12 o 18 ROIs (comparte 6 ROIs con el de 12 y 8 con el de 18).",
   "indices": [
    2,
    3,
