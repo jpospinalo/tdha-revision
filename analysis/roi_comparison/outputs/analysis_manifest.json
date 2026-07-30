@@ -1,13 +1,391 @@
 {
   "plan_version": "5.6",
-  "plan_sha256": "6703adbc90e64a6c7a459933e68348048dc980b50ccedd65248e4228cf4dad6c",
-  "analysis_config_sha256": "2b9d852c4f21d2b11dbdcdd3cc88b82864989e9a87f385ed4211d22a9ffd7a34",
+  "plan_sha256": "199857a46006a082d97f6a055ffdaaa075fd25be87bbb4147e806aae28367163",
+  "analysis_config_sha256": "183eec873201b0b146b8812d08f1083b50694308934b2f9b5c9b98891617584f",
   "run_manifest_sha256": "34cd68d346328194b9ccf4e6941a3e6836d47bde1f4cfa915826d230dd75cc72",
   "results_readme_sha256": "b083f24d0e007697043145e08475dafcc58007debf3e6a5af76d9bffc1cfb28e",
-  "generated_at": "2026-07-30T02:43:40.010978+00:00",
+  "generated_at": "2026-07-30T04:36:02.630240+00:00",
   "command": "run_statistical_analysis.py --repo-root /sessions/laughing-wizardly-archimedes/mnt/tdha-revision --config /sessions/laughing-wizardly-archimedes/mnt/tdha-revision/analysis/roi_comparison/config/analysis_config.json --manifest /sessions/laughing-wizardly-archimedes/mnt/tdha-revision/analysis/roi_comparison/config/run_manifest.csv --input-dir /sessions/laughing-wizardly-archimedes/mnt/tdha-revision/analysis/roi_comparison/outputs/data --output-dir /sessions/laughing-wizardly-archimedes/mnt/tdha-revision/analysis/roi_comparison/outputs --overwrite",
-  "repo_commit": "5de30e34f4fe61bc5f1ad5ec64942c03fbc64b1e",
+  "git_provenance_status": "available",
+  "repo_commit_before": "c1585e3536cb61734bbf3d296f6abd67ba884b4d",
+  "repo_commit_after": "c1585e3536cb61734bbf3d296f6abd67ba884b4d",
+  "changed_paths_before": [
+    "analysis/roi_comparison/README.md",
+    "analysis/roi_comparison/analysis_plan.md",
+    "analysis/roi_comparison/config/analysis_config.json",
+    "analysis/roi_comparison/outputs/analysis_manifest.json",
+    "analysis/roi_comparison/outputs/figures/contrasts_vs_116_forest.svg",
+    "analysis/roi_comparison/outputs/figures/paired_roi_profiles.svg",
+    "analysis/roi_comparison/outputs/figures/primary_contrast_forest.svg",
+    "analysis/roi_comparison/outputs/figures/secondary_contrast_18_vs_116_forest.svg",
+    "analysis/roi_comparison/outputs/figures/secondary_contrast_39_vs_116_forest.svg",
+    "analysis/roi_comparison/outputs/tables/comparability_audit.csv",
+    "analysis/roi_comparison/roi_comparison.ipynb",
+    "analysis/roi_comparison/scripts/build_analysis_dataset.py",
+    "analysis/roi_comparison/scripts/run_statistical_analysis.py",
+    "analysis/roi_comparison/tests/test_analysis.py",
+    "analysis/roi_comparison/outputs/tables/friedman_omnibus_by_site.csv",
+    "analysis/roi_comparison/outputs/tables/wilcoxon_pairwise_by_site.csv"
+  ],
+  "changed_paths_after": [
+    "analysis/roi_comparison/README.md",
+    "analysis/roi_comparison/analysis_plan.md",
+    "analysis/roi_comparison/config/analysis_config.json",
+    "analysis/roi_comparison/outputs/analysis_manifest.json",
+    "analysis/roi_comparison/outputs/figures/contrasts_vs_116_forest.svg",
+    "analysis/roi_comparison/outputs/figures/paired_roi_profiles.svg",
+    "analysis/roi_comparison/outputs/figures/primary_contrast_forest.svg",
+    "analysis/roi_comparison/outputs/figures/secondary_contrast_18_vs_116_forest.svg",
+    "analysis/roi_comparison/outputs/figures/secondary_contrast_39_vs_116_forest.svg",
+    "analysis/roi_comparison/outputs/tables/comparability_audit.csv",
+    "analysis/roi_comparison/roi_comparison.ipynb",
+    "analysis/roi_comparison/scripts/build_analysis_dataset.py",
+    "analysis/roi_comparison/scripts/run_statistical_analysis.py",
+    "analysis/roi_comparison/tests/test_analysis.py",
+    "analysis/roi_comparison/outputs/.staging-7k_0hqnv/",
+    "analysis/roi_comparison/outputs/tables/friedman_omnibus_by_site.csv",
+    "analysis/roi_comparison/outputs/tables/wilcoxon_pairwise_by_site.csv"
+  ],
   "changed_paths_outside_analysis": [],
+  "input_hash_inventory_fingerprint_before": "1e848dcdc5b3ee38e0fb2027dbcaf3bdc5abf84497beb5a3a788907318737a8f",
+  "input_hash_inventory_fingerprint_after": "1e848dcdc5b3ee38e0fb2027dbcaf3bdc5abf84497beb5a3a788907318737a8f",
+  "input_hash_inventory_before": {
+    "results_readme_sha256": "b083f24d0e007697043145e08475dafcc58007debf3e6a5af76d9bffc1cfb28e",
+    "run_artifacts": {
+      "NYU_12": {
+        "config.json": "7e064f1ed2e7e0309b821f8d9983573d0512a457dc385ce009e9deeea77245ae",
+        "folds.csv": "d30bfce3b7808443da5367339edc3a65f128178e1ee075c8feabf25add75707a",
+        "history.csv": "424292e6fd37c8ef83f8b9e376b5bd85f8cba23aa55d5de23e6fa3e7d406b8e1",
+        "metrics_train.csv": "c6d94783884b772127d365d2e9c0e5e760cce56f12a718a872ecf8db3a599863",
+        "metrics_val.csv": "3de594add4f5732468b756246e43a050a25122d2af4dc5c30f0d40bb8283c1a0",
+        "predictions_val.csv": "b4af0f109c6f9c156a00699b78c239ca32a25ac7810e93d41ce35fefbd0e2963",
+        "resumen.md": "f9ad1aeb14a57260c6fcb05b0eb0782a2ac4865007a28862e9133674c338a2a9"
+      },
+      "NYU_18": {
+        "config.json": "007e9af148cb50c73464ae512eb7854a30ee8e960b72a307c3d81eb60503df0e",
+        "folds.csv": "d30bfce3b7808443da5367339edc3a65f128178e1ee075c8feabf25add75707a",
+        "history.csv": "1f1dd545ed7bc33fed08db9f0984891eb75a3d8a900ef93286b5138daf410a22",
+        "metrics_train.csv": "8f310e23f7d010cd960d4670286231889019d1479857f4248d948f19ce399520",
+        "metrics_val.csv": "fa6e89aeefc6c4b4233120adb2d71b95518f7ccaa5c8e7bf078c3ac300ad1008",
+        "predictions_val.csv": "046ef3b28a8d68099382e9c6a98c6c73571bf5563c0e4ac222be4b4b0245d58e",
+        "resumen.md": "859215f4cfa97206a3a8a374a9739db3c421adb98fef672a441ca6d26c9d599b"
+      },
+      "NYU_39": {
+        "config.json": "1c3e2ffc48c0905f591666ba695666e4448852a32750219145d1b1f97b105ee1",
+        "folds.csv": "d30bfce3b7808443da5367339edc3a65f128178e1ee075c8feabf25add75707a",
+        "history.csv": "b235bc0931b88610b321315a27026297e4b0c9d9d610fd97085655b136fa0a74",
+        "metrics_train.csv": "f88709948e7ffe4793d3328ddcb70568e9567dcc9cca7a091767120c399692e3",
+        "metrics_val.csv": "d477f5d8c7c8f757ec987e4f14ba07d1bd2c2149de6990a899191dbb9d064063",
+        "predictions_val.csv": "bd00c4b1de7016748bade5198c18c4214577ab6cab4e7c0af8aa5f5e575393f8",
+        "resumen.md": "578061229dafeb3ba137bbbcc5b126fda1ef0edad47fcffdada0174a79e8b48a"
+      },
+      "NYU_116": {
+        "config.json": "0eb33e466ac07eac14d03452982766b672ef9e60124a9fc1cc75ca3490a1eec4",
+        "folds.csv": "d30bfce3b7808443da5367339edc3a65f128178e1ee075c8feabf25add75707a",
+        "history.csv": "07629dc95feaabcb0be8e52a62e6a7fc86641ed9cfe1f5181f697cc4bfb7750c",
+        "metrics_train.csv": "31fe37caf3213b95c49c32d5efb572bd59fd82ec913cb64a2985b4a87ccf917f",
+        "metrics_val.csv": "b0f5e707bbd8de42d3c68cb868c40b6ab420d144587e40da903573334a6eca5a",
+        "predictions_val.csv": "2bea2332dc9cb5e8f51642c8ad94e38bd6c21ae3ab1d13d4fee4b37b66f8c73c",
+        "resumen.md": "2c7ecad127f212bd659b45c97bae55d8ca7c4a1f3766331d29a987ca24381359"
+      },
+      "NeuroIMAGE_12": {
+        "config.json": "602d1ff5c85a2eec861bbbaee2fab0c332b25a0bbaad5c93cd5fbada819512e0",
+        "folds.csv": "47b15d7f9385dd8241e5f12510cbed6aef15836f91ac3627fede3b4bc883e09b",
+        "history.csv": "2ea4a47214f3588d9b39555ea8e19276808cf81db532162d202495d6ed8a4957",
+        "metrics_train.csv": "8ef469f3df5cc48370645da63a5a73b3816ab3830e343a6dca06e32522380199",
+        "metrics_val.csv": "e0aaf8b36f2541170068a5227460ab70b6c59e783369dc85d95867ea8a6d4f61",
+        "predictions_val.csv": "72058547e68803bc05fe1ba6b8eb5d639e5471e336a9742b90d50bb87888e876",
+        "resumen.md": "88ce500fad28c0932546da15720d35587da52ae9b3d4d584cf4feb3d8378451c"
+      },
+      "NeuroIMAGE_18": {
+        "config.json": "07b95530a4f70eb57fe81db92b54a73ae3a5fe24bc63e4190f895b70a7f32555",
+        "folds.csv": "47b15d7f9385dd8241e5f12510cbed6aef15836f91ac3627fede3b4bc883e09b",
+        "history.csv": "613640e134740ae877813e0813aeda02988f0da31eb31ff2643610649454a2b1",
+        "metrics_train.csv": "7f32911a4de6887f2b41d1f7e4dff306396a8f7c4149e7ee58a67f51750b0eb3",
+        "metrics_val.csv": "90551dd668ae6494147b49eaaa2a2168cb16cba2ed5080be4b0a7160a9f7dd21",
+        "predictions_val.csv": "bde017fa6064a9137ab3d51fe79d9315756e6730a38ff105a7efcb753023b736",
+        "resumen.md": "9ca2ae6deccddda43feb1962836623dcf138cd28fcadf88677c2b23398b165e4"
+      },
+      "NeuroIMAGE_39": {
+        "config.json": "22e3374e547098db2fdd764fc9ae90adb83ba1f50d8a69a83d746a538c698c81",
+        "folds.csv": "47b15d7f9385dd8241e5f12510cbed6aef15836f91ac3627fede3b4bc883e09b",
+        "history.csv": "056d391aa0c07e750560235f24501fb42ffec86609c44e62d40130dd30c60900",
+        "metrics_train.csv": "2421d3d73591ff1209114469e451239ffe47f22f637ad2e8c1accf466b55a1b5",
+        "metrics_val.csv": "560cbd7adaf1e64f12c1412e1afb24e791778fafe1c1d7e01c399beca9d5b49a",
+        "predictions_val.csv": "e37184eba3d5e7eaf08794cd9eefbacb22e485ac4939a67e16a5dbdf9e5acb44",
+        "resumen.md": "9f5abd0a486a485fd79eb5cc1d04edc73bde156a08d82530633a0918853c0aac"
+      },
+      "NeuroIMAGE_116": {
+        "config.json": "d89c3e6385cc7b2fb78a13b43d47e2f0b31e210b16c0e8a5826a71967a0e6c61",
+        "folds.csv": "47b15d7f9385dd8241e5f12510cbed6aef15836f91ac3627fede3b4bc883e09b",
+        "history.csv": "601bcbdbb7eeacde8b4b108e081d7a6959d4972eaeb9954c1db2fe76fd45b655",
+        "metrics_train.csv": "1b51f040f3183209369b5532f9abdfc0b43deb8d074344b3e4500e481bfe522f",
+        "metrics_val.csv": "c17004dcced3a5e9a0194c05c1389c4e9794a0665c45b5ed7d705e053c67d76d",
+        "predictions_val.csv": "6f502d254ddbf7e29172171a9b8d7c41e1311be43e083821958ad74044620f1a",
+        "resumen.md": "7eb0e58cc35fa20dcb5bbf4e9bde2ae541ae8960cf510044711eb8577289cef4"
+      },
+      "OHSU_12": {
+        "config.json": "4038ae2854d8e14d0298e3b8b1f6dbcdf84913335fbc24c2aa8258c3f9ddd004",
+        "folds.csv": "725d77ab93c20419e568fc8ec4cc9aed45461f1273968b23b2f8c9f10fe3e3d6",
+        "history.csv": "a121f0250549176cab8bfb6baddfbe8e6aece46f586460a1ebacdf11bc72a198",
+        "metrics_train.csv": "57ff66f4cba04136111bea30ee5d0561e2ba1179ea050396abdb3cecd5b6854b",
+        "metrics_val.csv": "618947a217a9a6020fb53443db326565606db82c83fef54dea0a7e863c39e551",
+        "predictions_val.csv": "a0fe3b52e10e168af48f403d9edca2d6e9cd3e085a842199a382abd921f4ca37",
+        "resumen.md": "45c92e8b7c62aad6041462d5ff6d44e7854c7f6e13364d3847a32d361db6d23c"
+      },
+      "OHSU_18": {
+        "config.json": "22903184fc8a6edcce29ed16b3bd060c6edb5041a969f0f6a1250ad651d07519",
+        "folds.csv": "725d77ab93c20419e568fc8ec4cc9aed45461f1273968b23b2f8c9f10fe3e3d6",
+        "history.csv": "29635e5c1ea64d92ad980499104c7a07da55920fccc610a8b0a7cef228db7c54",
+        "metrics_train.csv": "f6efd64875f3a6f886cf4f27b6e08c5ac98c5bfe493100301c82d2017c1efd0b",
+        "metrics_val.csv": "ec50952c74e934de4c1250f3f103bc2e64e7a385aeacb4102d1dfbef42006e10",
+        "predictions_val.csv": "e09bd14969c9390db4a1590ff0615b9e3e3654db83deca17b978ef6ce3cec07b",
+        "resumen.md": "e948cd3452a7d757828cf6327295dc1fb39fcea6aec9ceb3340c30973cde95d1"
+      },
+      "OHSU_39": {
+        "config.json": "2cfbf7ef20ea88a11334912f48c8d12240b4d6c1bff21ad3645f99031a1891c2",
+        "folds.csv": "725d77ab93c20419e568fc8ec4cc9aed45461f1273968b23b2f8c9f10fe3e3d6",
+        "history.csv": "fc6e9772e09f7be34a193a23f74c74b112f7f9cf27123b562a50bab879db37fe",
+        "metrics_train.csv": "de09a10d3aca4ee62dcf36f3459a4191986eed4be4ecd8913baa88542eada9bd",
+        "metrics_val.csv": "2f9ffae22458b05bb380b26dde88fbaea1642a6dedda7b21d924dc8de28e43c8",
+        "predictions_val.csv": "09a1044a6994f0880e9dcfd75e9b8103d39f839618dbb3d74a195609f8ab474f",
+        "resumen.md": "1a04d34bc7c8fe063869aabaf136cc4836bb4cd5325de9ef2de5085d13a62cd8"
+      },
+      "OHSU_116": {
+        "config.json": "f8fc95206aa9ac294490283a318ae280c8eec4c73951ee13877a90afb5949536",
+        "folds.csv": "725d77ab93c20419e568fc8ec4cc9aed45461f1273968b23b2f8c9f10fe3e3d6",
+        "history.csv": "9b65f4c581b412c0dfd66e98f497b3d7290bebeed6c8bf915e288f399b1f97c5",
+        "metrics_train.csv": "bce8d6d83229f82ae8dc3958ad47a0c540dbd670c4f409d8bcc0190a0bc39e51",
+        "metrics_val.csv": "ce0de79b0a35d1e28b53736a552e487de5bb509cf4a8ed029214ed491c7a077c",
+        "predictions_val.csv": "9292cd33083cc52eaba938bc0b0f56a60cd8cc127db8bfc8b7733ff9d4d2444f",
+        "resumen.md": "e1b0d2144a7a68fa52d7d141e37aaa75c6700bb87ce0e3b9437ab24fc5effcde"
+      },
+      "Peking_12": {
+        "config.json": "ed21750627a544595040d0efcd22a295140f929b9f98d2b8529e4c78e22e83f8",
+        "folds.csv": "fb23898df936a65c2c1cd540d840cf3355abfd21a5470bffd3299ede35f68db6",
+        "history.csv": "2bf4c4b4c2fee37f29e3973758ad434a3f3a8f9ff13bb3b900527a87e0b9b9c4",
+        "metrics_train.csv": "15f3de53b3d673a20c9fd168b2a22787ee3426dc74aaad00165dee0bd24491b3",
+        "metrics_val.csv": "8e45c637d12dd482eea9dec47d904be36421f4dcf2ac7fa1b98eb8ae62d29261",
+        "predictions_val.csv": "a82502af96a13e00dca79c189fc686c49631645ff0afedcab2ef9ca21d0620b1",
+        "resumen.md": "608e332d0470e9e2d0f70f5689433d7f3d3a43fbc5786ca56a0697cb9314b5ab"
+      },
+      "Peking_18": {
+        "config.json": "aaec52844565b5f78f4fa5f9ae95527e24723c6be91f728c2fae77c5cf1af9f7",
+        "folds.csv": "fb23898df936a65c2c1cd540d840cf3355abfd21a5470bffd3299ede35f68db6",
+        "history.csv": "e83062dce3a99fd652d9dbaa471a8e9ef0a743549b52eac93bf93e71f1d06ad7",
+        "metrics_train.csv": "10fa7515c58179e7f16518864548ea21a0034427d0234b1d78fe1df52f350b3b",
+        "metrics_val.csv": "ce7e3a5670a526443941cc923d7d1f54d8573eb8ca42ce7974030fd553a017a4",
+        "predictions_val.csv": "f5a8cceffaa5c849886201c105696282f65b270af31c50bd447a33ce2486ae01",
+        "resumen.md": "05946da5f96822145be19feabd51ca3c169b44686b15e724ea8042ff383e088e"
+      },
+      "Peking_39": {
+        "config.json": "3928bea9a6513dbd08ce6ba2c488ba33715213f1337cbb9b06870fb28eacb890",
+        "folds.csv": "fb23898df936a65c2c1cd540d840cf3355abfd21a5470bffd3299ede35f68db6",
+        "history.csv": "d71c75e0c7bedff1562da5b7d0a0047a657b740d5d4b2d33f7365a1891ba2ffc",
+        "metrics_train.csv": "d703e2e719f57b9f933fa5905f94b622df9d3569be507cd2c79dfdf5a6cc0701",
+        "metrics_val.csv": "1c2777952eeee53837740843f713409d4bbc084cd63ef851b3240a3d7ec2c89a",
+        "predictions_val.csv": "b055ba080efbd57e86bf469dd509b32fc26ca45847e2a7735ca022a0aafec524",
+        "resumen.md": "74d50405c6b30da889452b044397735924d13b2de11f8c3bf544420120f668c5"
+      },
+      "Peking_116": {
+        "config.json": "4c59009af60c545c9a6eaf26458c4463c68a9b76b5c48b8633a78ddf535ec7a5",
+        "folds.csv": "fb23898df936a65c2c1cd540d840cf3355abfd21a5470bffd3299ede35f68db6",
+        "history.csv": "2477e0997d81fc7d8f1e63dfd0388b96446d498365cc6021f3dd4a4e48ea39cc",
+        "metrics_train.csv": "2761890c1ba35f0199e3542117ba915b42303fdadbe1d6b84be22fbddf492b67",
+        "metrics_val.csv": "02ed0f2415a644b13cafb0321f6f553789a3b8e83d64b5eee2c814d3521608c6",
+        "predictions_val.csv": "83a571c8dfaed651d59346727b60aacaa23113f03082fb3977c1738f31ab4b51",
+        "resumen.md": "6aaba8ab409b5d6ca2924b3815b19c5c21d9b7e3c84ba69e78eacc940f3fb4d1"
+      }
+    },
+    "protected_files": {
+      "requirements_txt_sha256": "524cc009d0cd34ec62277d20841d26384aac816a072aeff59e9fd9544dd56389",
+      "tdha_experimentos_ipynb_sha256": "08a9b5704183ea1059b046a1625770bcd322df1dc62ef44223db77269874192b",
+      "src": {
+        "src/analyze_ensemble.py": "dd00387f4581d206406cae0faf00fa60343600ea3b1e962e2aa90ed10b8f7006",
+        "src/compile_results.py": "5af9ddb6d8909cc53191b69e7d34025c998f83ffea718204b9462ab1ddf5256e",
+        "src/data.py": "845dfa9c50f977fdb697f1326169622481a40126764e6c9618b2017ee850be94",
+        "src/kerasmodels/__init__.py": "fdf2b472a758ed41eb4e76461a0553a55b7ddf8b0f1c706082d55e5bead933c5",
+        "src/kerasmodels/brainnetcnn.py": "cc31f7a7349e4339d4c0d4469fb72f26c1746f3fa6b5e125ebfc12e55087bf10",
+        "src/kerasmodels/cnn1d.py": "e4e2b05459eb904bcd3a6c92c97a5e1760d6a574cb987d07cbfb5f37b65bbbf3",
+        "src/kerasmodels/deepsets.py": "b93767f56c9d38a739207c8568b930d04f105ad0ebb85ba680b5ff7a36b74c91",
+        "src/kerasmodels/gru.py": "601fcac98696a885266c12fdd79c59bd62f2d76eb7da6474f819b3d9fb345493",
+        "src/kerasmodels/lstm.py": "907f41f83c288d543a0d34621dac46e1083ae2a539a6eace42a8bef890602187",
+        "src/kerasmodels/transformer.py": "5338040a06da58268e772928d58110ed17dd7be3ba6760f84fb1da05067ecb8b",
+        "src/run_experiment.py": "fd015396024f70f7c531344b02023d00ac985cb0c5a3f955e256a92b23ed08a5",
+        "src/run_queue.py": "759d6342e99123f3e9949ad2009dfebca39312485503c5fa4cabe930ef229e21",
+        "src/verify_setup.py": "c52d90b6f28794d65f632eba4938c864c4ce5bcae6341d2dd7bcb932a862459e"
+      }
+    }
+  },
+  "input_hash_inventory_after": {
+    "results_readme_sha256": "b083f24d0e007697043145e08475dafcc58007debf3e6a5af76d9bffc1cfb28e",
+    "run_artifacts": {
+      "NYU_12": {
+        "config.json": "7e064f1ed2e7e0309b821f8d9983573d0512a457dc385ce009e9deeea77245ae",
+        "folds.csv": "d30bfce3b7808443da5367339edc3a65f128178e1ee075c8feabf25add75707a",
+        "history.csv": "424292e6fd37c8ef83f8b9e376b5bd85f8cba23aa55d5de23e6fa3e7d406b8e1",
+        "metrics_train.csv": "c6d94783884b772127d365d2e9c0e5e760cce56f12a718a872ecf8db3a599863",
+        "metrics_val.csv": "3de594add4f5732468b756246e43a050a25122d2af4dc5c30f0d40bb8283c1a0",
+        "predictions_val.csv": "b4af0f109c6f9c156a00699b78c239ca32a25ac7810e93d41ce35fefbd0e2963",
+        "resumen.md": "f9ad1aeb14a57260c6fcb05b0eb0782a2ac4865007a28862e9133674c338a2a9"
+      },
+      "NYU_18": {
+        "config.json": "007e9af148cb50c73464ae512eb7854a30ee8e960b72a307c3d81eb60503df0e",
+        "folds.csv": "d30bfce3b7808443da5367339edc3a65f128178e1ee075c8feabf25add75707a",
+        "history.csv": "1f1dd545ed7bc33fed08db9f0984891eb75a3d8a900ef93286b5138daf410a22",
+        "metrics_train.csv": "8f310e23f7d010cd960d4670286231889019d1479857f4248d948f19ce399520",
+        "metrics_val.csv": "fa6e89aeefc6c4b4233120adb2d71b95518f7ccaa5c8e7bf078c3ac300ad1008",
+        "predictions_val.csv": "046ef3b28a8d68099382e9c6a98c6c73571bf5563c0e4ac222be4b4b0245d58e",
+        "resumen.md": "859215f4cfa97206a3a8a374a9739db3c421adb98fef672a441ca6d26c9d599b"
+      },
+      "NYU_39": {
+        "config.json": "1c3e2ffc48c0905f591666ba695666e4448852a32750219145d1b1f97b105ee1",
+        "folds.csv": "d30bfce3b7808443da5367339edc3a65f128178e1ee075c8feabf25add75707a",
+        "history.csv": "b235bc0931b88610b321315a27026297e4b0c9d9d610fd97085655b136fa0a74",
+        "metrics_train.csv": "f88709948e7ffe4793d3328ddcb70568e9567dcc9cca7a091767120c399692e3",
+        "metrics_val.csv": "d477f5d8c7c8f757ec987e4f14ba07d1bd2c2149de6990a899191dbb9d064063",
+        "predictions_val.csv": "bd00c4b1de7016748bade5198c18c4214577ab6cab4e7c0af8aa5f5e575393f8",
+        "resumen.md": "578061229dafeb3ba137bbbcc5b126fda1ef0edad47fcffdada0174a79e8b48a"
+      },
+      "NYU_116": {
+        "config.json": "0eb33e466ac07eac14d03452982766b672ef9e60124a9fc1cc75ca3490a1eec4",
+        "folds.csv": "d30bfce3b7808443da5367339edc3a65f128178e1ee075c8feabf25add75707a",
+        "history.csv": "07629dc95feaabcb0be8e52a62e6a7fc86641ed9cfe1f5181f697cc4bfb7750c",
+        "metrics_train.csv": "31fe37caf3213b95c49c32d5efb572bd59fd82ec913cb64a2985b4a87ccf917f",
+        "metrics_val.csv": "b0f5e707bbd8de42d3c68cb868c40b6ab420d144587e40da903573334a6eca5a",
+        "predictions_val.csv": "2bea2332dc9cb5e8f51642c8ad94e38bd6c21ae3ab1d13d4fee4b37b66f8c73c",
+        "resumen.md": "2c7ecad127f212bd659b45c97bae55d8ca7c4a1f3766331d29a987ca24381359"
+      },
+      "NeuroIMAGE_12": {
+        "config.json": "602d1ff5c85a2eec861bbbaee2fab0c332b25a0bbaad5c93cd5fbada819512e0",
+        "folds.csv": "47b15d7f9385dd8241e5f12510cbed6aef15836f91ac3627fede3b4bc883e09b",
+        "history.csv": "2ea4a47214f3588d9b39555ea8e19276808cf81db532162d202495d6ed8a4957",
+        "metrics_train.csv": "8ef469f3df5cc48370645da63a5a73b3816ab3830e343a6dca06e32522380199",
+        "metrics_val.csv": "e0aaf8b36f2541170068a5227460ab70b6c59e783369dc85d95867ea8a6d4f61",
+        "predictions_val.csv": "72058547e68803bc05fe1ba6b8eb5d639e5471e336a9742b90d50bb87888e876",
+        "resumen.md": "88ce500fad28c0932546da15720d35587da52ae9b3d4d584cf4feb3d8378451c"
+      },
+      "NeuroIMAGE_18": {
+        "config.json": "07b95530a4f70eb57fe81db92b54a73ae3a5fe24bc63e4190f895b70a7f32555",
+        "folds.csv": "47b15d7f9385dd8241e5f12510cbed6aef15836f91ac3627fede3b4bc883e09b",
+        "history.csv": "613640e134740ae877813e0813aeda02988f0da31eb31ff2643610649454a2b1",
+        "metrics_train.csv": "7f32911a4de6887f2b41d1f7e4dff306396a8f7c4149e7ee58a67f51750b0eb3",
+        "metrics_val.csv": "90551dd668ae6494147b49eaaa2a2168cb16cba2ed5080be4b0a7160a9f7dd21",
+        "predictions_val.csv": "bde017fa6064a9137ab3d51fe79d9315756e6730a38ff105a7efcb753023b736",
+        "resumen.md": "9ca2ae6deccddda43feb1962836623dcf138cd28fcadf88677c2b23398b165e4"
+      },
+      "NeuroIMAGE_39": {
+        "config.json": "22e3374e547098db2fdd764fc9ae90adb83ba1f50d8a69a83d746a538c698c81",
+        "folds.csv": "47b15d7f9385dd8241e5f12510cbed6aef15836f91ac3627fede3b4bc883e09b",
+        "history.csv": "056d391aa0c07e750560235f24501fb42ffec86609c44e62d40130dd30c60900",
+        "metrics_train.csv": "2421d3d73591ff1209114469e451239ffe47f22f637ad2e8c1accf466b55a1b5",
+        "metrics_val.csv": "560cbd7adaf1e64f12c1412e1afb24e791778fafe1c1d7e01c399beca9d5b49a",
+        "predictions_val.csv": "e37184eba3d5e7eaf08794cd9eefbacb22e485ac4939a67e16a5dbdf9e5acb44",
+        "resumen.md": "9f5abd0a486a485fd79eb5cc1d04edc73bde156a08d82530633a0918853c0aac"
+      },
+      "NeuroIMAGE_116": {
+        "config.json": "d89c3e6385cc7b2fb78a13b43d47e2f0b31e210b16c0e8a5826a71967a0e6c61",
+        "folds.csv": "47b15d7f9385dd8241e5f12510cbed6aef15836f91ac3627fede3b4bc883e09b",
+        "history.csv": "601bcbdbb7eeacde8b4b108e081d7a6959d4972eaeb9954c1db2fe76fd45b655",
+        "metrics_train.csv": "1b51f040f3183209369b5532f9abdfc0b43deb8d074344b3e4500e481bfe522f",
+        "metrics_val.csv": "c17004dcced3a5e9a0194c05c1389c4e9794a0665c45b5ed7d705e053c67d76d",
+        "predictions_val.csv": "6f502d254ddbf7e29172171a9b8d7c41e1311be43e083821958ad74044620f1a",
+        "resumen.md": "7eb0e58cc35fa20dcb5bbf4e9bde2ae541ae8960cf510044711eb8577289cef4"
+      },
+      "OHSU_12": {
+        "config.json": "4038ae2854d8e14d0298e3b8b1f6dbcdf84913335fbc24c2aa8258c3f9ddd004",
+        "folds.csv": "725d77ab93c20419e568fc8ec4cc9aed45461f1273968b23b2f8c9f10fe3e3d6",
+        "history.csv": "a121f0250549176cab8bfb6baddfbe8e6aece46f586460a1ebacdf11bc72a198",
+        "metrics_train.csv": "57ff66f4cba04136111bea30ee5d0561e2ba1179ea050396abdb3cecd5b6854b",
+        "metrics_val.csv": "618947a217a9a6020fb53443db326565606db82c83fef54dea0a7e863c39e551",
+        "predictions_val.csv": "a0fe3b52e10e168af48f403d9edca2d6e9cd3e085a842199a382abd921f4ca37",
+        "resumen.md": "45c92e8b7c62aad6041462d5ff6d44e7854c7f6e13364d3847a32d361db6d23c"
+      },
+      "OHSU_18": {
+        "config.json": "22903184fc8a6edcce29ed16b3bd060c6edb5041a969f0f6a1250ad651d07519",
+        "folds.csv": "725d77ab93c20419e568fc8ec4cc9aed45461f1273968b23b2f8c9f10fe3e3d6",
+        "history.csv": "29635e5c1ea64d92ad980499104c7a07da55920fccc610a8b0a7cef228db7c54",
+        "metrics_train.csv": "f6efd64875f3a6f886cf4f27b6e08c5ac98c5bfe493100301c82d2017c1efd0b",
+        "metrics_val.csv": "ec50952c74e934de4c1250f3f103bc2e64e7a385aeacb4102d1dfbef42006e10",
+        "predictions_val.csv": "e09bd14969c9390db4a1590ff0615b9e3e3654db83deca17b978ef6ce3cec07b",
+        "resumen.md": "e948cd3452a7d757828cf6327295dc1fb39fcea6aec9ceb3340c30973cde95d1"
+      },
+      "OHSU_39": {
+        "config.json": "2cfbf7ef20ea88a11334912f48c8d12240b4d6c1bff21ad3645f99031a1891c2",
+        "folds.csv": "725d77ab93c20419e568fc8ec4cc9aed45461f1273968b23b2f8c9f10fe3e3d6",
+        "history.csv": "fc6e9772e09f7be34a193a23f74c74b112f7f9cf27123b562a50bab879db37fe",
+        "metrics_train.csv": "de09a10d3aca4ee62dcf36f3459a4191986eed4be4ecd8913baa88542eada9bd",
+        "metrics_val.csv": "2f9ffae22458b05bb380b26dde88fbaea1642a6dedda7b21d924dc8de28e43c8",
+        "predictions_val.csv": "09a1044a6994f0880e9dcfd75e9b8103d39f839618dbb3d74a195609f8ab474f",
+        "resumen.md": "1a04d34bc7c8fe063869aabaf136cc4836bb4cd5325de9ef2de5085d13a62cd8"
+      },
+      "OHSU_116": {
+        "config.json": "f8fc95206aa9ac294490283a318ae280c8eec4c73951ee13877a90afb5949536",
+        "folds.csv": "725d77ab93c20419e568fc8ec4cc9aed45461f1273968b23b2f8c9f10fe3e3d6",
+        "history.csv": "9b65f4c581b412c0dfd66e98f497b3d7290bebeed6c8bf915e288f399b1f97c5",
+        "metrics_train.csv": "bce8d6d83229f82ae8dc3958ad47a0c540dbd670c4f409d8bcc0190a0bc39e51",
+        "metrics_val.csv": "ce0de79b0a35d1e28b53736a552e487de5bb509cf4a8ed029214ed491c7a077c",
+        "predictions_val.csv": "9292cd33083cc52eaba938bc0b0f56a60cd8cc127db8bfc8b7733ff9d4d2444f",
+        "resumen.md": "e1b0d2144a7a68fa52d7d141e37aaa75c6700bb87ce0e3b9437ab24fc5effcde"
+      },
+      "Peking_12": {
+        "config.json": "ed21750627a544595040d0efcd22a295140f929b9f98d2b8529e4c78e22e83f8",
+        "folds.csv": "fb23898df936a65c2c1cd540d840cf3355abfd21a5470bffd3299ede35f68db6",
+        "history.csv": "2bf4c4b4c2fee37f29e3973758ad434a3f3a8f9ff13bb3b900527a87e0b9b9c4",
+        "metrics_train.csv": "15f3de53b3d673a20c9fd168b2a22787ee3426dc74aaad00165dee0bd24491b3",
+        "metrics_val.csv": "8e45c637d12dd482eea9dec47d904be36421f4dcf2ac7fa1b98eb8ae62d29261",
+        "predictions_val.csv": "a82502af96a13e00dca79c189fc686c49631645ff0afedcab2ef9ca21d0620b1",
+        "resumen.md": "608e332d0470e9e2d0f70f5689433d7f3d3a43fbc5786ca56a0697cb9314b5ab"
+      },
+      "Peking_18": {
+        "config.json": "aaec52844565b5f78f4fa5f9ae95527e24723c6be91f728c2fae77c5cf1af9f7",
+        "folds.csv": "fb23898df936a65c2c1cd540d840cf3355abfd21a5470bffd3299ede35f68db6",
+        "history.csv": "e83062dce3a99fd652d9dbaa471a8e9ef0a743549b52eac93bf93e71f1d06ad7",
+        "metrics_train.csv": "10fa7515c58179e7f16518864548ea21a0034427d0234b1d78fe1df52f350b3b",
+        "metrics_val.csv": "ce7e3a5670a526443941cc923d7d1f54d8573eb8ca42ce7974030fd553a017a4",
+        "predictions_val.csv": "f5a8cceffaa5c849886201c105696282f65b270af31c50bd447a33ce2486ae01",
+        "resumen.md": "05946da5f96822145be19feabd51ca3c169b44686b15e724ea8042ff383e088e"
+      },
+      "Peking_39": {
+        "config.json": "3928bea9a6513dbd08ce6ba2c488ba33715213f1337cbb9b06870fb28eacb890",
+        "folds.csv": "fb23898df936a65c2c1cd540d840cf3355abfd21a5470bffd3299ede35f68db6",
+        "history.csv": "d71c75e0c7bedff1562da5b7d0a0047a657b740d5d4b2d33f7365a1891ba2ffc",
+        "metrics_train.csv": "d703e2e719f57b9f933fa5905f94b622df9d3569be507cd2c79dfdf5a6cc0701",
+        "metrics_val.csv": "1c2777952eeee53837740843f713409d4bbc084cd63ef851b3240a3d7ec2c89a",
+        "predictions_val.csv": "b055ba080efbd57e86bf469dd509b32fc26ca45847e2a7735ca022a0aafec524",
+        "resumen.md": "74d50405c6b30da889452b044397735924d13b2de11f8c3bf544420120f668c5"
+      },
+      "Peking_116": {
+        "config.json": "4c59009af60c545c9a6eaf26458c4463c68a9b76b5c48b8633a78ddf535ec7a5",
+        "folds.csv": "fb23898df936a65c2c1cd540d840cf3355abfd21a5470bffd3299ede35f68db6",
+        "history.csv": "2477e0997d81fc7d8f1e63dfd0388b96446d498365cc6021f3dd4a4e48ea39cc",
+        "metrics_train.csv": "2761890c1ba35f0199e3542117ba915b42303fdadbe1d6b84be22fbddf492b67",
+        "metrics_val.csv": "02ed0f2415a644b13cafb0321f6f553789a3b8e83d64b5eee2c814d3521608c6",
+        "predictions_val.csv": "83a571c8dfaed651d59346727b60aacaa23113f03082fb3977c1738f31ab4b51",
+        "resumen.md": "6aaba8ab409b5d6ca2924b3815b19c5c21d9b7e3c84ba69e78eacc940f3fb4d1"
+      }
+    },
+    "protected_files": {
+      "requirements_txt_sha256": "524cc009d0cd34ec62277d20841d26384aac816a072aeff59e9fd9544dd56389",
+      "tdha_experimentos_ipynb_sha256": "08a9b5704183ea1059b046a1625770bcd322df1dc62ef44223db77269874192b",
+      "src": {
+        "src/analyze_ensemble.py": "dd00387f4581d206406cae0faf00fa60343600ea3b1e962e2aa90ed10b8f7006",
+        "src/compile_results.py": "5af9ddb6d8909cc53191b69e7d34025c998f83ffea718204b9462ab1ddf5256e",
+        "src/data.py": "845dfa9c50f977fdb697f1326169622481a40126764e6c9618b2017ee850be94",
+        "src/kerasmodels/__init__.py": "fdf2b472a758ed41eb4e76461a0553a55b7ddf8b0f1c706082d55e5bead933c5",
+        "src/kerasmodels/brainnetcnn.py": "cc31f7a7349e4339d4c0d4469fb72f26c1746f3fa6b5e125ebfc12e55087bf10",
+        "src/kerasmodels/cnn1d.py": "e4e2b05459eb904bcd3a6c92c97a5e1760d6a574cb987d07cbfb5f37b65bbbf3",
+        "src/kerasmodels/deepsets.py": "b93767f56c9d38a739207c8568b930d04f105ad0ebb85ba680b5ff7a36b74c91",
+        "src/kerasmodels/gru.py": "601fcac98696a885266c12fdd79c59bd62f2d76eb7da6474f819b3d9fb345493",
+        "src/kerasmodels/lstm.py": "907f41f83c288d543a0d34621dac46e1083ae2a539a6eace42a8bef890602187",
+        "src/kerasmodels/transformer.py": "5338040a06da58268e772928d58110ed17dd7be3ba6760f84fb1da05067ecb8b",
+        "src/run_experiment.py": "fd015396024f70f7c531344b02023d00ac985cb0c5a3f955e256a92b23ed08a5",
+        "src/run_queue.py": "759d6342e99123f3e9949ad2009dfebca39312485503c5fa4cabe930ef229e21",
+        "src/verify_setup.py": "c52d90b6f28794d65f632eba4938c864c4ce5bcae6341d2dd7bcb932a862459e"
+      }
+    }
+  },
+  "protected_files_unchanged": true,
   "versions": {
     "python": "3.10.12",
     "numpy": "2.2.6",
@@ -20,6 +398,7 @@
       "site": "NYU",
       "roi_set": 12,
       "run_id": "NYU_rois12_w60s6_brainnetcnn_control_baseline_v13_3e220e5c",
+      "config_hash": "3e220e5c",
       "config_json_sha256": "7e064f1ed2e7e0309b821f8d9983573d0512a457dc385ce009e9deeea77245ae",
       "predictions_val_csv_sha256": "b4af0f109c6f9c156a00699b78c239ca32a25ac7810e93d41ce35fefbd0e2963",
       "folds_csv_sha256": "d30bfce3b7808443da5367339edc3a65f128178e1ee075c8feabf25add75707a"
@@ -28,6 +407,7 @@
       "site": "NYU",
       "roi_set": 18,
       "run_id": "NYU_rois18_w60s6_brainnetcnn_control_baseline_v13_662d71a9",
+      "config_hash": "662d71a9",
       "config_json_sha256": "007e9af148cb50c73464ae512eb7854a30ee8e960b72a307c3d81eb60503df0e",
       "predictions_val_csv_sha256": "046ef3b28a8d68099382e9c6a98c6c73571bf5563c0e4ac222be4b4b0245d58e",
       "folds_csv_sha256": "d30bfce3b7808443da5367339edc3a65f128178e1ee075c8feabf25add75707a"
@@ -36,6 +416,7 @@
       "site": "NYU",
       "roi_set": 39,
       "run_id": "NYU_rois39_w60s6_brainnetcnn_control_base_line_1521c348",
+      "config_hash": "1521c348",
       "config_json_sha256": "1c3e2ffc48c0905f591666ba695666e4448852a32750219145d1b1f97b105ee1",
       "predictions_val_csv_sha256": "bd00c4b1de7016748bade5198c18c4214577ab6cab4e7c0af8aa5f5e575393f8",
       "folds_csv_sha256": "d30bfce3b7808443da5367339edc3a65f128178e1ee075c8feabf25add75707a"
@@ -44,6 +425,7 @@
       "site": "NYU",
       "roi_set": 116,
       "run_id": "NYU_rois116_w60s6_brainnetcnn_control_baseline_v13_160b89cd",
+      "config_hash": "160b89cd",
       "config_json_sha256": "0eb33e466ac07eac14d03452982766b672ef9e60124a9fc1cc75ca3490a1eec4",
       "predictions_val_csv_sha256": "2bea2332dc9cb5e8f51642c8ad94e38bd6c21ae3ab1d13d4fee4b37b66f8c73c",
       "folds_csv_sha256": "d30bfce3b7808443da5367339edc3a65f128178e1ee075c8feabf25add75707a"
@@ -52,6 +434,7 @@
       "site": "NeuroIMAGE",
       "roi_set": 12,
       "run_id": "NeuroIMAGE_rois12_w61s6_brainnetcnn_control_baseline_v13_2b729a8c",
+      "config_hash": "2b729a8c",
       "config_json_sha256": "602d1ff5c85a2eec861bbbaee2fab0c332b25a0bbaad5c93cd5fbada819512e0",
       "predictions_val_csv_sha256": "72058547e68803bc05fe1ba6b8eb5d639e5471e336a9742b90d50bb87888e876",
       "folds_csv_sha256": "47b15d7f9385dd8241e5f12510cbed6aef15836f91ac3627fede3b4bc883e09b"
@@ -60,6 +443,7 @@
       "site": "NeuroIMAGE",
       "roi_set": 18,
       "run_id": "NeuroIMAGE_rois18_w61s6_brainnetcnn_control_baseline_v13_93342cf0",
+      "config_hash": "93342cf0",
       "config_json_sha256": "07b95530a4f70eb57fe81db92b54a73ae3a5fe24bc63e4190f895b70a7f32555",
       "predictions_val_csv_sha256": "bde017fa6064a9137ab3d51fe79d9315756e6730a38ff105a7efcb753023b736",
       "folds_csv_sha256": "47b15d7f9385dd8241e5f12510cbed6aef15836f91ac3627fede3b4bc883e09b"
@@ -68,6 +452,7 @@
       "site": "NeuroIMAGE",
       "roi_set": 39,
       "run_id": "NeuroIMAGE_rois39_w61s6_brainnetcnn_control_baseline_v13_dc028168",
+      "config_hash": "dc028168",
       "config_json_sha256": "22e3374e547098db2fdd764fc9ae90adb83ba1f50d8a69a83d746a538c698c81",
       "predictions_val_csv_sha256": "e37184eba3d5e7eaf08794cd9eefbacb22e485ac4939a67e16a5dbdf9e5acb44",
       "folds_csv_sha256": "47b15d7f9385dd8241e5f12510cbed6aef15836f91ac3627fede3b4bc883e09b"
@@ -76,6 +461,7 @@
       "site": "NeuroIMAGE",
       "roi_set": 116,
       "run_id": "NeuroIMAGE_rois116_w61s6_brainnetcnn_control_baseline_v13_669d72bd",
+      "config_hash": "669d72bd",
       "config_json_sha256": "d89c3e6385cc7b2fb78a13b43d47e2f0b31e210b16c0e8a5826a71967a0e6c61",
       "predictions_val_csv_sha256": "6f502d254ddbf7e29172171a9b8d7c41e1311be43e083821958ad74044620f1a",
       "folds_csv_sha256": "47b15d7f9385dd8241e5f12510cbed6aef15836f91ac3627fede3b4bc883e09b"
@@ -84,6 +470,7 @@
       "site": "OHSU",
       "roi_set": 12,
       "run_id": "OHSU_rois12_w48s5_brainnetcnn_control_baseline_v13_1a7c37ce",
+      "config_hash": "1a7c37ce",
       "config_json_sha256": "4038ae2854d8e14d0298e3b8b1f6dbcdf84913335fbc24c2aa8258c3f9ddd004",
       "predictions_val_csv_sha256": "a0fe3b52e10e168af48f403d9edca2d6e9cd3e085a842199a382abd921f4ca37",
       "folds_csv_sha256": "725d77ab93c20419e568fc8ec4cc9aed45461f1273968b23b2f8c9f10fe3e3d6"
@@ -92,6 +479,7 @@
       "site": "OHSU",
       "roi_set": 18,
       "run_id": "OHSU_rois18_w48s5_brainnetcnn_2ce6c48e",
+      "config_hash": "2ce6c48e",
       "config_json_sha256": "22903184fc8a6edcce29ed16b3bd060c6edb5041a969f0f6a1250ad651d07519",
       "predictions_val_csv_sha256": "e09bd14969c9390db4a1590ff0615b9e3e3654db83deca17b978ef6ce3cec07b",
       "folds_csv_sha256": "725d77ab93c20419e568fc8ec4cc9aed45461f1273968b23b2f8c9f10fe3e3d6"
@@ -100,6 +488,7 @@
       "site": "OHSU",
       "roi_set": 39,
       "run_id": "OHSU_rois39_w48s5_brainnetcnn_control_baseline_v13_299719fe",
+      "config_hash": "299719fe",
       "config_json_sha256": "2cfbf7ef20ea88a11334912f48c8d12240b4d6c1bff21ad3645f99031a1891c2",
       "predictions_val_csv_sha256": "09a1044a6994f0880e9dcfd75e9b8103d39f839618dbb3d74a195609f8ab474f",
       "folds_csv_sha256": "725d77ab93c20419e568fc8ec4cc9aed45461f1273968b23b2f8c9f10fe3e3d6"
@@ -108,6 +497,7 @@
       "site": "OHSU",
       "roi_set": 116,
       "run_id": "OHSU_rois116_w48s5_brainnetcnn_control_baseline_v13_f82f17b4",
+      "config_hash": "f82f17b4",
       "config_json_sha256": "f8fc95206aa9ac294490283a318ae280c8eec4c73951ee13877a90afb5949536",
       "predictions_val_csv_sha256": "9292cd33083cc52eaba938bc0b0f56a60cd8cc127db8bfc8b7733ff9d4d2444f",
       "folds_csv_sha256": "725d77ab93c20419e568fc8ec4cc9aed45461f1273968b23b2f8c9f10fe3e3d6"
@@ -116,6 +506,7 @@
       "site": "Peking",
       "roi_set": 12,
       "run_id": "Peking_rois12_w60s6_brainnetcnn_control_baseline_v13_bc841110",
+      "config_hash": "bc841110",
       "config_json_sha256": "ed21750627a544595040d0efcd22a295140f929b9f98d2b8529e4c78e22e83f8",
       "predictions_val_csv_sha256": "a82502af96a13e00dca79c189fc686c49631645ff0afedcab2ef9ca21d0620b1",
       "folds_csv_sha256": "fb23898df936a65c2c1cd540d840cf3355abfd21a5470bffd3299ede35f68db6"
@@ -124,6 +515,7 @@
       "site": "Peking",
       "roi_set": 18,
       "run_id": "Peking_rois18_w60s6_brainnetcnn_control_baseline_v13_0bf7fa0e",
+      "config_hash": "0bf7fa0e",
       "config_json_sha256": "aaec52844565b5f78f4fa5f9ae95527e24723c6be91f728c2fae77c5cf1af9f7",
       "predictions_val_csv_sha256": "f5a8cceffaa5c849886201c105696282f65b270af31c50bd447a33ce2486ae01",
       "folds_csv_sha256": "fb23898df936a65c2c1cd540d840cf3355abfd21a5470bffd3299ede35f68db6"
@@ -132,6 +524,7 @@
       "site": "Peking",
       "roi_set": 39,
       "run_id": "Peking_rois39_w60s6_brainnetcnn_control_baseline_v13_396e34d2",
+      "config_hash": "396e34d2",
       "config_json_sha256": "3928bea9a6513dbd08ce6ba2c488ba33715213f1337cbb9b06870fb28eacb890",
       "predictions_val_csv_sha256": "b055ba080efbd57e86bf469dd509b32fc26ca45847e2a7735ca022a0aafec524",
       "folds_csv_sha256": "fb23898df936a65c2c1cd540d840cf3355abfd21a5470bffd3299ede35f68db6"
@@ -140,6 +533,7 @@
       "site": "Peking",
       "roi_set": 116,
       "run_id": "Peking_rois116_w60s6_brainnetcnn_240732d1",
+      "config_hash": "240732d1",
       "config_json_sha256": "4c59009af60c545c9a6eaf26458c4463c68a9b76b5c48b8633a78ddf535ec7a5",
       "predictions_val_csv_sha256": "83a571c8dfaed651d59346727b60aacaa23113f03082fb3977c1738f31ab4b51",
       "folds_csv_sha256": "fb23898df936a65c2c1cd540d840cf3355abfd21a5470bffd3299ede35f68db6"
@@ -154,12 +548,27 @@
     "quantile_method": "linear",
     "ci_level": 0.95
   },
+  "hypothesis_test": {
+    "status": "exploratorio_post_hoc_no_preinscrito",
+    "design": "medidas_repetidas_pareadas_por_repeticion_mismos_folds_entre_tamanos_roi",
+    "omnibus_test": "friedman",
+    "omnibus_p_values_reported": [
+      "chi2_asymptotic",
+      "permutation"
+    ],
+    "pairwise_test": "wilcoxon_signed_rank_exact",
+    "pairwise_correction": "holm_dentro_de_cada_sitio_6_comparaciones",
+    "permutation_seed": 42,
+    "permutation_iterations": 500000,
+    "wilcoxon_min_two_sided_p_with_n5": 0.0625,
+    "note": "Prueba agregada a pedido de una revision externa; no forma parte del plan 5.6 ni de las instrucciones v1.5. Se agrega despues de haber revisado extensamente las tablas e intervalos descriptivos, por lo que hereda el mismo problema de exposicion previa a los resultados documentado en preregistration_status: un resultado significativo aqui es contexto adicional compatible con lo ya observado, no evidencia independiente nueva. Con n=5 repeticiones pareadas, el p-valor exacto de dos colas de Wilcoxon nunca puede ser menor a 0.0625, por lo que ninguna comparacion por pares puede declararse significativa a alpha=0.05 tras la correccion Holm, incluso si el patron es consistente en las cinco repeticiones; esto es un limite de resolucion del diseno, no evidencia de ausencia de diferencia."
+  },
   "timing_seconds": {
-    "NYU": 230.74588952799968,
-    "Peking": 234.69065627599048,
-    "NeuroIMAGE": 231.60542110898677,
-    "OHSU": 229.82825335799862,
-    "total": 926.8702202709756
+    "NYU": 0.003289249994850252,
+    "Peking": 0.0033888340039993636,
+    "NeuroIMAGE": 0.002514209001674317,
+    "OHSU": 0.0025745420061866753,
+    "total": 0.011766835006710608
   },
   "prob_matrix_bytes_float64": 74400,
   "d1_d5_resolution": {
@@ -220,7 +629,7 @@
     },
     "paired_roi_profiles.svg": {
       "path": "analysis/roi_comparison/outputs/figures/paired_roi_profiles.svg",
-      "sha256": "61d9a7f10cb567a2420e781238f4b28bc5fe02aa5abbbd20d9f4abd6bf94e7e7"
+      "sha256": "8cee7e1fa5e66f8363bc021988669318fe53e1c88355b9caa3cbfc600d01e018"
     },
     "paired_roi_profiles.png": {
       "path": "analysis/roi_comparison/outputs/figures/paired_roi_profiles.png",
@@ -228,7 +637,7 @@
     },
     "primary_contrast_forest.svg": {
       "path": "analysis/roi_comparison/outputs/figures/primary_contrast_forest.svg",
-      "sha256": "7568118865dc5454b1b68a8a2b5cb6952461e79f5d9271b5fb730a59756d6dfb"
+      "sha256": "6ed814be7a47f82368842e4be6395aab5194a8c3c52f8b83e5f6ec8334eed640"
     },
     "primary_contrast_forest.png": {
       "path": "analysis/roi_comparison/outputs/figures/primary_contrast_forest.png",
@@ -236,7 +645,7 @@
     },
     "secondary_contrast_18_vs_116_forest.svg": {
       "path": "analysis/roi_comparison/outputs/figures/secondary_contrast_18_vs_116_forest.svg",
-      "sha256": "51beba1f88e9b313463dd6998b6380e9c623f90274ef39dad8fbb1c4a22dbe8c"
+      "sha256": "25d5004c4eab2bfd4348f0cf66cc3a0db1197dc6b9a9a206a363f45e6f67d2a8"
     },
     "secondary_contrast_18_vs_116_forest.png": {
       "path": "analysis/roi_comparison/outputs/figures/secondary_contrast_18_vs_116_forest.png",
@@ -244,7 +653,7 @@
     },
     "secondary_contrast_39_vs_116_forest.svg": {
       "path": "analysis/roi_comparison/outputs/figures/secondary_contrast_39_vs_116_forest.svg",
-      "sha256": "63f2e30329d24f7c6cfa4e5780194e8959427a0ed6f1c2e5945b2c9a57b34437"
+      "sha256": "87abb5c5ffbad2173757b1300b28237c58689407971166c7c8308bb57a1acf07"
     },
     "secondary_contrast_39_vs_116_forest.png": {
       "path": "analysis/roi_comparison/outputs/figures/secondary_contrast_39_vs_116_forest.png",
@@ -252,11 +661,19 @@
     },
     "contrasts_vs_116_forest.svg": {
       "path": "analysis/roi_comparison/outputs/figures/contrasts_vs_116_forest.svg",
-      "sha256": "7f88b7b61ee08fcd4e9b1ab4c74a254eda1c85a62b7288beb279aed4f787bbee"
+      "sha256": "55f6eda125de07648b82cbe69944afd5bd6d9bfb5ef353001b8e356e7f420f01"
     },
     "contrasts_vs_116_forest.png": {
       "path": "analysis/roi_comparison/outputs/figures/contrasts_vs_116_forest.png",
       "sha256": "7f44e63cecc4c61732bf0335d4a6805b77278e4f42fb31c2e3ebd5fb343981eb"
+    },
+    "friedman_omnibus_by_site.csv": {
+      "path": "analysis/roi_comparison/outputs/tables/friedman_omnibus_by_site.csv",
+      "sha256": "1f861673c1d158defd7400f3f948782a47731660c1b2146917561153decde858"
+    },
+    "wilcoxon_pairwise_by_site.csv": {
+      "path": "analysis/roi_comparison/outputs/tables/wilcoxon_pairwise_by_site.csv",
+      "sha256": "2e009b1d49523c82d3fdc9fa687f7cf9f563c5f44785cfcae88fc4fde7e2732d"
     },
     "subject_scores.csv": {
       "path": "analysis/roi_comparison/outputs/data/subject_scores.csv",
@@ -268,10 +685,10 @@
     },
     "comparability_audit.csv": {
       "path": "analysis/roi_comparison/outputs/tables/comparability_audit.csv",
-      "sha256": "34625088ee907fa5319b62d3f1f6f00b63b183ba8ba96bddf74092bdc6dc41fb"
+      "sha256": "5b09fa034012511c242ec43b9000cddeeb29c723e353bd0fdb4466a9c156de95"
     }
   },
   "results_read_only": true,
-  "limitation": "Los intervalos bootstrap estan condicionados a las predicciones, entrenamientos y cinco particiones de validacion cruzada existentes; no capturan la variabilidad de un reentrenamiento o reparticion completos.",
-  "timing_note": "El bootstrap se calculo en trozos reanudables debido al limite de tiempo por invocacion del entorno de shell usado durante la implementacion (no del script entregado, que no tiene tal limite). Se preservo el estado real del generador numpy (rng.bit_generator.state) entre trozos, por lo que la secuencia de 10.000 remuestreos por sitio es identica, iteracion por iteracion, a una ejecucion continua con la misma semilla. Los tiempos aqui reportados son la suma real de computo medida en cada trozo, no una estimacion."
+  "results_read_only_method": "comparacion de hashes SHA-256 de results/README.md y de los 7 artefactos oficiales de las 16 corridas, antes y despues de la ejecucion (no se infiere de la disponibilidad de Git; ver input_hash_inventory_fingerprint_before/after)",
+  "limitation": "Los intervalos bootstrap estan condicionados a las predicciones, entrenamientos y cinco particiones de validacion cruzada existentes; no capturan la variabilidad de un reentrenamiento o reparticion completos."
 }

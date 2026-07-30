@@ -24,5 +24,7 @@
   "bootstrap_subject_order": "subject_id_ascending",
   "bootstrap_quantile_method": "linear",
   "bootstrap_method": "paired_stratified_percentile",
+  "hypothesis_test_permutation_iterations": 500000,
+  "hypothesis_test_permutation_seed": 42,
   "readme_round_decimals": 2
 }

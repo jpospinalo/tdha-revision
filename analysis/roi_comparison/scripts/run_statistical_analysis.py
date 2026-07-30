@@ -13,10 +13,15 @@ de las métricas: reutiliza ``metrics_from_arrays`` del primer script.
 from __future__ import annotations
 
 import argparse
+import atexit
 import hashlib
+import itertools
 import json
+import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -25,13 +30,27 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy import stats as scipy_stats
+from statsmodels.stats.multitest import multipletests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_analysis_dataset import metrics_from_arrays  # noqa: E402
+from build_analysis_dataset import (  # noqa: E402
+    EXPECTED_SUBJECT_COUNTS,
+    REQUIRED_ARTIFACTS,
+    ValidationError,
+    metrics_from_arrays,
+    resolve_and_check_output_paths,
+    validate_analysis_config,
+)
 
 SECONDARY_METRICS = ["balanced_accuracy", "f1_macro", "sensitivity", "specificity"]
 ALL_BOOTSTRAP_METRICS = ["auc"] + SECONDARY_METRICS
 SECONDARY_CONTRASTS = [(12, 18), (12, 39), (18, 39), (18, 116), (39, 116)]
+
+# Hash canónico del plan 5.6 aprobado por el equipo (analysis_plan.md debe
+# ser una copia byte por byte). Un plan ausente o con hash distinto debe
+# detener la ejecución antes de iniciar el bootstrap (CORRECCIONES_V19 §5).
+CANONICAL_PLAN_SHA256 = "199857a46006a082d97f6a055ffdaaa075fd25be87bbb4147e806aae28367163"
 
 
 def sha256_file(path: Path) -> str:
@@ -60,16 +79,160 @@ def load_manifest(path: Path) -> pd.DataFrame:
     return df[df["include"]].copy()
 
 
-def check_audit_all_pass(audit_path: Path) -> None:
+EXPECTED_SUBJECT_SCORES_COLUMNS = [
+    "site", "roi_set", "subject_id", "y_true",
+    "y_prob_r1", "y_prob_r2", "y_prob_r3", "y_prob_r4", "y_prob_r5",
+    "y_prob_mean", "y_prob_sd", "n_positive_predictions",
+]
+EXPECTED_METRICS_BY_REPEAT_COLUMNS = [
+    "site", "roi_set", "repeat", "n_subjects", "n_control", "n_adhd",
+    "auc", "balanced_accuracy", "f1_macro", "sensitivity", "specificity", "accuracy",
+]
+PHASE2_NUMERIC_METRIC_COLUMNS = ["auc", "balanced_accuracy", "f1_macro", "sensitivity", "specificity", "accuracy"]
+
+
+def check_audit_all_pass(audit_path: Path, site_order: list, roi_order: list) -> None:
+    """CORRECCIONES_V19 §8: revalida comparability_audit.csv en la Fase 2,
+    de forma independiente de lo que ya validó la Fase 1 -- protege contra un
+    archivo intermedio corrupto o editado a mano entre ambas fases."""
     audit = pd.read_csv(audit_path)
-    if len(audit) != 16 or not (audit["status"] == "PASS").all():
+    expected_combos = {(s, r) for s in site_order for r in roi_order}
+    actual_combos = set(zip(audit["site"], audit["roi_set"]))
+    if len(audit) != 16:
+        raise ValidationError(f"comparability_audit.csv: {len(audit)} filas, se esperaban 16 (ver {audit_path})")
+    if audit.duplicated(subset=["site", "roi_set"]).any():
+        raise ValidationError("comparability_audit.csv: combinaciones (site, roi_set) duplicadas")
+    missing, extra = expected_combos - actual_combos, actual_combos - expected_combos
+    if missing or extra:
+        raise ValidationError(
+            f"comparability_audit.csv: combinaciones (site, roi_set) inesperadas "
+            f"(faltan={missing}, sobran={extra})"
+        )
+    if not (audit["status"] == "PASS").all():
         bad = audit[audit["status"] != "PASS"]
-        raise SystemExit(
+        raise ValidationError(
             f"comparability_audit.csv no está en PASS para las 16 corridas "
             f"(ver {audit_path}); filas con problema:\n{bad}"
         )
     if (audit["reconciliation_status"] != "PASS").any():
-        raise SystemExit("comparability_audit.csv: reconciliación con README no está en PASS en todas las filas.")
+        raise ValidationError("comparability_audit.csv: reconciliación con README no está en PASS en todas las filas.")
+
+
+def validate_subject_scores_for_phase2(
+    subject_scores: pd.DataFrame, site_order: list, roi_order: list, expected_subject_counts: dict
+) -> None:
+    """CORRECCIONES_V19 §8: revalida subject_scores.csv antes del bootstrap,
+    de forma independiente de la Fase 1."""
+    if list(subject_scores.columns) != EXPECTED_SUBJECT_SCORES_COLUMNS:
+        raise ValidationError(
+            f"subject_scores.csv: columnas {list(subject_scores.columns)}, "
+            f"se esperaba {EXPECTED_SUBJECT_SCORES_COLUMNS}"
+        )
+    if len(subject_scores) != 1860:
+        raise ValidationError(f"subject_scores.csv: {len(subject_scores)} filas, se esperaban 1860")
+    if subject_scores.duplicated(subset=["site", "roi_set", "subject_id"]).any():
+        raise ValidationError("subject_scores.csv: combinaciones (site, roi_set, subject_id) duplicadas")
+
+    prob_cols = [f"y_prob_r{r}" for r in range(1, 6)]
+    probs = subject_scores[prob_cols].to_numpy(dtype=float)
+    if not np.isfinite(probs).all():
+        raise ValidationError("subject_scores.csv: probabilidades no finitas (NaN/inf) en columnas científicas")
+    if (probs < 0).any() or (probs > 1).any():
+        raise ValidationError("subject_scores.csv: probabilidades fuera de [0,1]")
+    if not set(subject_scores["y_true"].unique()).issubset({0, 1}):
+        raise ValidationError(f"subject_scores.csv: y_true fuera de {{0,1}}: {sorted(subject_scores['y_true'].unique())}")
+    if subject_scores[["y_true"] + prob_cols].isna().any().any():
+        raise ValidationError("subject_scores.csv: NaN en columnas científicas (y_true o y_prob_r*)")
+
+    for site in site_order:
+        sub = subject_scores[subject_scores["site"] == site]
+        n_expected = expected_subject_counts[site]
+        for roi in roi_order:
+            n = len(sub[sub["roi_set"] == roi])
+            if n != n_expected:
+                raise ValidationError(
+                    f"subject_scores.csv: {site}/{roi}: {n} filas, se esperaban {n_expected} (una por sujeto)"
+                )
+        ref_roi = roi_order[0]
+        ref = sub[sub["roi_set"] == ref_roi].set_index("subject_id")["y_true"]
+        for roi in roi_order[1:]:
+            cur = sub[sub["roi_set"] == roi].set_index("subject_id")["y_true"]
+            if set(cur.index) != set(ref.index):
+                raise ValidationError(
+                    f"subject_scores.csv: sujetos distintos entre ROI {ref_roi} y {roi} en sitio {site}"
+                )
+            if not (cur.reindex(ref.index) == ref).all():
+                raise ValidationError(
+                    f"subject_scores.csv: y_true distinto entre ROI {ref_roi} y {roi} en sitio {site}"
+                )
+
+
+def validate_metrics_by_repeat_for_phase2(metrics_by_repeat: pd.DataFrame, site_order: list, roi_order: list) -> None:
+    """CORRECCIONES_V19 §8: revalida metrics_by_repeat.csv antes del
+    bootstrap, de forma independiente de la Fase 1."""
+    if list(metrics_by_repeat.columns) != EXPECTED_METRICS_BY_REPEAT_COLUMNS:
+        raise ValidationError(
+            f"metrics_by_repeat.csv: columnas {list(metrics_by_repeat.columns)}, "
+            f"se esperaba {EXPECTED_METRICS_BY_REPEAT_COLUMNS}"
+        )
+    if len(metrics_by_repeat) != 80:
+        raise ValidationError(f"metrics_by_repeat.csv: {len(metrics_by_repeat)} filas, se esperaban 80")
+    if metrics_by_repeat.duplicated(subset=["site", "roi_set", "repeat"]).any():
+        raise ValidationError("metrics_by_repeat.csv: combinaciones (site, roi_set, repeat) duplicadas")
+    for site in site_order:
+        for roi in roi_order:
+            sub = metrics_by_repeat[(metrics_by_repeat["site"] == site) & (metrics_by_repeat["roi_set"] == roi)]
+            reps = sorted(sub["repeat"].tolist())
+            if reps != [1, 2, 3, 4, 5]:
+                raise ValidationError(f"metrics_by_repeat.csv: {site}/{roi}: repeticiones {reps}, se esperaba 1..5")
+            n_control = int(sub["n_control"].iloc[0])
+            n_adhd = int(sub["n_adhd"].iloc[0])
+            n_subjects = int(sub["n_subjects"].iloc[0])
+            if n_control + n_adhd != n_subjects:
+                raise ValidationError(
+                    f"metrics_by_repeat.csv: {site}/{roi}: n_control+n_adhd={n_control + n_adhd} != "
+                    f"n_subjects={n_subjects}"
+                )
+    vals = metrics_by_repeat[PHASE2_NUMERIC_METRIC_COLUMNS].to_numpy(dtype=float)
+    if not np.isfinite(vals).all():
+        raise ValidationError("metrics_by_repeat.csv: valores no finitos (NaN/inf) en columnas de métricas")
+    if (vals < 0).any() or (vals > 1).any():
+        raise ValidationError("metrics_by_repeat.csv: valores de métricas fuera de [0,1]")
+
+
+def validate_autoconsistency(
+    subject_scores: pd.DataFrame, metrics_by_repeat: pd.DataFrame, site_order: list, roi_order: list,
+    atol: float = 1e-12,
+) -> None:
+    """CORRECCIONES_V19 §8: recalcula las seis métricas de cada una de las 80
+    combinaciones (site, roi_set, repeat) directamente desde
+    subject_scores.csv y las compara con metrics_by_repeat.csv dentro de una
+    tolerancia absoluta de 1e-12. Detiene la ejecución antes del bootstrap si
+    alguna métrica fue alterada entre la Fase 1 y la Fase 2."""
+    for site in site_order:
+        for roi in roi_order:
+            sub = subject_scores[(subject_scores["site"] == site) & (subject_scores["roi_set"] == roi)]
+            y_true = sub["y_true"].to_numpy()
+            for r in range(1, 6):
+                y_prob = sub[f"y_prob_r{r}"].to_numpy()
+                recomputed = metrics_from_arrays(y_true, y_prob)
+                row_df = metrics_by_repeat[
+                    (metrics_by_repeat["site"] == site) & (metrics_by_repeat["roi_set"] == roi)
+                    & (metrics_by_repeat["repeat"] == r)
+                ]
+                if len(row_df) != 1:
+                    raise ValidationError(
+                        f"autoconsistencia: {len(row_df)} filas para {site}/{roi}/repeat {r}, se esperaba 1"
+                    )
+                row = row_df.iloc[0]
+                for metric_name in PHASE2_NUMERIC_METRIC_COLUMNS:
+                    diff = abs(float(recomputed[metric_name]) - float(row[metric_name]))
+                    if diff > atol:
+                        raise ValidationError(
+                            f"autoconsistencia falló para {site}/{roi}/repeat {r}/{metric_name}: "
+                            f"recalculado={recomputed[metric_name]!r} vs metrics_by_repeat.csv={row[metric_name]!r} "
+                            f"(diferencia {diff!r} > tolerancia {atol!r})"
+                        )
 
 
 def point_estimates(metrics_by_repeat: pd.DataFrame, site_order: list, roi_order: list) -> pd.DataFrame:
@@ -106,7 +269,8 @@ def build_prob_tensor(subject_scores: pd.DataFrame, site: str, roi_order: list) 
 
 
 def bootstrap_site(tensor: np.ndarray, y_true: np.ndarray, roi_order: list, n_iter: int, seed: int,
-                    rng: np.random.Generator | None = None) -> dict:
+                    rng: np.random.Generator | None = None, site: str | None = None,
+                    progress_every: int = 1000) -> dict:
     """Bootstrap estratificado por clase, pareado entre tamaños/repeticiones/métricas.
 
     Devuelve dict[(roi, metric)] -> np.ndarray de forma (n_iter,) con la media
@@ -120,6 +284,12 @@ def bootstrap_site(tensor: np.ndarray, y_true: np.ndarray, roi_order: list, n_it
     con la misma semilla; se usa únicamente para verificar el pipeline en
     entornos con límite de tiempo por invocación, nunca desde la interfaz de
     línea de comandos documentada.
+
+    ``site`` y ``progress_every`` solo controlan un mensaje de progreso
+    impreso cada ``progress_every`` iteraciones (CORRECCIONES_V19 §10). La
+    condición de impresión no llama al RNG, no cambia el orden de los
+    bucles, no cambia los índices bootstrap y no guarda los remuestreos
+    crudos: el resultado con y sin mensajes es numéricamente idéntico.
     """
     if rng is None:
         rng = np.random.default_rng(seed)
@@ -128,6 +298,7 @@ def bootstrap_site(tensor: np.ndarray, y_true: np.ndarray, roi_order: list, n_it
     n_control, n_adhd = len(control_idx), len(adhd_idx)
     n_roi = len(roi_order)
     n_metrics = len(ALL_BOOTSTRAP_METRICS)
+    site_label = site if site is not None else "?"
 
     draws = np.empty((n_iter, n_roi, n_metrics), dtype=np.float64)
 
@@ -145,6 +316,10 @@ def bootstrap_site(tensor: np.ndarray, y_true: np.ndarray, roi_order: list, n_it
                 repeat_vals[r, :] = [m[name] for name in ALL_BOOTSTRAP_METRICS]
             draws[it, j, :] = repeat_vals.mean(axis=0)
 
+        if progress_every and (it + 1) % progress_every == 0:
+            pct = 100.0 * (it + 1) / n_iter
+            print(f"[bootstrap] {site_label} · {it + 1}/{n_iter} iteraciones · {pct:.0f}%")
+
     result = {}
     for j, roi in enumerate(roi_order):
         for k, metric in enumerate(ALL_BOOTSTRAP_METRICS):
@@ -155,6 +330,30 @@ def bootstrap_site(tensor: np.ndarray, y_true: np.ndarray, roi_order: list, n_it
 def bilateral_ci(draws: np.ndarray) -> tuple[float, float]:
     lo, hi = np.quantile(draws, [0.025, 0.975], method="linear")
     return float(lo), float(hi)
+
+
+def compute_primary_delta(auc_12: float, auc_116: float) -> float:
+    """Convención de signo del contraste principal: siempre 12 menos 116
+    (sección 14, control 8 de las instrucciones v1.5)."""
+    return auc_12 - auc_116
+
+
+PRECISION_DIAGNOSTICS_COLUMNS = [
+    "site", "n_subjects", "delta_auc", "bootstrap_standard_error",
+    "bilateral_ci_low", "bilateral_ci_high", "bilateral_interval_width",
+]
+
+
+def build_precision_diagnostics_row(
+    site: str, n_subjects: int, delta_auc: float, se: float, lo: float, hi: float
+) -> dict:
+    """Fila de precision_diagnostics.csv: deliberadamente sin cuantiles ni
+    semi-amplitudes unilaterales (D2, sin margen de no inferioridad)."""
+    return {
+        "site": site, "n_subjects": n_subjects, "delta_auc": delta_auc,
+        "bootstrap_standard_error": se, "bilateral_ci_low": lo, "bilateral_ci_high": hi,
+        "bilateral_interval_width": hi - lo,
+    }
 
 
 def generate_d3_narrative(primary_df: pd.DataFrame) -> str:
@@ -206,6 +405,197 @@ def generate_d3_narrative(primary_df: pd.DataFrame) -> str:
     return text
 
 
+def compute_friedman_omnibus_by_site(
+    metrics_by_repeat: pd.DataFrame, site_order: list, roi_order: list,
+    n_permutations: int, seed: int,
+) -> pd.DataFrame:
+    """Prueba de Friedman (ómnibus, medidas repetidas) por sitio, sobre las
+    cinco repeticiones. Dentro de un sitio, las cinco repeticiones comparten
+    exactamente los mismos folds entre los cuatro tamaños de ROI (verificado
+    empíricamente sobre folds.csv), por lo que la comparación es pareada, no
+    de grupos independientes.
+
+    Exploratoria y post-hoc: se agrega a pedido de una revisión externa, no
+    forma parte de las instrucciones v1.5 ni del plan 5.6. Ver README,
+    sección "Prueba de hipótesis exploratoria", para la justificación y las
+    salvedades (incluida la exposición previa a los resultados, D2/
+    preregistration_status).
+
+    Reporta el p-valor asintótico chi-cuadrado (scipy.stats.friedmanchisquare)
+    y un p-valor de permutación: con solo n=5 bloques, la aproximación
+    asintótica es poco confiable, así que se complementa permutando, dentro
+    de cada bloque (repetición) de forma independiente, la asignación de
+    rangos entre los cuatro tamaños de ROI bajo la hipótesis nula de
+    intercambiabilidad -- equivalente a la prueba exacta, aproximada por
+    Monte Carlo con `n_permutations` remuestreos y semilla fija.
+    """
+    rng = np.random.default_rng(seed)
+    k = len(roi_order)
+    rows = []
+    for site in site_order:
+        sub = metrics_by_repeat[metrics_by_repeat["site"] == site]
+        mat = np.empty((5, k), dtype=np.float64)
+        for j, roi in enumerate(roi_order):
+            vals = sub[sub["roi_set"] == roi].sort_values("repeat")["auc"].to_numpy()
+            if len(vals) != 5:
+                raise SystemExit(f"Friedman: {site} ROI {roi} no tiene 5 repeticiones (tiene {len(vals)}).")
+            mat[:, j] = vals
+        n = mat.shape[0]
+
+        stat_asym, p_asym = scipy_stats.friedmanchisquare(*[mat[:, j] for j in range(k)])
+
+        ranks = np.apply_along_axis(scipy_stats.rankdata, 1, mat)
+        R = ranks.sum(axis=0)
+        stat_obs = (12 * n) / (k * (k + 1)) * np.sum(R ** 2) - 3 * n * (k + 1)
+
+        rand_vals = rng.random((n_permutations, n, k))
+        perm_ranks = np.argsort(np.argsort(rand_vals, axis=2), axis=2) + 1
+        Rp = perm_ranks.sum(axis=1)
+        stat_perm = (12 * n) / (k * (k + 1)) * np.sum(Rp ** 2, axis=1) - 3 * n * (k + 1)
+        p_perm = float(np.mean(stat_perm >= stat_obs - 1e-9))
+
+        rows.append({
+            "site": site, "n_repeats": n, "n_roi_groups": k,
+            "friedman_statistic": float(stat_obs),
+            "p_value_chi2_asymptotic": float(p_asym),
+            "p_value_permutation": p_perm,
+            "n_permutations": n_permutations,
+        })
+    out = pd.DataFrame(rows)
+    out["site"] = pd.Categorical(out["site"], categories=site_order, ordered=True)
+    return out.sort_values("site").reset_index(drop=True)
+
+
+def compute_wilcoxon_pairwise_by_site(
+    metrics_by_repeat: pd.DataFrame, site_order: list, roi_order: list,
+) -> pd.DataFrame:
+    """Wilcoxon signed-rank pareado (exacto, dado n=5) para las C(4,2)=6
+    comparaciones de tamaño de ROI dentro de cada sitio, con corrección Holm
+    dentro de cada sitio (familia de 6 comparaciones). Exploratoria y
+    post-hoc, mismo estatus que ``compute_friedman_omnibus_by_site``.
+
+    Con n=5 pares, el p-valor exacto de dos colas mínimo alcanzable es
+    2*(1/2**5) = 0.0625: ninguna comparación puede ser significativa a
+    alpha=0.05 antes de corrección, y Holm solo lo empeora. Se reporta
+    explícitamente (columna implícita: ninguna fila puede tener
+    p_value_raw < 0.0625); no se omite ni se suaviza en el texto.
+    """
+    pairs = list(itertools.combinations(roi_order, 2))
+    rows = []
+    for site in site_order:
+        sub = metrics_by_repeat[metrics_by_repeat["site"] == site]
+        site_rows = []
+        for roi_a, roi_b in pairs:
+            xa = sub[sub["roi_set"] == roi_a].sort_values("repeat")["auc"].to_numpy()
+            xb = sub[sub["roi_set"] == roi_b].sort_values("repeat")["auc"].to_numpy()
+            if len(xa) != 5 or len(xb) != 5:
+                raise SystemExit(f"Wilcoxon: {site} {roi_a}/{roi_b} no tienen 5 repeticiones cada uno.")
+            diff = xa - xb
+            n_nonzero = int(np.sum(diff != 0))
+            try:
+                stat_w, p_w = scipy_stats.wilcoxon(
+                    xa, xb, alternative="two-sided", mode="exact", zero_method="wilcox"
+                )
+            except ValueError:
+                stat_w, p_w = scipy_stats.wilcoxon(xa, xb, alternative="two-sided")
+            site_rows.append({
+                "site": site, "roi_a": roi_a, "roi_b": roi_b,
+                "mean_diff_auc": float(diff.mean()), "n_pairs_used": n_nonzero,
+                "wilcoxon_statistic": float(stat_w), "p_value_raw": float(p_w),
+            })
+        pvals = np.array([r["p_value_raw"] for r in site_rows])
+        reject, p_holm, _, _ = multipletests(pvals, alpha=0.05, method="holm")
+        for r, ph, rj in zip(site_rows, p_holm, reject):
+            r["p_value_holm"] = float(ph)
+            r["reject_holm_alpha05"] = bool(rj)
+        rows.extend(site_rows)
+    out = pd.DataFrame(rows)
+    out["site"] = pd.Categorical(out["site"], categories=site_order, ordered=True)
+    return out.sort_values(["site", "roi_a", "roi_b"]).reset_index(drop=True)
+
+
+def compute_input_hash_inventory(repo_root: Path, manifest: pd.DataFrame) -> dict:
+    """CORRECCIONES_V19 §4/§11: inventario determinista de SHA-256 de los
+    insumos protegidos, capturado al inicio y al final de la ejecución
+    productiva. ``results_read_only`` se calcula comparando dos llamadas a
+    esta función (antes/después), nunca a partir de la disponibilidad de
+    Git. Excluye ``__pycache__`` y archivos ocultos de sistema (por ejemplo
+    ``.DS_Store``) bajo ``src/``: son artefactos derivados que cambian sin
+    que el código fuente cambie, y su inclusión generaría falsos positivos.
+    """
+    results_readme_path = repo_root / "results" / "README.md"
+    run_artifacts = {}
+    for _, row in manifest.sort_values(["site", "roi_set"]).iterrows():
+        run_dir = repo_root / row["relative_path"]
+        key = f"{row['site']}_{row['roi_set']}"
+        run_artifacts[key] = {
+            a: sha256_file(run_dir / a) for a in REQUIRED_ARTIFACTS if (run_dir / a).exists()
+        }
+
+    requirements_path = repo_root / "requirements.txt"
+    notebook_path = repo_root / "tdha_experimentos.ipynb"
+    src_dir = repo_root / "src"
+    src_hashes = {}
+    if src_dir.is_dir():
+        for p in sorted(src_dir.rglob("*")):
+            if not p.is_file() or "__pycache__" in p.parts or p.name.startswith("."):
+                continue
+            src_hashes[str(p.relative_to(repo_root))] = sha256_file(p)
+
+    return {
+        "results_readme_sha256": sha256_file(results_readme_path) if results_readme_path.exists() else None,
+        "run_artifacts": run_artifacts,
+        "protected_files": {
+            "requirements_txt_sha256": sha256_file(requirements_path) if requirements_path.exists() else None,
+            "tdha_experimentos_ipynb_sha256": sha256_file(notebook_path) if notebook_path.exists() else None,
+            "src": src_hashes,
+        },
+    }
+
+
+def hash_inventory_fingerprint(inventory: dict) -> str:
+    """Huella agregada determinista de un inventario de hashes (para
+    comparar antes/después en una sola cadena, además de la comparación
+    campo por campo)."""
+    canonical = json.dumps(inventory, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def get_git_status(repo_root: Path) -> tuple[str | None, list[str] | None, str]:
+    """(commit, status_lines, provenance_status). Si Git no está disponible
+    -por ejemplo, ejecutando desde un ZIP en Colab- devuelve (None, None,
+    "unavailable"): CORRECCIONES_V19 §11 exige no inventar un commit ficticio
+    ni una lista vacía en ese caso (una lista vacía se leería, incorrectamente,
+    como "no hay cambios")."""
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=repo_root, stderr=subprocess.DEVNULL
+        ).decode().strip()
+        status_lines = subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=repo_root, stderr=subprocess.DEVNULL
+        ).decode().splitlines()
+        return commit, status_lines, "available"
+    except Exception:
+        return None, None, "unavailable"
+
+
+def build_run_hashes(manifest: pd.DataFrame, repo_root: Path) -> list[dict]:
+    """CORRECCIONES_V19 §11.1: config_hash, run_id y los tres SHA-256 ya
+    registrados, para cada una de las 16 corridas del manifiesto."""
+    run_hashes = []
+    for _, row in manifest.sort_values(["site", "roi_set"]).iterrows():
+        run_dir = repo_root / row["relative_path"]
+        run_cfg = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
+        run_hashes.append({
+            "site": row["site"], "roi_set": int(row["roi_set"]), "run_id": row["run_id"],
+            "config_hash": run_cfg.get("config_hash"),
+            "config_json_sha256": sha256_file(run_dir / "config.json"),
+            "predictions_val_csv_sha256": sha256_file(run_dir / "predictions_val.csv"),
+            "folds_csv_sha256": sha256_file(run_dir / "folds.csv"),
+        })
+    return run_hashes
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", required=True)
@@ -217,9 +607,31 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = Path(args.repo_root).resolve()
+
+    # CORRECCIONES_V19 §11: estado de Git capturado al inicio, antes de
+    # cualquier cómputo (se recaptura al final para distinguir cambios
+    # preexistentes de cambios nuevos).
+    git_commit_before, git_status_before, git_provenance_status = get_git_status(repo_root)
+
+    plan_path = repo_root / "analysis" / "roi_comparison" / "analysis_plan.md"
+    if not plan_path.exists():
+        print(f"ERROR: no se encontró el plan canónico en {plan_path}.", file=sys.stderr)
+        return 1
+    plan_sha256_early = sha256_file(plan_path)
+    if plan_sha256_early != CANONICAL_PLAN_SHA256:
+        print(
+            f"ERROR: analysis_plan.md no coincide con el hash canónico del plan 5.6 aprobado.\n"
+            f"  esperado: {CANONICAL_PLAN_SHA256}\n"
+            f"  actual:   {plan_sha256_early}",
+            file=sys.stderr,
+        )
+        return 1
+
     config = load_config(args.config)
-    if config.get("noninferiority_margin") is not None or config.get("noninferiority_margin_rationale") is not None:
-        print("ERROR: noninferiority_margin / noninferiority_margin_rationale deben ser null (D2).", file=sys.stderr)
+    try:
+        validate_analysis_config(config)
+    except ValidationError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
         return 1
 
     site_order = config["site_order"]
@@ -229,6 +641,13 @@ def main() -> int:
     ci_level = config["ci_level"]
     if abs(ci_level - 0.95) > 1e-9:
         raise SystemExit("ci_level distinto de 0.95 no está soportado por esta implementación (D2/plan 5.6).")
+    hyp_test_n_perm = config.get("hypothesis_test_permutation_iterations")
+    hyp_test_seed = config.get("hypothesis_test_permutation_seed")
+    if hyp_test_n_perm is None or hyp_test_seed is None:
+        raise SystemExit(
+            "analysis_config.json debe definir hypothesis_test_permutation_iterations "
+            "y hypothesis_test_permutation_seed."
+        )
 
     input_dir = Path(args.input_dir)
     output_dir = Path(args.output_dir)
@@ -239,13 +658,33 @@ def main() -> int:
         d.mkdir(parents=True, exist_ok=True)
 
     audit_path = output_dir / "tables" / "comparability_audit.csv"
-    check_audit_all_pass(audit_path)
-
     manifest = load_manifest(args.manifest)
     subject_scores = pd.read_csv(input_dir / "subject_scores.csv", dtype={"subject_id": str})
     metrics_by_repeat = pd.read_csv(input_dir / "metrics_by_repeat.csv")
 
-    out_files = {
+    # CORRECCIONES_V19 §4/§11: inventario de hashes de insumos, capturado
+    # antes de iniciar el bootstrap (se recaptura al final).
+    input_hash_inventory_before = compute_input_hash_inventory(repo_root, manifest)
+
+    # CORRECCIONES_V19 §8: revalidar todas las entradas derivadas de la Fase 1
+    # antes de iniciar el bootstrap; no producir ninguna tabla científica si
+    # algo falla aquí. Independiente de lo que ya validó build_analysis_dataset.py.
+    try:
+        check_audit_all_pass(audit_path, site_order, roi_order)
+        validate_subject_scores_for_phase2(subject_scores, site_order, roi_order, EXPECTED_SUBJECT_COUNTS)
+        validate_metrics_by_repeat_for_phase2(metrics_by_repeat, site_order, roi_order)
+        validate_autoconsistency(subject_scores, metrics_by_repeat, site_order, roi_order)
+    except ValidationError as e:
+        print(f"ERROR: validación de entradas de Fase 2 falló, no se produjo ninguna tabla científica: {e}",
+              file=sys.stderr)
+        return 1
+
+    # CORRECCIONES_V19 §9.1/§9.3: preflight completo sobre las rutas FINALES,
+    # antes de calcular nada; luego se calcula y serializa todo en un
+    # directorio de staging dentro de output_dir, y solo se promueve a las
+    # rutas finales (os.replace) si absolutamente todo -- tablas, figuras y
+    # el manifiesto -- terminó de generarse sin errores.
+    out_files_final = {
         "descriptive_performance.csv": tables_dir / "descriptive_performance.csv",
         "primary_12_vs_116.csv": tables_dir / "primary_12_vs_116.csv",
         "precision_diagnostics.csv": tables_dir / "precision_diagnostics.csv",
@@ -264,15 +703,37 @@ def main() -> int:
         "secondary_contrast_39_vs_116_forest.png": figures_dir / "secondary_contrast_39_vs_116_forest.png",
         "contrasts_vs_116_forest.svg": figures_dir / "contrasts_vs_116_forest.svg",
         "contrasts_vs_116_forest.png": figures_dir / "contrasts_vs_116_forest.png",
+        "friedman_omnibus_by_site.csv": tables_dir / "friedman_omnibus_by_site.csv",
+        "wilcoxon_pairwise_by_site.csv": tables_dir / "wilcoxon_pairwise_by_site.csv",
         "analysis_manifest.json": output_dir / "analysis_manifest.json",
     }
+    try:
+        resolve_and_check_output_paths(list(out_files_final.values()), output_dir)
+    except ValidationError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
     if not args.overwrite:
-        existing = [str(p) for p in out_files.values() if p.exists()]
+        existing = [str(p) for p in out_files_final.values() if p.exists()]
         if existing:
             print("ERROR: las siguientes salidas ya existen; use --overwrite para reemplazarlas:", file=sys.stderr)
             for p in existing:
                 print(f"  - {p}", file=sys.stderr)
             return 1
+
+    staging_dir = Path(tempfile.mkdtemp(prefix=".staging-", dir=str(output_dir)))
+    # Si el proceso termina (excepción no capturada, SystemExit, etc.) antes
+    # de la promoción final, este directorio de staging queda huérfano; el
+    # atexit lo limpia siempre, incluso si nunca se llega a la promoción.
+    atexit.register(lambda: shutil.rmtree(staging_dir, ignore_errors=True))
+    (staging_dir / "tables").mkdir(parents=True, exist_ok=True)
+    (staging_dir / "data").mkdir(parents=True, exist_ok=True)
+    (staging_dir / "figures").mkdir(parents=True, exist_ok=True)
+    # A partir de aquí, todo el cuerpo de la función escribe en el staging
+    # (out_files), nunca directamente en las rutas finales.
+    out_files = {
+        name: staging_dir / Path(final_path).relative_to(output_dir)
+        for name, final_path in out_files_final.items()
+    }
 
     # ---- 8.1 Estimación puntual -------------------------------------------------
     pts = point_estimates(metrics_by_repeat, site_order, roi_order)
@@ -283,7 +744,7 @@ def main() -> int:
     for site in site_order:
         t0 = time.perf_counter()
         tensor, y_true, subject_ids = build_prob_tensor(subject_scores, site, roi_order)
-        draws = bootstrap_site(tensor, y_true, roi_order, n_iter, seed)
+        draws = bootstrap_site(tensor, y_true, roi_order, n_iter, seed, site=site)
         bootstrap_by_site[site] = draws
         elapsed = time.perf_counter() - t0
         site_timings[site] = elapsed
@@ -313,7 +774,7 @@ def main() -> int:
     for site in site_order:
         auc12 = pts[(pts["site"] == site) & (pts["roi_set"] == 12)]["auc"].iloc[0]
         auc116 = pts[(pts["site"] == site) & (pts["roi_set"] == 116)]["auc"].iloc[0]
-        delta = auc12 - auc116
+        delta = compute_primary_delta(auc12, auc116)
         boot_delta = bootstrap_by_site[site][(12, "auc")] - bootstrap_by_site[site][(116, "auc")]
         lo, hi = bilateral_ci(boot_delta)
         se = float(boot_delta.std(ddof=1))
@@ -322,11 +783,7 @@ def main() -> int:
             "site": site, "auc_12": auc12, "auc_116": auc116,
             "delta_auc": delta, "bilateral_ci_low": lo, "bilateral_ci_high": hi,
         })
-        precision_rows.append({
-            "site": site, "n_subjects": n_subjects, "delta_auc": delta,
-            "bootstrap_standard_error": se, "bilateral_ci_low": lo, "bilateral_ci_high": hi,
-            "bilateral_interval_width": hi - lo,
-        })
+        precision_rows.append(build_precision_diagnostics_row(site, n_subjects, delta, se, lo, hi))
     primary_df = pd.DataFrame(primary_rows)
     primary_df.to_csv(out_files["primary_12_vs_116.csv"], index=False)
     precision_df = pd.DataFrame(precision_rows)
@@ -365,6 +822,22 @@ def main() -> int:
                 })
     secondary_intervals = pd.DataFrame(interval_rows)
     secondary_intervals.to_csv(out_files["secondary_metric_intervals.csv"], index=False)
+
+    # ---- Pruebas de hipótesis exploratorias (post-hoc, no preinscritas) ------------
+    # Agregadas a pedido de una revisión externa; no forman parte de las
+    # instrucciones v1.5 ni del plan 5.6. Diseño pareado/medidas repetidas
+    # (mismos folds entre tamaños de ROI dentro de un sitio, verificado
+    # empíricamente) -> Friedman (ómnibus) + Wilcoxon signed-rank pareado con
+    # Holm (6 comparaciones por sitio), no ANOVA/Tukey de grupos independientes.
+    # Ver README para la justificación completa, incluida la advertencia sobre
+    # el piso p=0.0625 con n=5 pares y la exposición previa a los resultados
+    # que ya afecta este mismo análisis (mismo problema que D2).
+    friedman_omnibus = compute_friedman_omnibus_by_site(
+        metrics_by_repeat, site_order, roi_order, hyp_test_n_perm, hyp_test_seed
+    )
+    friedman_omnibus.to_csv(out_files["friedman_omnibus_by_site.csv"], index=False)
+    wilcoxon_pairwise = compute_wilcoxon_pairwise_by_site(metrics_by_repeat, site_order, roi_order)
+    wilcoxon_pairwise.to_csv(out_files["wilcoxon_pairwise_by_site.csv"], index=False)
 
     # ---- 9. Análisis de errores (12 vs 116) -----------------------------------------
     error_rows = []
@@ -560,16 +1033,40 @@ def main() -> int:
     plt.close(fig_c)
 
     # ---- analysis_manifest.json ------------------------------------------------------
-    try:
-        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_root).decode().strip()
-    except Exception:
-        commit = None
-    try:
-        status_lines = subprocess.check_output(["git", "status", "--porcelain"], cwd=repo_root).decode().splitlines()
-    except Exception:
-        status_lines = []
-    changed_paths = [line[3:] for line in status_lines]
-    non_analysis_changes = [p for p in changed_paths if not p.startswith("analysis/")]
+    # CORRECCIONES_V19 §11: estado de Git y inventario de hashes AL FINAL,
+    # para compararlos contra las capturas "before" del inicio de main().
+    git_commit_after, git_status_after, git_provenance_status_after = get_git_status(repo_root)
+    # Si Git estuvo disponible al inicio pero no al final (o viceversa), no
+    # hay una comparación de estado coherente posible; se registra tal cual.
+    if git_provenance_status != git_provenance_status_after:
+        git_provenance_status = "inconsistent_before_after"
+
+    if git_status_before is None or git_status_after is None:
+        # CORRECCIONES_V19 §11: sin Git no se inventan listas vacías ni un
+        # commit ficticio; los campos quedan explícitamente en null.
+        changed_paths_before = None
+        changed_paths_after = None
+        non_analysis_changes = None
+    else:
+        changed_paths_before = [line[3:] for line in git_status_before]
+        changed_paths_after = [line[3:] for line in git_status_after]
+        non_analysis_changes = [p for p in changed_paths_after if not p.startswith("analysis/")]
+
+    input_hash_inventory_after = compute_input_hash_inventory(repo_root, manifest)
+    input_hash_inventory_fingerprint_before = hash_inventory_fingerprint(input_hash_inventory_before)
+    input_hash_inventory_fingerprint_after = hash_inventory_fingerprint(input_hash_inventory_after)
+    results_inputs_unchanged = (
+        input_hash_inventory_before["results_readme_sha256"] == input_hash_inventory_after["results_readme_sha256"]
+        and input_hash_inventory_before["run_artifacts"] == input_hash_inventory_after["run_artifacts"]
+    )
+    protected_files_unchanged = (
+        input_hash_inventory_before["protected_files"] == input_hash_inventory_after["protected_files"]
+    )
+    # CORRECCIONES_V19 §11: results_read_only se basa exclusivamente en la
+    # comparación de hashes antes/después, nunca en si Git estaba disponible
+    # ni en su salida (una lista de cambios vacía por ausencia de Git nunca
+    # debe leerse como "sin cambios").
+    results_read_only = results_inputs_unchanged
 
     import sklearn
     versions = {
@@ -580,24 +1077,23 @@ def main() -> int:
         "matplotlib": matplotlib.__version__,
     }
 
-    plan_path = repo_root / "analysis" / "roi_comparison" / "analysis_plan.md"
-    plan_sha256 = sha256_file(plan_path) if plan_path.exists() else None
+    # plan_path/plan_sha256_early ya se verificaron contra CANONICAL_PLAN_SHA256
+    # al inicio de main(), antes de cualquier cómputo; se reutilizan aquí.
+    plan_sha256 = plan_sha256_early
 
-    run_hashes = []
-    for _, row in manifest.sort_values(["site", "roi_set"]).iterrows():
-        run_dir = repo_root / row["relative_path"]
-        run_hashes.append({
-            "site": row["site"], "roi_set": int(row["roi_set"]), "run_id": row["run_id"],
-            "config_json_sha256": sha256_file(run_dir / "config.json"),
-            "predictions_val_csv_sha256": sha256_file(run_dir / "predictions_val.csv"),
-            "folds_csv_sha256": sha256_file(run_dir / "folds.csv"),
-        })
+    run_hashes = build_run_hashes(manifest, repo_root)
 
+    # CORRECCIONES_V19 §9.3: los hashes se calculan sobre los archivos de
+    # staging (los únicos que existen en este punto), pero la ruta registrada
+    # en el manifiesto es la ruta final prevista, no la de staging.
     output_hashes = {}
-    for name, path in out_files.items():
+    for name, staged_path in out_files.items():
         if name == "analysis_manifest.json":
             continue
-        output_hashes[name] = {"path": relative_to_repo(path, repo_root), "sha256": sha256_file(path)}
+        output_hashes[name] = {
+            "path": relative_to_repo(out_files_final[name], repo_root),
+            "sha256": sha256_file(staged_path),
+        }
     output_hashes["subject_scores.csv"] = {
         "path": relative_to_repo(input_dir / "subject_scores.csv", repo_root),
         "sha256": sha256_file(input_dir / "subject_scores.csv"),
@@ -622,14 +1118,48 @@ def main() -> int:
         "results_readme_sha256": sha256_file(repo_root / "results" / "README.md"),
         "generated_at": pd.Timestamp.now(tz="UTC").isoformat(),
         "command": " ".join(sys.argv),
-        "repo_commit": commit,
+        "git_provenance_status": git_provenance_status,
+        "repo_commit_before": git_commit_before,
+        "repo_commit_after": git_commit_after,
+        "changed_paths_before": changed_paths_before,
+        "changed_paths_after": changed_paths_after,
         "changed_paths_outside_analysis": non_analysis_changes,
+        "input_hash_inventory_fingerprint_before": input_hash_inventory_fingerprint_before,
+        "input_hash_inventory_fingerprint_after": input_hash_inventory_fingerprint_after,
+        "input_hash_inventory_before": input_hash_inventory_before,
+        "input_hash_inventory_after": input_hash_inventory_after,
+        "protected_files_unchanged": protected_files_unchanged,
         "versions": versions,
         "runs": run_hashes,
         "bootstrap": {
             "iterations": n_iter, "seed": seed, "rng": config["bootstrap_rng"],
             "seed_scope": config["bootstrap_seed_scope"], "method": config["bootstrap_method"],
             "quantile_method": config["bootstrap_quantile_method"], "ci_level": ci_level,
+        },
+        "hypothesis_test": {
+            "status": "exploratorio_post_hoc_no_preinscrito",
+            "design": "medidas_repetidas_pareadas_por_repeticion_mismos_folds_entre_tamanos_roi",
+            "omnibus_test": "friedman",
+            "omnibus_p_values_reported": ["chi2_asymptotic", "permutation"],
+            "pairwise_test": "wilcoxon_signed_rank_exact",
+            "pairwise_correction": "holm_dentro_de_cada_sitio_6_comparaciones",
+            "permutation_seed": hyp_test_seed,
+            "permutation_iterations": hyp_test_n_perm,
+            "wilcoxon_min_two_sided_p_with_n5": 0.0625,
+            "note": (
+                "Prueba agregada a pedido de una revision externa; no forma parte del "
+                "plan 5.6 ni de las instrucciones v1.5. Se agrega despues de haber "
+                "revisado extensamente las tablas e intervalos descriptivos, por lo que "
+                "hereda el mismo problema de exposicion previa a los resultados "
+                "documentado en preregistration_status: un resultado significativo aqui "
+                "es contexto adicional compatible con lo ya observado, no evidencia "
+                "independiente nueva. Con n=5 repeticiones pareadas, el p-valor exacto "
+                "de dos colas de Wilcoxon nunca puede ser menor a 0.0625, por lo que "
+                "ninguna comparacion por pares puede declararse significativa a "
+                "alpha=0.05 tras la correccion Holm, incluso si el patron es consistente "
+                "en las cinco repeticiones; esto es un limite de resolucion del diseno, "
+                "no evidencia de ausencia de diferencia."
+            ),
         },
         "timing_seconds": {**site_timings, "total": total_time},
         "prob_matrix_bytes_float64": int(prob_matrix_bytes),
@@ -656,7 +1186,12 @@ def main() -> int:
         "d3_narrative_generated": d3_narrative,
         "figure_vertical_limits": {"auc_panel_y_min": y_min, "auc_panel_y_max": y_max},
         "outputs": output_hashes,
-        "results_read_only": len(non_analysis_changes) == 0,
+        "results_read_only": results_read_only,
+        "results_read_only_method": (
+            "comparacion de hashes SHA-256 de results/README.md y de los 7 artefactos "
+            "oficiales de las 16 corridas, antes y despues de la ejecucion (no se infiere "
+            "de la disponibilidad de Git; ver input_hash_inventory_fingerprint_before/after)"
+        ),
         "limitation": (
             "Los intervalos bootstrap estan condicionados a las predicciones, entrenamientos y "
             "cinco particiones de validacion cruzada existentes; no capturan la variabilidad de "
@@ -666,6 +1201,18 @@ def main() -> int:
     with open(out_files["analysis_manifest.json"], "w", encoding="utf-8") as f:
         json.dump(manifest_out, f, indent=2, ensure_ascii=False, sort_keys=False)
 
+    # CORRECCIONES_V19 §9.3: promover TODO (tablas, figuras y el manifiesto)
+    # solo ahora que todo el cálculo y todas las serializaciones de staging
+    # terminaron sin errores. analysis_manifest.json se promueve al final,
+    # después de todas las demás salidas.
+    non_manifest = [k for k in out_files if k != "analysis_manifest.json"]
+    for name in non_manifest:
+        out_files_final[name].parent.mkdir(parents=True, exist_ok=True)
+        os.replace(out_files[name], out_files_final[name])
+    out_files_final["analysis_manifest.json"].parent.mkdir(parents=True, exist_ok=True)
+    os.replace(out_files["analysis_manifest.json"], out_files_final["analysis_manifest.json"])
+    shutil.rmtree(staging_dir, ignore_errors=True)
+
     print(f"Análisis estadístico completo. Tiempo total bootstrap: {total_time:.1f}s "
           f"({total_time / 60:.1f} min) para {n_iter} iteraciones x {len(site_order)} sitios.")
     print(f"  descriptive_performance.csv: {len(descriptive_performance)} filas")
@@ -673,6 +1220,8 @@ def main() -> int:
     print(f"  precision_diagnostics.csv: {len(precision_df)} filas")
     print(f"  secondary_pairwise_comparisons.csv: {len(secondary_pairwise)} filas")
     print(f"  secondary_metric_intervals.csv: {len(secondary_intervals)} filas")
+    print(f"  friedman_omnibus_by_site.csv: {len(friedman_omnibus)} filas")
+    print(f"  wilcoxon_pairwise_by_site.csv: {len(wilcoxon_pairwise)} filas")
     print(f"  error_analysis_long.csv: {len(error_long)} filas")
     print(f"  subject_error_profiles.csv: {len(subject_error_profiles)} filas")
     return 0

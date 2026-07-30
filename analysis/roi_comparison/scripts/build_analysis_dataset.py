@@ -25,8 +25,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -93,15 +95,89 @@ WITHIN_SITE_SCALAR_FIELDS = [
     "window",
     "step",
     "class_weight",
+    # CORRECCIONES_V19 §7.2: campos científicos adicionales.
+    "windowing_preset",
+    "fisher_z",
+    "constant_policy",
+    "clipnorm",
+    "deterministic",
+    "mixed_precision",
 ]
 # Campos anidados (dict) que deben coincidir dentro de un mismo sitio.
-WITHIN_SITE_DICT_FIELDS = ["arch", "class_balance"]
+WITHIN_SITE_DICT_FIELDS = ["arch", "class_balance", "windowing"]
+
+# Parámetros ajenos a este baseline: deben permanecer null en cada una de las
+# 16 corridas aprobadas (CORRECCIONES_V19 §7.2). No es una comparación entre
+# tamaños dentro de un sitio; es una condición por corrida individual.
+EXPECTED_NULL_FIELDS = ["representation_seed", "random_subset", "n_random_sets", "exclude_roi_set"]
+
+# CORRECCIONES_V19 §7.1: config_hash debe ser exactamente 8 hex minúsculos.
+CONFIG_HASH_RE = re.compile(r"^[0-9a-f]{8}$")
+
+# CORRECCIONES_V19 §7.1: único artefacto extra documentado y aceptado, y solo
+# para esta corrida puntual. Cualquier otro artefacto extra, en cualquier
+# corrida, debe fallar la auditoría.
+ACCEPTED_EXTRA_ARTIFACTS = {("Peking", 116): {"peking_dummy.txt"}}
 
 CONFIG_COLUMN_TO_MANIFEST = {"site": "site", "roi_set": "roi_set", "run_id": "run_id"}
+
+# Decisiones científicas congeladas de analysis_config.json (plan 5.6,
+# resolución D1-D5 aprobada por el equipo). validate_analysis_config() es el
+# único validador de estos campos; run_statistical_analysis.py lo importa y
+# reutiliza en vez de duplicar esta lista (CORRECCIONES_V19 §6).
+FROZEN_ANALYSIS_CONFIG = {
+    "analysis_schema_version": 1,
+    "plan_version": "5.6",
+    "site_order": ["NYU", "Peking", "NeuroIMAGE", "OHSU"],
+    "roi_order": [12, 18, 39, 116],
+    "primary_metric": "mean_repeat_oof_auc",
+    "repeat_aggregation": "metric_then_mean",
+    "secondary_metrics": ["balanced_accuracy", "f1_macro", "sensitivity", "specificity"],
+    "audit_metrics": ["accuracy"],
+    "classification_threshold": 0.5,
+    "positive_label": 1,
+    "ci_level": 0.95,
+    "noninferiority_margin": None,
+    "noninferiority_margin_rationale": None,
+    "bootstrap_iterations": 10000,
+    "bootstrap_seed": 42,
+    "bootstrap_rng": "numpy_pcg64",
+    "bootstrap_seed_scope": "reset_per_site",
+    "bootstrap_subject_order": "subject_id_ascending",
+    "bootstrap_quantile_method": "linear",
+    "bootstrap_method": "paired_stratified_percentile",
+    "readme_round_decimals": 2,
+}
 
 
 class ValidationError(Exception):
     """Fallo bloqueante de validación: archivo, corrida y regla incumplida."""
+
+
+def validate_analysis_config(config: dict) -> None:
+    """Valida explícitamente las decisiones científicas congeladas de
+    ``analysis_config.json`` (CORRECCIONES_V19 §6). Cualquier discrepancia
+    detiene la ejecución con el campo, el valor recibido y el valor
+    esperado; no corrige el JSON automáticamente ni acepta un valor
+    alternativo por línea de comandos.
+
+    No rechaza claves adicionales puramente documentales que no estén en
+    ``FROZEN_ANALYSIS_CONFIG`` (por ejemplo, parámetros de una prueba
+    exploratoria agregada después de este plan): valida únicamente las
+    decisiones científicas ya aprobadas.
+    """
+    for field, expected in FROZEN_ANALYSIS_CONFIG.items():
+        if field not in config:
+            raise ValidationError(
+                f"analysis_config.json: falta el campo congelado {field!r} "
+                f"(se esperaba {expected!r})"
+            )
+        actual = config[field]
+        if actual != expected:
+            raise ValidationError(
+                f"analysis_config.json: campo {field!r} tiene valor {actual!r}, "
+                f"se esperaba el valor congelado {expected!r}"
+            )
 
 
 def sha256_file(path: Path) -> str:
@@ -197,6 +273,34 @@ def validate_run_config_matches_manifest(cfg: dict, row: pd.Series, run_dir: Pat
     if cfg.get("seed") != 42:
         raise ValidationError(f"{run_dir}: seed={cfg.get('seed')!r}, se esperaba 42")
 
+    # CORRECCIONES_V19 §7.1: identidad de la carpeta y formato de config_hash.
+    # No se reimplementa el algoritmo histórico que produjo config_hash; solo
+    # se valida su forma y su coherencia con run_id.
+    if run_dir.name != row["run_id"]:
+        raise ValidationError(
+            f"{run_dir}: el nombre de la carpeta ({run_dir.name!r}) no coincide con "
+            f"run_id ({row['run_id']!r})"
+        )
+    config_hash = cfg.get("config_hash")
+    if not isinstance(config_hash, str) or not CONFIG_HASH_RE.match(config_hash):
+        raise ValidationError(
+            f"{run_dir}: config_hash={config_hash!r} no es una cadena de exactamente "
+            f"ocho caracteres hexadecimales minúsculos"
+        )
+    if not row["run_id"].endswith("_" + config_hash):
+        raise ValidationError(
+            f"{run_dir}: run_id ({row['run_id']!r}) no termina en '_' + config_hash "
+            f"({config_hash!r})"
+        )
+
+    # CORRECCIONES_V19 §7.2: parámetros ajenos a este baseline deben ser null.
+    for field in EXPECTED_NULL_FIELDS:
+        if cfg.get(field) is not None:
+            raise ValidationError(
+                f"{run_dir}: campo {field!r} esperado en null, tiene valor {cfg.get(field)!r} "
+                f"(parámetro ajeno al baseline aprobado)"
+            )
+
 
 def validate_within_site_comparability(site: str, configs_by_roi: dict[int, dict]) -> None:
     roi_sets = sorted(configs_by_roi)
@@ -235,6 +339,19 @@ def validate_within_site_comparability(site: str, configs_by_roi: dict[int, dict
                     f"{candidate_cfg.get('roi_indices_hash')!r}, se esperaba {expected_hash!r} "
                     f"(mapa congelado)"
                 )
+
+
+def validate_folds_hash_within_site(site: str, folds_hash_by_roi: dict[int, str]) -> None:
+    """CORRECCIONES_V19 §7.3: folds.csv debe ser byte-idéntico (mismo SHA-256)
+    entre los cuatro tamaños de ROI de un mismo sitio. Si difieren, no se
+    intenta determinar cuál archivo debería reemplazar a los demás: se falla
+    y se reportan los hashes encontrados."""
+    hashes = set(folds_hash_by_roi.values())
+    if len(hashes) > 1:
+        raise ValidationError(
+            f"sitio {site}: folds.csv difiere entre tamaños de ROI (deben ser idénticos): "
+            f"{folds_hash_by_roi}"
+        )
 
 
 def validate_roi_indices_hash_across_sites(all_configs: dict[str, dict[int, dict]], roi_order: list) -> None:
@@ -307,14 +424,85 @@ def validate_predictions(run_dir: Path, preds: pd.DataFrame, folds: pd.DataFrame
         if set(sub["y_true"].unique()) != {0, 1}:
             raise ValidationError(f"{run_dir}: repetición {r} no contiene ambas clases")
 
-    outer_val = folds[folds["split"] == "outer_val"][["repeat", "fold", "subject_id"]]
+    # CORRECCIONES_V19 §7.4: correspondencia exacta predicción <-> outer_val,
+    # en ambos sentidos, por (repeat, fold, subject, subject_id). No basta con
+    # que las predicciones sean subconjunto de outer_val: el caso inverso
+    # también se valida (ninguna fila outer_val sin predicción).
+    if not np.issubdtype(preds["subject"].dtype, np.integer) and not (
+        np.issubdtype(preds["subject"].dtype, np.number) and (preds["subject"] % 1 == 0).all()
+    ):
+        raise ValidationError(f"{run_dir}: la columna subject de predictions_val.csv no es entera")
+    if preds["subject_id"].isna().any():
+        raise ValidationError(f"{run_dir}: predictions_val.csv tiene subject_id nulo")
+
+    key_cols = ["repeat", "fold", "subject", "subject_id"]
+    outer_val = folds[folds["split"] == "outer_val"][key_cols]
+    if outer_val.duplicated().any():
+        dup = outer_val[outer_val.duplicated()].head(5).to_dict("records")
+        raise ValidationError(f"{run_dir}: folds.csv tiene filas outer_val duplicadas: {dup}")
+    if preds[key_cols].duplicated().any():
+        dup = preds[preds[key_cols].duplicated()].head(5).to_dict("records")
+        raise ValidationError(f"{run_dir}: predictions_val.csv tiene claves (repeat,fold,subject,subject_id) duplicadas: {dup}")
+
     outer_key = set(map(tuple, outer_val.itertuples(index=False, name=None)))
-    pred_key = set(map(tuple, preds[["repeat", "fold", "subject_id"]].itertuples(index=False, name=None)))
+    pred_key = set(map(tuple, preds[key_cols].itertuples(index=False, name=None)))
+    if len(outer_val) != len(preds):
+        raise ValidationError(
+            f"{run_dir}: {len(preds)} filas en predictions_val.csv vs {len(outer_val)} filas "
+            f"outer_val en folds.csv; deben tener el mismo número de filas"
+        )
     if pred_key - outer_key:
         missing = list(pred_key - outer_key)[:5]
         raise ValidationError(
             f"{run_dir}: {len(pred_key - outer_key)} predicciones sin fila outer_val correspondiente "
             f"en folds.csv (ejemplos: {missing})"
+        )
+    if outer_key - pred_key:
+        missing = list(outer_key - pred_key)[:5]
+        raise ValidationError(
+            f"{run_dir}: {len(outer_key - pred_key)} filas outer_val de folds.csv sin predicción "
+            f"correspondiente (ejemplos: {missing})"
+        )
+
+    # Correspondencia estable subject <-> subject_id dentro de esta corrida.
+    mapping = preds[["subject", "subject_id"]].drop_duplicates()
+    if mapping["subject"].nunique() != mapping["subject_id"].nunique():
+        raise ValidationError(f"{run_dir}: subject <-> subject_id no es estable/biyectivo en predictions_val.csv")
+
+
+def validate_metrics_val_structure(run_dir: Path, metrics_val: pd.DataFrame, preds: pd.DataFrame) -> None:
+    """CORRECCIONES_V19 §7.5: integridad estructural de metrics_val.csv.
+
+    Sigue siendo únicamente un control estructural; sus métricas no se usan
+    para el estimando. No exige que los folds se reinicien en 1 dentro de
+    cada repetición (numeración global 1..50, ver §7 de las instrucciones).
+    """
+    required_cols = {"repeat", "fold"}
+    missing_cols = required_cols - set(metrics_val.columns)
+    if missing_cols:
+        raise ValidationError(f"{run_dir}: metrics_val.csv: faltan columnas {sorted(missing_cols)}")
+    if len(metrics_val) != 50:
+        raise ValidationError(f"{run_dir}: metrics_val.csv tiene {len(metrics_val)} filas, se esperaban 50")
+    if metrics_val.duplicated(subset=["repeat", "fold"]).any():
+        dup = metrics_val[metrics_val.duplicated(subset=["repeat", "fold"])][["repeat", "fold"]].to_dict("records")
+        raise ValidationError(f"{run_dir}: metrics_val.csv tiene (repeat,fold) duplicados: {dup}")
+    reps = sorted(metrics_val["repeat"].unique())
+    if reps != [1, 2, 3, 4, 5]:
+        raise ValidationError(f"{run_dir}: metrics_val.csv: repeticiones {reps}, se esperaba 1..5")
+    for r in reps:
+        n_folds = metrics_val.loc[metrics_val["repeat"] == r, "fold"].nunique()
+        if n_folds != 10:
+            raise ValidationError(
+                f"{run_dir}: metrics_val.csv: repetición {r} tiene {n_folds} folds distintos, se esperaban 10"
+            )
+    mv_pairs = set(map(tuple, metrics_val[["repeat", "fold"]].drop_duplicates().itertuples(index=False, name=None)))
+    if len(mv_pairs) != 50:
+        raise ValidationError(f"{run_dir}: metrics_val.csv: {len(mv_pairs)} pares (repeat,fold) distintos, se esperaban 50")
+    pred_pairs = set(map(tuple, preds[["repeat", "fold"]].drop_duplicates().itertuples(index=False, name=None)))
+    if mv_pairs != pred_pairs:
+        raise ValidationError(
+            f"{run_dir}: metrics_val.csv y predictions_val.csv no comparten el mismo conjunto de "
+            f"pares (repeat,fold): diferencia={mv_pairs.symmetric_difference(pred_pairs)}"
         )
 
 
@@ -519,6 +707,62 @@ def reconcile_with_readme(metrics_by_repeat: pd.DataFrame, readme_path: Path, de
     return rows
 
 
+def resolve_and_check_output_paths(paths: list[Path], output_dir: Path) -> None:
+    """CORRECCIONES_V19 §9.1: cada ruta de salida debe estar dentro del
+    directorio de salida autorizado."""
+    output_dir_resolved = Path(output_dir).resolve()
+    for p in paths:
+        resolved = Path(p).resolve()
+        try:
+            resolved.relative_to(output_dir_resolved)
+        except ValueError:
+            raise ValidationError(
+                f"ruta de salida fuera del directorio autorizado: {resolved} "
+                f"(se esperaba bajo {output_dir_resolved})"
+            )
+
+
+def preflight_outputs(paths: list[Path], output_dir: Path, overwrite: bool) -> list[str]:
+    """CORRECCIONES_V19 §9.1: preflight completo antes de calcular. Devuelve
+    la lista de mensajes de error (vacía si se puede proceder)."""
+    resolve_and_check_output_paths(paths, output_dir)
+    if overwrite:
+        return []
+    existing = [str(p) for p in paths if Path(p).exists()]
+    return existing
+
+
+def stage_csv(df: pd.DataFrame, final_path: Path) -> Path:
+    """CORRECCIONES_V19 §9.2/§9.3: serializa df a un archivo temporal en el
+    mismo directorio que final_path. No lo promueve al nombre final: eso
+    queda a cargo del llamador, que decide cuándo hacerlo con os.replace,
+    solo después de que todas las serializaciones de un lote terminaron
+    correctamente."""
+    final_path = Path(final_path)
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{final_path.name}.", suffix=".tmp", dir=str(final_path.parent))
+    os.close(fd)
+    tmp_path = Path(tmp_name)
+    df.to_csv(tmp_path, index=False)
+    return tmp_path
+
+
+def promote_staged(staged: list[tuple[Path, Path]]) -> None:
+    """Promueve (os.replace) todos los pares (tmp_path, final_path) de una
+    vez; si algo en el llamador falló antes de llegar aquí, ningún archivo
+    final se promueve (ver limpieza de temporales en el bloque except del
+    llamador)."""
+    for tmp_path, final_path in staged:
+        os.replace(tmp_path, final_path)
+
+
+def cleanup_staged(staged: list[tuple[Path, Path]]) -> None:
+    for tmp_path, _ in staged:
+        tmp_path = Path(tmp_path)
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", required=True)
@@ -537,11 +781,28 @@ def main() -> int:
     tables_dir = output_dir / "tables"
 
     analysis_config = load_config_file(config_path)
+    try:
+        validate_analysis_config(analysis_config)
+    except ValidationError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
     site_order = analysis_config["site_order"]
     roi_order = analysis_config["roi_order"]
-    if analysis_config.get("noninferiority_margin") is not None or \
-       analysis_config.get("noninferiority_margin_rationale") is not None:
-        print("ERROR: noninferiority_margin / noninferiority_margin_rationale deben ser null (D2).", file=sys.stderr)
+
+    # CORRECCIONES_V19 §9.1: preflight completo antes de calcular nada.
+    audit_path = tables_dir / "comparability_audit.csv"
+    subject_scores_path = data_dir / "subject_scores.csv"
+    metrics_by_repeat_path = data_dir / "metrics_by_repeat.csv"
+    all_output_paths = [audit_path, subject_scores_path, metrics_by_repeat_path]
+    try:
+        existing = preflight_outputs(all_output_paths, output_dir, args.overwrite)
+    except ValidationError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if existing:
+        print("ERROR: las siguientes salidas ya existen; use --overwrite para reemplazarlas:", file=sys.stderr)
+        for p in existing:
+            print(f"  - {p}", file=sys.stderr)
         return 1
 
     manifest = load_manifest(manifest_path)
@@ -550,6 +811,7 @@ def main() -> int:
     error_messages = []
     all_configs: dict[str, dict[int, dict]] = {site: {} for site in site_order}
     all_preds: dict[tuple[str, int], pd.DataFrame] = {}
+    folds_hash_by_site: dict[str, dict[int, str]] = {site: {} for site in site_order}
 
     try:
         validate_manifest_structure(manifest, site_order, roi_order)
@@ -564,9 +826,11 @@ def main() -> int:
         audit = {
             "site": site, "roi_set": roi, "run_id": run_id, "relative_path": rel_path,
             "missing_artifacts": "", "extra_artifacts": "",
-            "config_schema_version": None, "n_predictions": None, "n_metrics_val_rows": None,
+            "config_schema_version": None, "config_hash": None,
+            "n_predictions": None, "n_metrics_val_rows": None,
             "atlas_hash": None, "roi_indices_hash": None, "roi_indices_hash_expected_ok": None,
             "class_weight": None, "git_clean": None, "git_clean_accepted_exception": False,
+            "folds_csv_sha256": None,
             "published_auc": None, "published_balanced_accuracy": None, "published_accuracy": None,
             "recalculated_auc": None, "recalculated_balanced_accuracy": None, "recalculated_accuracy": None,
             "reconciliation_status": "PENDING",
@@ -579,17 +843,27 @@ def main() -> int:
             audit["extra_artifacts"] = ";".join(extras)
             if missing:
                 raise ValidationError(f"{run_dir}: faltan artefactos requeridos: {missing}")
+            allowed_extras = ACCEPTED_EXTRA_ARTIFACTS.get((site, roi), set())
+            unexpected_extras = set(extras) - allowed_extras
+            if unexpected_extras:
+                raise ValidationError(
+                    f"{run_dir}: artefactos extra no documentados: {sorted(unexpected_extras)} "
+                    f"(solo se acepta {allowed_extras or '{}'} para (site, roi_set)={(site, roi)})"
+                )
 
             cfg = load_config_file(run_dir / "config.json")
             validate_run_config_matches_manifest(cfg, row, run_dir)
             all_configs[site][roi] = cfg
 
             audit["config_schema_version"] = cfg.get("config_schema_version")
+            audit["config_hash"] = cfg.get("config_hash")
             audit["atlas_hash"] = cfg.get("atlas_hash")
             audit["roi_indices_hash"] = cfg.get("roi_indices_hash")
             audit["roi_indices_hash_expected_ok"] = (cfg.get("roi_indices_hash") == ROI_INDICES_HASH.get(roi))
             audit["class_weight"] = cfg.get("class_weight")
             git_clean = cfg.get("git", {}).get("clean")
+            if not isinstance(git_clean, bool):
+                raise ValidationError(f"{run_dir}: git.clean={git_clean!r} no es booleano")
             audit["git_clean"] = git_clean
             audit["git_clean_accepted_exception"] = (not git_clean) and ((site, roi) in ACCEPTED_DIRTY_TREE)
             if git_clean is False and (site, roi) not in ACCEPTED_DIRTY_TREE:
@@ -605,10 +879,13 @@ def main() -> int:
             validate_predictions(run_dir, preds, folds, site)
             all_preds[(site, roi)] = preds
 
+            folds_hash = sha256_file(run_dir / "folds.csv")
+            audit["folds_csv_sha256"] = folds_hash
+            folds_hash_by_site[site][roi] = folds_hash
+
             metrics_val = pd.read_csv(run_dir / "metrics_val.csv")
             audit["n_metrics_val_rows"] = len(metrics_val)
-            if len(metrics_val) != 50:
-                raise ValidationError(f"{run_dir}: metrics_val.csv tiene {len(metrics_val)} filas, se esperaban 50")
+            validate_metrics_val_structure(run_dir, metrics_val, preds)
 
         except ValidationError as e:
             audit["status"] = "FAIL"
@@ -626,6 +903,14 @@ def main() -> int:
                 continue
             try:
                 validate_within_site_comparability(site, all_configs[site])
+            except ValidationError as e:
+                error_messages.append(str(e))
+                for a in audit_rows:
+                    if a["site"] == site:
+                        a["status"] = "FAIL"
+                        a["diagnostic"] = (a["diagnostic"] + "; " if a["diagnostic"] else "") + str(e)
+            try:
+                validate_folds_hash_within_site(site, folds_hash_by_site[site])
             except ValidationError as e:
                 error_messages.append(str(e))
                 for a in audit_rows:
@@ -680,31 +965,59 @@ def main() -> int:
         if len(subject_scores) != 1860:
             error_messages.append(f"subject_scores: {len(subject_scores)} filas, se esperaban 1860")
 
-    tables_dir.mkdir(parents=True, exist_ok=True)
+    # CORRECCIONES_V19 §7.6: ninguna fila puede quedar en PASS si el script
+    # termina con un fallo global (por ejemplo, estructura del manifiesto o
+    # conteo agregado) que no se haya atribuido ya a un sitio específico.
+    if error_messages:
+        global_summary = "; ".join(error_messages)
+        for a in audit_rows:
+            if a["status"] == "PASS":
+                a["status"] = "FAIL"
+                a["diagnostic"] = (
+                    (a["diagnostic"] + "; " if a["diagnostic"] else "")
+                    + f"fallo global de la ejecución: {global_summary}"
+                )
+
     audit_df = pd.DataFrame(audit_rows).sort_values(["site", "roi_set"]).reset_index(drop=True)
-    audit_path = tables_dir / "comparability_audit.csv"
-    if audit_path.exists() and not args.overwrite:
-        print(f"ERROR: {audit_path} ya existe; use --overwrite para reemplazarlo.", file=sys.stderr)
-        return 1
-    audit_df.to_csv(audit_path, index=False)
 
     if error_messages:
+        # CORRECCIONES_V19 §9.2: si la validación científica falla, se
+        # permite escribir únicamente comparability_audit.csv, también por
+        # staging + promoción.
+        tables_dir.mkdir(parents=True, exist_ok=True)
+        tmp = stage_csv(audit_df, audit_path)
+        os.replace(tmp, audit_path)
         print("VALIDACIÓN FALLIDA. Se escribió solo la auditoría de comparabilidad.", file=sys.stderr)
         for msg in error_messages:
             print(f"  - {msg}", file=sys.stderr)
         return 1
 
     if args.validate_only:
+        tables_dir.mkdir(parents=True, exist_ok=True)
+        tmp = stage_csv(audit_df, audit_path)
+        os.replace(tmp, audit_path)
         print("Validación completa: 16/16 PASS. (--validate-only: no se construyó el dataset)")
         return 0
 
+    # CORRECCIONES_V19 §9.2: ejecución exitosa. Serializar los tres archivos
+    # a temporales dentro del directorio de salida; promoverlos a sus
+    # nombres finales solo después de que las tres serializaciones terminen
+    # correctamente.
+    tables_dir.mkdir(parents=True, exist_ok=True)
     data_dir.mkdir(parents=True, exist_ok=True)
-    for name, df in [("subject_scores.csv", subject_scores), ("metrics_by_repeat.csv", metrics_by_repeat)]:
-        out_path = data_dir / name
-        if out_path.exists() and not args.overwrite:
-            print(f"ERROR: {out_path} ya existe; use --overwrite para reemplazarlo.", file=sys.stderr)
-            return 1
-        df.to_csv(out_path, index=False)
+    to_write = [
+        (audit_df, audit_path),
+        (subject_scores, subject_scores_path),
+        (metrics_by_repeat, metrics_by_repeat_path),
+    ]
+    staged: list[tuple[Path, Path]] = []
+    try:
+        for df, final_path in to_write:
+            staged.append((stage_csv(df, final_path), final_path))
+    except Exception:
+        cleanup_staged(staged)
+        raise
+    promote_staged(staged)
 
     print("Construcción completa: 16/16 PASS.")
     print(f"  subject_scores.csv: {len(subject_scores)} filas")

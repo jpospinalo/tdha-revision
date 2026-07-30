@@ -6,6 +6,8 @@ pruebas.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import shutil
 import sys
@@ -16,8 +18,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
+from statsmodels.stats.multitest import multipletests
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import build_analysis_dataset as bad  # noqa: E402
@@ -40,7 +44,7 @@ def make_run_dir(root: Path, contents: dict) -> Path:
     return root
 
 
-def base_config(site="NYU", roi_set=12, run_id="RUN_A", **overrides) -> dict:
+def base_config(site="NYU", roi_set=12, run_id="RUN_A", config_hash="3e220e5c", **overrides) -> dict:
     cfg = {
         "site": site, "roi_set": str(roi_set), "run_id": run_id,
         "config_schema_version": 4, "n_splits": 10, "n_repeats": 5, "seed": 42,
@@ -53,8 +57,13 @@ def base_config(site="NYU", roi_set=12, run_id="RUN_A", **overrides) -> dict:
         "arch": {"e2e": 4}, "class_balance": {"0": 2, "1": 2},
         "atlas_hash": "104b6c37ad9b7299", "roi_indices_hash": bad.ROI_INDICES_HASH[roi_set],
         "n_rois": roi_set, "n_features": roi_set * 2, "input_shape": [1, roi_set],
-        "config_hash": "abc", "timestamp": "t", "command": "c", "env": {},
+        "config_hash": config_hash, "timestamp": "t", "command": "c", "env": {},
         "git": {"clean": True},
+        # CORRECCIONES_V19 §7.2: campos científicos adicionales + nulls esperados.
+        "windowing_preset": "custom", "fisher_z": False, "constant_policy": "zero",
+        "clipnorm": None, "deterministic": False, "mixed_precision": False,
+        "windowing": {"mode": "dynamic", "window_tr": 60, "step_tr": 6, "shape": "rectangular"},
+        "representation_seed": None, "random_subset": None, "n_random_sets": None, "exclude_roi_set": None,
     }
     cfg.update(overrides)
     return cfg
@@ -365,12 +374,17 @@ class TestQuantiles(unittest.TestCase):
         self.assertAlmostEqual(hi, expected_hi)
 
     def test_no_one_sided_columns_in_precision_diagnostics(self):
+        # Corregida (CORRECCIONES_V19 §13): antes comprobaba un literal
+        # escrito dentro del propio test. Ahora llama la función productiva
+        # real que arma cada fila de precision_diagnostics.csv y examina su
+        # esquema efectivo, más la constante de columnas que usa main().
         forbidden = {"one_sided_lower_95", "one_sided_half_width", "bootstrap_quantile_05"}
-        precision_columns = {
-            "site", "n_subjects", "delta_auc", "bootstrap_standard_error",
-            "bilateral_ci_low", "bilateral_ci_high", "bilateral_interval_width",
-        }
-        self.assertTrue(forbidden.isdisjoint(precision_columns))
+        row = rsa.build_precision_diagnostics_row(
+            site="X", n_subjects=100, delta_auc=0.05, se=0.03, lo=-0.01, hi=0.11
+        )
+        self.assertTrue(forbidden.isdisjoint(row.keys()))
+        self.assertTrue(forbidden.isdisjoint(rsa.PRECISION_DIAGNOSTICS_COLUMNS))
+        self.assertEqual(sorted(row.keys()), sorted(rsa.PRECISION_DIAGNOSTICS_COLUMNS))
 
 
 class TestSignConvention(unittest.TestCase):
@@ -378,14 +392,11 @@ class TestSignConvention(unittest.TestCase):
     todo 12-116."""
 
     def test_primary_contrast_sign(self):
-        pts = pd.DataFrame([
-            {"site": "X", "roi_set": 12, "auc": 0.60},
-            {"site": "X", "roi_set": 116, "auc": 0.55},
-        ])
-        auc12 = pts[pts["roi_set"] == 12]["auc"].iloc[0]
-        auc116 = pts[pts["roi_set"] == 116]["auc"].iloc[0]
-        delta = auc12 - auc116
-        self.assertAlmostEqual(delta, 0.05)
+        # Corregida (CORRECCIONES_V19 §13): antes restaba dentro del propio
+        # test. Ahora llama compute_primary_delta(), la función productiva
+        # que usa main() para construir delta_auc en primary_12_vs_116.csv.
+        self.assertAlmostEqual(rsa.compute_primary_delta(0.60, 0.55), 0.05)
+        self.assertAlmostEqual(rsa.compute_primary_delta(0.55, 0.60), -0.05)
 
     def test_secondary_contrast_left_minus_right(self):
         for left, right in rsa.SECONDARY_CONTRASTS:
@@ -547,8 +558,13 @@ class TestMarginNull(unittest.TestCase):
     inferioridad."""
 
     def test_non_null_margin_is_flagged_by_caller(self):
-        cfg = {"noninferiority_margin": 0.05, "noninferiority_margin_rationale": None}
-        self.assertIsNotNone(cfg["noninferiority_margin"])  # el llamador (main) debe abortar en este caso
+        # Corregida (CORRECCIONES_V19 §13): antes solo comprobaba un literal
+        # dentro del test. Ahora llama al validador real y comprueba que
+        # rechaza un margen no nulo.
+        cfg = dict(bad.FROZEN_ANALYSIS_CONFIG)
+        cfg["noninferiority_margin"] = 0.05
+        with self.assertRaises(bad.ValidationError):
+            bad.validate_analysis_config(cfg)
 
     def test_null_margin_ok(self):
         cfg = {"noninferiority_margin": None, "noninferiority_margin_rationale": None}
@@ -605,6 +621,500 @@ class TestD3Narrative(unittest.TestCase):
         self.assertIn("no comparten una región común", text)
         self.assertIn("A-B:", text)
         self.assertIn("no demuestra por sí sola heterogeneidad estadística", text)
+
+
+class TestHypothesisTests(unittest.TestCase):
+    """22. Friedman ómnibus + Wilcoxon-Holm pareado por sitio (prueba
+    exploratoria post-hoc agregada a pedido de una revisión externa, fuera
+    del alcance original v1.5/plan 5.6): conteos de filas, corrección Holm
+    correcta, piso de p=0.0625 con n=5 pares, reproducibilidad con semilla
+    fija, y sensibilidad de Friedman a un orden perfectamente consistente
+    entre repeticiones."""
+
+    @staticmethod
+    def _toy_metrics_by_repeat(sites, roi_order, seed=0, perfect_order=False):
+        rng = np.random.default_rng(seed)
+        rows = []
+        for site in sites:
+            for r in range(1, 6):
+                if perfect_order:
+                    # valores estrictamente crecientes en el orden de roi_order,
+                    # con ruido pequeño para no generar empates.
+                    base = np.arange(len(roi_order), dtype=float)
+                    noise = rng.uniform(-0.01, 0.01, size=len(roi_order))
+                    aucs = 0.5 + 0.05 * base + noise
+                else:
+                    aucs = rng.uniform(0.45, 0.65, size=len(roi_order))
+                for roi, auc in zip(roi_order, aucs):
+                    rows.append({
+                        "site": site, "roi_set": roi, "repeat": r,
+                        "n_subjects": 10, "n_control": 5, "n_adhd": 5,
+                        "auc": float(auc), "balanced_accuracy": float(auc),
+                        "f1_macro": float(auc), "sensitivity": float(auc),
+                        "specificity": float(auc), "accuracy": float(auc),
+                    })
+        return pd.DataFrame(rows)
+
+    def test_row_counts(self):
+        sites = ["SiteA", "SiteB"]
+        roi_order = [12, 18, 39, 116]
+        mbr = self._toy_metrics_by_repeat(sites, roi_order, seed=1)
+        fried = rsa.compute_friedman_omnibus_by_site(mbr, sites, roi_order, n_permutations=2000, seed=1)
+        wil = rsa.compute_wilcoxon_pairwise_by_site(mbr, sites, roi_order)
+        self.assertEqual(len(fried), len(sites))
+        self.assertEqual(len(wil), len(sites) * 6)  # C(4,2) = 6 pares por sitio
+
+    def test_wilcoxon_p_floor_with_n5(self):
+        # Con n=5 repeticiones pareadas, el p-valor exacto de dos colas
+        # nunca puede ser menor que 2*(1/2**5) = 0.0625, sin importar el
+        # tamaño del efecto observado.
+        sites = ["SiteA"]
+        roi_order = [12, 18, 39, 116]
+        mbr = self._toy_metrics_by_repeat(sites, roi_order, seed=2)
+        wil = rsa.compute_wilcoxon_pairwise_by_site(mbr, sites, roi_order)
+        self.assertTrue((wil["p_value_raw"] >= 0.0625 - 1e-9).all())
+
+    def test_holm_correction_matches_statsmodels(self):
+        sites = ["SiteA", "SiteB"]
+        roi_order = [12, 18, 39, 116]
+        mbr = self._toy_metrics_by_repeat(sites, roi_order, seed=3)
+        wil = rsa.compute_wilcoxon_pairwise_by_site(mbr, sites, roi_order)
+        for site in sites:
+            sub = wil[wil["site"] == site]
+            _, expected_holm, _, _ = multipletests(sub["p_value_raw"].to_numpy(), alpha=0.05, method="holm")
+            np.testing.assert_allclose(sub["p_value_holm"].to_numpy(), expected_holm)
+
+    def test_friedman_reproducible_with_fixed_seed(self):
+        sites = ["SiteA"]
+        roi_order = [12, 18, 39, 116]
+        mbr = self._toy_metrics_by_repeat(sites, roi_order, seed=4)
+        f1 = rsa.compute_friedman_omnibus_by_site(mbr, sites, roi_order, n_permutations=5000, seed=42)
+        f2 = rsa.compute_friedman_omnibus_by_site(mbr, sites, roi_order, n_permutations=5000, seed=42)
+        self.assertEqual(f1["p_value_permutation"].iloc[0], f2["p_value_permutation"].iloc[0])
+
+    def test_friedman_detects_perfectly_consistent_order(self):
+        # Sanity check direccional: si el orden de los cuatro tamaños de ROI
+        # es idéntico en las cinco repeticiones, el p-valor de permutación
+        # debe ser pequeño (caso extremo, no depende de la fórmula exacta).
+        sites = ["SiteA"]
+        roi_order = [12, 18, 39, 116]
+        mbr = self._toy_metrics_by_repeat(sites, roi_order, seed=5, perfect_order=True)
+        fried = rsa.compute_friedman_omnibus_by_site(mbr, sites, roi_order, n_permutations=20000, seed=5)
+        self.assertLess(fried["p_value_permutation"].iloc[0], 0.01)
+
+    def test_missing_repeat_raises(self):
+        sites = ["SiteA"]
+        roi_order = [12, 18, 39, 116]
+        mbr = self._toy_metrics_by_repeat(sites, roi_order, seed=6)
+        mbr = mbr[~((mbr["site"] == "SiteA") & (mbr["roi_set"] == 12) & (mbr["repeat"] == 1))]
+        with self.assertRaises(SystemExit):
+            rsa.compute_friedman_omnibus_by_site(mbr, sites, roi_order, n_permutations=1000, seed=6)
+        with self.assertRaises(SystemExit):
+            rsa.compute_wilcoxon_pairwise_by_site(mbr, sites, roi_order)
+
+
+class TestCanonicalPlan(unittest.TestCase):
+    """CORRECCIONES_V19 §13.1: el plan canónico tiene el SHA-256 esperado."""
+
+    def test_plan_hash_matches_canonical(self):
+        plan_path = REPO_ROOT / "analysis" / "roi_comparison" / "analysis_plan.md"
+        self.assertTrue(plan_path.exists(), f"no existe {plan_path}")
+        self.assertEqual(bad.sha256_file(plan_path), rsa.CANONICAL_PLAN_SHA256)
+
+
+class TestAnalysisConfigValidation(unittest.TestCase):
+    """CORRECCIONES_V19 §13.2-3: cada decisión congelada se acepta con la
+    configuración correcta; mutar cualquier campo científico crítico falla."""
+
+    def test_frozen_config_accepted(self):
+        bad.validate_analysis_config(dict(bad.FROZEN_ANALYSIS_CONFIG))  # no debe lanzar
+
+    def test_mutating_each_frozen_field_fails(self):
+        mutations = {
+            "analysis_schema_version": 2, "plan_version": "5.7",
+            "site_order": ["NYU", "Peking", "NeuroIMAGE"], "roi_order": [12, 18, 39],
+            "primary_metric": "auc_por_pliegue", "repeat_aggregation": "prob_then_metric",
+            "secondary_metrics": ["accuracy"], "audit_metrics": ["auc"],
+            "classification_threshold": 0.4, "positive_label": 0, "ci_level": 0.90,
+            "noninferiority_margin": 0.05, "noninferiority_margin_rationale": "porque si",
+            "bootstrap_iterations": 5000, "bootstrap_seed": 1,
+            "bootstrap_rng": "mersenne_twister", "bootstrap_seed_scope": "global",
+            "bootstrap_subject_order": "random", "bootstrap_quantile_method": "nearest",
+            "bootstrap_method": "no_pareado", "readme_round_decimals": 3,
+        }
+        self.assertEqual(set(mutations), set(bad.FROZEN_ANALYSIS_CONFIG))  # cubre los ~19 campos
+        for field, bad_value in mutations.items():
+            with self.subTest(field=field):
+                cfg = dict(bad.FROZEN_ANALYSIS_CONFIG)
+                cfg[field] = bad_value
+                with self.assertRaises(bad.ValidationError):
+                    bad.validate_analysis_config(cfg)
+
+    def test_real_repo_config_passes(self):
+        real_cfg = json.loads(
+            (REPO_ROOT / "analysis/roi_comparison/config/analysis_config.json").read_text(encoding="utf-8")
+        )
+        bad.validate_analysis_config(real_cfg)  # no debe lanzar; permite claves documentales extra
+
+
+class TestSubjectDiscrepancyInFolds(unittest.TestCase):
+    """CORRECCIONES_V19 §13.4: una discordancia de subject en folds.csv
+    produce fallo."""
+
+    def test_subject_mismatch_between_predictions_and_folds_fails(self):
+        subject_ids = [f"S{i}" for i in range(6)]
+        y_true_map = {sid: (i % 2) for i, sid in enumerate(subject_ids)}
+        preds = toy_predictions(subject_ids, y_true_map, seed=20)
+        folds = folds_from_predictions(preds)
+        # Discordancia: en folds.csv, la primera fila outer_val cambia su
+        # `subject` entero sin cambiar `subject_id` -- ya no corresponde a
+        # ninguna predicción real con esa combinación (repeat,fold,subject,subject_id).
+        folds.loc[folds.index[0], "subject"] = 999
+        bad.EXPECTED_SUBJECT_COUNTS["_T_"] = 6
+        bad.EXPECTED_PRED_COUNTS["_T_"] = 30
+        try:
+            with self.assertRaises(bad.ValidationError):
+                bad.validate_predictions(Path("/tmp/x"), preds, folds, "_T_")
+        finally:
+            del bad.EXPECTED_SUBJECT_COUNTS["_T_"]
+            del bad.EXPECTED_PRED_COUNTS["_T_"]
+
+
+class TestOuterValCorrespondence(unittest.TestCase):
+    """CORRECCIONES_V19 §13.5: una fila outer_val faltante, adicional o
+    duplicada produce fallo (correspondencia en ambos sentidos)."""
+
+    def _fixture(self):
+        subject_ids = [f"S{i}" for i in range(10)]
+        y_true_map = {sid: (i % 2) for i, sid in enumerate(subject_ids)}
+        preds = toy_predictions(subject_ids, y_true_map, seed=21)
+        folds = folds_from_predictions(preds)
+        return preds, folds
+
+    def test_missing_outer_val_row_fails(self):
+        preds, folds = self._fixture()
+        folds = folds.drop(folds.index[0]).reset_index(drop=True)
+        bad.EXPECTED_SUBJECT_COUNTS["_T_"] = 10
+        bad.EXPECTED_PRED_COUNTS["_T_"] = 50
+        try:
+            with self.assertRaises(bad.ValidationError):
+                bad.validate_predictions(Path("/tmp/x"), preds, folds, "_T_")
+        finally:
+            del bad.EXPECTED_SUBJECT_COUNTS["_T_"]
+            del bad.EXPECTED_PRED_COUNTS["_T_"]
+
+    def test_extra_outer_val_row_fails(self):
+        preds, folds = self._fixture()
+        extra = folds.iloc[[0]].copy()
+        extra["subject_id"] = "S_EXTRA_NOT_IN_PREDICTIONS"
+        extra["subject"] = 999
+        folds = pd.concat([folds, extra], ignore_index=True)
+        bad.EXPECTED_SUBJECT_COUNTS["_T_"] = 10
+        bad.EXPECTED_PRED_COUNTS["_T_"] = 50
+        try:
+            with self.assertRaises(bad.ValidationError):
+                bad.validate_predictions(Path("/tmp/x"), preds, folds, "_T_")
+        finally:
+            del bad.EXPECTED_SUBJECT_COUNTS["_T_"]
+            del bad.EXPECTED_PRED_COUNTS["_T_"]
+
+    def test_duplicated_outer_val_row_fails(self):
+        preds, folds = self._fixture()
+        dup = folds.iloc[[0]].copy()
+        folds = pd.concat([folds, dup], ignore_index=True)
+        bad.EXPECTED_SUBJECT_COUNTS["_T_"] = 10
+        bad.EXPECTED_PRED_COUNTS["_T_"] = 50
+        try:
+            with self.assertRaises(bad.ValidationError):
+                bad.validate_predictions(Path("/tmp/x"), preds, folds, "_T_")
+        finally:
+            del bad.EXPECTED_SUBJECT_COUNTS["_T_"]
+            del bad.EXPECTED_PRED_COUNTS["_T_"]
+
+
+class TestFoldsHashWithinSite(unittest.TestCase):
+    """CORRECCIONES_V19 §13.6: dos folds.csv diferentes dentro del mismo
+    sitio producen fallo."""
+
+    def test_differing_folds_hash_fails(self):
+        with self.assertRaises(bad.ValidationError):
+            bad.validate_folds_hash_within_site(
+                "X", {12: "hashA", 18: "hashA", 39: "hashB", 116: "hashA"}
+            )
+
+    def test_identical_folds_hash_ok(self):
+        bad.validate_folds_hash_within_site("X", {12: "h", 18: "h", 39: "h", 116: "h"})  # no debe lanzar
+
+
+class TestMetricsValDuplicatedPair(unittest.TestCase):
+    """CORRECCIONES_V19 §13.7: metrics_val.csv con 50 filas pero un par
+    (repeat, fold) duplicado produce fallo."""
+
+    def test_50_rows_with_duplicated_pair_fails(self):
+        subject_ids = [f"S{i}" for i in range(10)]
+        y_true_map = {sid: (i % 2) for i, sid in enumerate(subject_ids)}
+        preds = toy_predictions(subject_ids, y_true_map, seed=22)
+
+        rows = []
+        for repeat in range(1, 6):
+            base_fold = (repeat - 1) * 10
+            for i in range(10):
+                fold = base_fold + i + 1
+                if repeat == 1 and i == 9:
+                    fold = base_fold + 1  # duplica (repeat=1, fold=1) en vez de fold=10
+                rows.append({"repeat": repeat, "fold": fold})
+        metrics_val = pd.DataFrame(rows)
+        self.assertEqual(len(metrics_val), 50)  # el conteo simple no detecta el problema
+
+        with self.assertRaises(bad.ValidationError):
+            bad.validate_metrics_val_structure(Path("/tmp/x"), metrics_val, preds)
+
+
+class TestWithinSiteNewFields(unittest.TestCase):
+    """CORRECCIONES_V19 §13.8: una modificación de fisher_z o
+    windowing.shape entre tamaños de ROI produce fallo."""
+
+    def test_fisher_z_mismatch_fails(self):
+        cfg12 = base_config(roi_set=12, fisher_z=False)
+        cfg18 = base_config(roi_set=18, fisher_z=True)
+        with self.assertRaises(bad.ValidationError):
+            bad.validate_within_site_comparability("X", {12: cfg12, 18: cfg18})
+
+    def test_windowing_shape_mismatch_fails(self):
+        cfg12 = base_config(roi_set=12)
+        windowing_diff = dict(cfg12["windowing"])
+        windowing_diff["shape"] = "triangular"
+        cfg18 = base_config(roi_set=18, windowing=windowing_diff)
+        with self.assertRaises(bad.ValidationError):
+            bad.validate_within_site_comparability("X", {12: cfg12, 18: cfg18})
+
+    def test_non_null_ancillary_field_fails(self):
+        cfg18 = base_config(roi_set=18)
+        row18 = pd.Series({"site": "X", "roi_set": 18, "run_id": cfg18["run_id"]})
+        cfg18_bad = dict(cfg18, random_subset=[1, 2, 3])
+        with self.assertRaises(bad.ValidationError):
+            bad.validate_run_config_matches_manifest(cfg18_bad, row18, Path(cfg18_bad["run_id"]))
+
+    def test_matching_new_fields_ok(self):
+        cfg12 = base_config(roi_set=12)
+        cfg18 = base_config(roi_set=18)
+        bad.validate_within_site_comparability("X", {12: cfg12, 18: cfg18})  # no debe lanzar
+
+
+class TestSubjectScoresPhase2(unittest.TestCase):
+    """CORRECCIONES_V19 §13.9: subject_scores.csv con duplicados, NaN,
+    probabilidad fuera de rango o combinación faltante produce fallo antes
+    del bootstrap.
+
+    Los conteos totales (1860, 80) están fijados por el diseño real (4
+    sitios x 4 tamaños de ROI x N sujetos reales por sitio), así que estos
+    fixtures replican esa forma exacta con datos ficticios."""
+
+    SITE_ORDER = ["NYU", "Peking", "NeuroIMAGE", "OHSU"]
+    ROI_ORDER = [12, 18, 39, 116]
+    N_BY_SITE = {"NYU": 177, "Peking": 183, "NeuroIMAGE": 39, "OHSU": 66}
+
+    def _valid_subject_scores(self) -> pd.DataFrame:
+        rows = []
+        for site in self.SITE_ORDER:
+            n = self.N_BY_SITE[site]
+            for roi in self.ROI_ORDER:
+                for i in range(n):
+                    rows.append({
+                        "site": site, "roi_set": roi, "subject_id": f"{site}_S{i}", "y_true": i % 2,
+                        "y_prob_r1": 0.5, "y_prob_r2": 0.5, "y_prob_r3": 0.5, "y_prob_r4": 0.5, "y_prob_r5": 0.5,
+                        "y_prob_mean": 0.5, "y_prob_sd": 0.0, "n_positive_predictions": 5,
+                    })
+        return pd.DataFrame(rows)
+
+    def test_valid_fixture_ok(self):
+        df = self._valid_subject_scores()
+        self.assertEqual(len(df), 1860)
+        rsa.validate_subject_scores_for_phase2(df, self.SITE_ORDER, self.ROI_ORDER, self.N_BY_SITE)  # no debe lanzar
+
+    def test_duplicate_combination_fails(self):
+        df = self._valid_subject_scores()
+        df = pd.concat([df, df.iloc[[0]]], ignore_index=True)
+        with self.assertRaises(rsa.ValidationError):
+            rsa.validate_subject_scores_for_phase2(df, self.SITE_ORDER, self.ROI_ORDER, self.N_BY_SITE)
+
+    def test_nan_fails(self):
+        df = self._valid_subject_scores()
+        df.loc[0, "y_prob_r1"] = float("nan")
+        with self.assertRaises(rsa.ValidationError):
+            rsa.validate_subject_scores_for_phase2(df, self.SITE_ORDER, self.ROI_ORDER, self.N_BY_SITE)
+
+    def test_out_of_range_probability_fails(self):
+        df = self._valid_subject_scores()
+        df.loc[0, "y_prob_r1"] = 1.7
+        with self.assertRaises(rsa.ValidationError):
+            rsa.validate_subject_scores_for_phase2(df, self.SITE_ORDER, self.ROI_ORDER, self.N_BY_SITE)
+
+    def test_missing_combination_fails(self):
+        df = self._valid_subject_scores()
+        df = df[~((df.site == "NYU") & (df.roi_set == 116) & (df.subject_id == "NYU_S0"))]
+        with self.assertRaises(rsa.ValidationError):
+            rsa.validate_subject_scores_for_phase2(df, self.SITE_ORDER, self.ROI_ORDER, self.N_BY_SITE)
+
+
+class TestMetricsByRepeatPhase2(unittest.TestCase):
+    """CORRECCIONES_V19 §13.10: metrics_by_repeat.csv con repetición
+    duplicada o faltante produce fallo antes del bootstrap."""
+
+    SITE_ORDER = ["NYU", "Peking", "NeuroIMAGE", "OHSU"]
+    ROI_ORDER = [12, 18, 39, 116]
+
+    def _valid_metrics_by_repeat(self) -> pd.DataFrame:
+        rows = []
+        for site in self.SITE_ORDER:
+            for roi in self.ROI_ORDER:
+                for r in range(1, 6):
+                    rows.append({
+                        "site": site, "roi_set": roi, "repeat": r, "n_subjects": 4, "n_control": 2, "n_adhd": 2,
+                        "auc": 0.6, "balanced_accuracy": 0.55, "f1_macro": 0.55,
+                        "sensitivity": 0.5, "specificity": 0.6, "accuracy": 0.55,
+                    })
+        return pd.DataFrame(rows)
+
+    def test_valid_fixture_ok(self):
+        df = self._valid_metrics_by_repeat()
+        self.assertEqual(len(df), 80)
+        rsa.validate_metrics_by_repeat_for_phase2(df, self.SITE_ORDER, self.ROI_ORDER)  # no debe lanzar
+
+    def test_duplicated_repeat_fails(self):
+        df = self._valid_metrics_by_repeat()
+        df = pd.concat([df, df.iloc[[0]]], ignore_index=True)
+        with self.assertRaises(rsa.ValidationError):
+            rsa.validate_metrics_by_repeat_for_phase2(df, ["X"], [12, 116])
+
+    def test_missing_repeat_fails(self):
+        df = self._valid_metrics_by_repeat()
+        df = df[~((df.roi_set == 12) & (df.repeat == 5))]
+        with self.assertRaises(rsa.ValidationError):
+            rsa.validate_metrics_by_repeat_for_phase2(df, ["X"], [12, 116])
+
+
+class TestAutoconsistency(unittest.TestCase):
+    """CORRECCIONES_V19 §13.11: la autoconsistencia entre subject_scores.csv
+    y metrics_by_repeat.csv detecta una métrica alterada."""
+
+    def _consistent_fixtures(self):
+        subject_ids = [f"S{i}" for i in range(8)]
+        y_true_map = {sid: (i % 2) for i, sid in enumerate(subject_ids)}
+        rng = np.random.default_rng(30)
+        rows_scores = []
+        for sid in subject_ids:
+            row = {"site": "X", "roi_set": 12, "subject_id": sid, "y_true": y_true_map[sid]}
+            for r in range(1, 6):
+                row[f"y_prob_r{r}"] = float(rng.uniform(0.1, 0.9))
+            rows_scores.append(row)
+        subject_scores = pd.DataFrame(rows_scores)
+
+        rows_metrics = []
+        for r in range(1, 6):
+            y_true = subject_scores["y_true"].to_numpy()
+            y_prob = subject_scores[f"y_prob_r{r}"].to_numpy()
+            m = bad.metrics_from_arrays(y_true, y_prob)
+            rows_metrics.append({
+                "site": "X", "roi_set": 12, "repeat": r,
+                "n_subjects": 8, "n_control": 4, "n_adhd": 4, **m,
+            })
+        metrics_by_repeat = pd.DataFrame(rows_metrics)
+        return subject_scores, metrics_by_repeat
+
+    def test_consistent_fixture_ok(self):
+        subject_scores, metrics_by_repeat = self._consistent_fixtures()
+        rsa.validate_autoconsistency(subject_scores, metrics_by_repeat, ["X"], [12])  # no debe lanzar
+
+    def test_altered_metric_detected(self):
+        subject_scores, metrics_by_repeat = self._consistent_fixtures()
+        metrics_by_repeat.loc[0, "auc"] = metrics_by_repeat.loc[0, "auc"] + 0.1
+        with self.assertRaises(rsa.ValidationError):
+            rsa.validate_autoconsistency(subject_scores, metrics_by_repeat, ["X"], [12])
+
+
+class TestManifestConfigHashes(unittest.TestCase):
+    """CORRECCIONES_V19 §13.12: el manifiesto final contiene exactamente 16
+    config_hash no vacíos (sobre el repositorio real)."""
+
+    def test_16_config_hashes_present_and_well_formed(self):
+        manifest = rsa.load_manifest(REPO_ROOT / "analysis/roi_comparison/config/run_manifest.csv")
+        run_hashes = rsa.build_run_hashes(manifest, REPO_ROOT)
+        self.assertEqual(len(run_hashes), 16)
+        for r in run_hashes:
+            self.assertTrue(r["config_hash"], f"config_hash vacío para {r['site']}/{r['roi_set']}")
+            self.assertRegex(r["config_hash"], r"^[0-9a-f]{8}$")
+
+
+class TestGitUnavailable(unittest.TestCase):
+    """CORRECCIONES_V19 §13.13: sin Git, los campos quedan en null y
+    git_provenance_status="unavailable"; results_read_only se basa solo en
+    hashes."""
+
+    def test_get_git_status_outside_repo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            commit, status_lines, provenance = rsa.get_git_status(Path(tmp))
+            self.assertIsNone(commit)
+            self.assertIsNone(status_lines)
+            self.assertEqual(provenance, "unavailable")
+
+    def test_results_read_only_uses_only_hash_comparison(self):
+        # Dos inventarios idénticos -> misma huella -> "no cambió", sin
+        # ninguna referencia a Git en el cálculo.
+        inv_a = {"results_readme_sha256": "h1", "run_artifacts": {"NYU_12": {"folds.csv": "fA"}}}
+        inv_b = {"results_readme_sha256": "h1", "run_artifacts": {"NYU_12": {"folds.csv": "fA"}}}
+        self.assertEqual(rsa.hash_inventory_fingerprint(inv_a), rsa.hash_inventory_fingerprint(inv_b))
+        inv_c = {"results_readme_sha256": "h1", "run_artifacts": {"NYU_12": {"folds.csv": "fB"}}}
+        self.assertNotEqual(rsa.hash_inventory_fingerprint(inv_a), rsa.hash_inventory_fingerprint(inv_c))
+
+
+class TestAtomicStaging(unittest.TestCase):
+    """CORRECCIONES_V19 §13.14: un fallo deliberado tardío no deja nuevas
+    tablas científicas finales (nada se promueve hasta que todo el lote
+    terminó de escribirse en staging)."""
+
+    def test_unpromoted_file_never_appears_at_final_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            final_a = tmp_path / "tables" / "a.csv"
+            final_b = tmp_path / "tables" / "b.csv"
+            df_a = pd.DataFrame({"x": [1, 2]})
+            df_b = pd.DataFrame({"x": [3, 4]})
+
+            staged_a = bad.stage_csv(df_a, final_a)
+            staged_b = bad.stage_csv(df_b, final_b)
+            # Nada se promovió todavía: ninguna ruta final existe.
+            self.assertFalse(final_a.exists())
+            self.assertFalse(final_b.exists())
+
+            # Simula que el lote falla después de "a" pero antes de "b":
+            # solo se promueve "a", "b" se limpia como haría el bloque
+            # except del llamador real.
+            bad.promote_staged([(staged_a, final_a)])
+            bad.cleanup_staged([(staged_b, final_b)])
+
+            self.assertTrue(final_a.exists())
+            self.assertFalse(final_b.exists())
+            self.assertFalse(staged_b.exists())  # el temporal también se limpió
+
+
+class TestBootstrapProgressNoSideEffects(unittest.TestCase):
+    """CORRECCIONES_V19 §13.15: los mensajes de progreso no cambian los
+    remuestreos ni los resultados."""
+
+    def test_progress_messages_do_not_change_draws(self):
+        n = 20
+        y_true = np.array([0] * 10 + [1] * 10)
+        tensor = np.random.default_rng(2).uniform(0.1, 0.9, size=(n, 2, 5))
+        with contextlib.redirect_stdout(io.StringIO()):
+            d_with_progress = rsa.bootstrap_site(
+                tensor, y_true, [12, 116], n_iter=25, seed=42, site="TEST", progress_every=1
+            )
+        d_without_progress = rsa.bootstrap_site(
+            tensor, y_true, [12, 116], n_iter=25, seed=42, progress_every=0
+        )
+        for key in d_with_progress:
+            np.testing.assert_array_equal(d_with_progress[key], d_without_progress[key])
 
 
 if __name__ == "__main__":

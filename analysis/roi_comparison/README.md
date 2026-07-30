@@ -9,9 +9,17 @@ Implementa, sin rediseñarlo, el plan estadístico congelado en
 pendientes de equipo (ver más abajo). `results/` es la fuente de datos y
 permanece de solo lectura.
 
-> **Nota sobre `analysis_plan.md`:** es copia exacta del texto final de la
-> versión 5.6 del plan aprobado por el equipo; su SHA-256 queda registrado en
+> **Nota sobre `analysis_plan.md`:** es copia exacta, byte por byte, del
+> texto final de la versión 5.6 del plan aprobado por el equipo. Su SHA-256
+> canónico esperado es `199857a46006a082d97f6a055ffdaaa075fd25be87bbb4147e806aae28367163`;
+> `run_statistical_analysis.py` lo verifica contra ese valor antes de iniciar
+> el bootstrap y se detiene con código de salida distinto de cero si el
+> archivo falta o no coincide. El hash también queda registrado en
 > `outputs/analysis_manifest.json` (`plan_sha256`).
+>
+> La resolución D1–D5 (más abajo) complementa el plan congelado: no lo
+> modifica ni lo reinterpreta, solo cierra las decisiones que el plan dejó
+> explícitamente para el equipo.
 
 ## Cómo reproducir desde cero
 
@@ -35,6 +43,31 @@ python analysis/roi_comparison/scripts/run_statistical_analysis.py \
 Ambos scripts se niegan a sobrescribir salidas existentes salvo que se pase
 `--overwrite`. `build_analysis_dataset.py` acepta además `--validate-only`
 para ejecutar solo la auditoría de comparabilidad, sin construir el dataset.
+
+Las decisiones científicas congeladas de `analysis_config.json` se validan
+una sola vez, con `validate_analysis_config()` (definida en
+`build_analysis_dataset.py` y reutilizada por `run_statistical_analysis.py`;
+no hay dos validadores independientes). Una discrepancia detiene ambos
+scripts con el campo, el valor recibido y el valor esperado; no se corrige
+el JSON automáticamente ni se acepta un valor alternativo por línea de
+comandos.
+
+Ambos scripts escriben de forma segura: calculan todo en memoria, lo
+serializan primero a un directorio de staging dentro de `outputs/`, y solo
+promueven los archivos a sus nombres finales (`os.replace`) después de que
+todas las serializaciones de ese lote terminaron sin errores. No quedan
+tablas científicas parciales si algo falla a mitad de camino.
+
+Git mejora la trazabilidad cuando está disponible (commit y `git status`
+antes/después quedan registrados en el manifiesto), pero **no es necesario
+para verificar la integridad de las entradas**: esa verificación se hace
+siempre por SHA-256 (`results/README.md`, los siete artefactos de las 16
+corridas, y `requirements.txt`/`tdha_experimentos.ipynb`/`src/`), comparando
+un inventario capturado antes y después de la ejecución. Esto permite
+ejecutar correctamente el análisis desde un ZIP descargado en Colab, sin
+repositorio Git presente; en ese caso el manifiesto registra explícitamente
+`git_provenance_status: "unavailable"` y dejar los campos de Git en `null`
+en vez de inventar una lista de cambios vacía.
 
 Pruebas:
 
@@ -62,20 +95,27 @@ modificable desde la línea de comandos.
 - `outputs/data/metrics_by_repeat.csv` — las seis métricas por repetición
   (80 filas: 4 sitios × 4 tamaños × 5 repeticiones).
 - `outputs/tables/comparability_audit.csv` — auditoría de las 16 corridas
-  (artefactos, hashes científicos, pareamiento, reconciliación con el
-  README).
+  (artefactos, hashes científicos —incluido `config_hash` y el SHA-256 de
+  `folds.csv`—, pareamiento, `git.clean`, reconciliación con el README).
 - `outputs/tables/descriptive_performance.csv`,
   `primary_12_vs_116.csv`, `precision_diagnostics.csv`,
   `secondary_pairwise_comparisons.csv`, `secondary_metric_intervals.csv`,
   `error_analysis_summary.csv` — resultados del análisis estadístico.
+- `outputs/tables/friedman_omnibus_by_site.csv`,
+  `wilcoxon_pairwise_by_site.csv` — prueba de hipótesis exploratoria y
+  post-hoc, agregada a pedido de una revisión externa (ver "Prueba de
+  hipótesis exploratoria" más abajo); no forma parte del plan 5.6.
 - `outputs/data/error_analysis_long.csv`, `subject_error_profiles.csv` —
   análisis de errores por sujeto (12 vs. 116).
 - `outputs/figures/` — perfiles por ROI y forest plot del contraste
   principal, en SVG y PNG; más tres figuras adicionales de contrastes
   secundarios frente a 116 (ver "Figuras de contrastes secundarios frente a
   116" más abajo).
-- `outputs/analysis_manifest.json` — hashes, versiones, parámetros del
-  bootstrap, tiempos observados y resumen de la resolución D1–D5.
+- `outputs/analysis_manifest.json` — hashes (incluidos los 16 `config_hash`),
+  versiones, parámetros del bootstrap, tiempos observados, resumen de la
+  resolución D1–D5, estado de Git antes/después cuando está disponible, e
+  inventario de hashes de insumos antes/después (base de `results_read_only`,
+  que nunca se infiere de la disponibilidad de Git).
 
 ## Métrica primaria
 
@@ -172,6 +212,58 @@ interpretación:
 - Se hereda también el estado de preinscripción de la sección anterior: son
   resultados posteriores a la revisión de factibilidad, nunca confirmatorios.
 
+## Prueba de hipótesis exploratoria (Friedman + Wilcoxon-Holm, por sitio)
+
+`outputs/tables/friedman_omnibus_by_site.csv` (4 filas) y
+`outputs/tables/wilcoxon_pairwise_by_site.csv` (24 filas) se agregaron a
+pedido de una revisión externa del trabajo, que recomendó incluir una prueba
+estadística formal para comparar los cuatro tamaños de ROI. **No forman
+parte de las instrucciones v1.5 ni del plan 5.6**; se documentan aquí con el
+mismo nivel de detalle que el resto, pero con su alcance y limitaciones
+explícitos.
+
+**Por qué esta prueba y no un ANOVA/Tukey de grupos independientes.** Dentro
+de un mismo sitio, las cinco repeticiones comparten exactamente los mismos
+folds entre los cuatro tamaños de ROI (verificado directamente sobre
+`folds.csv`: la asignación sujeto→fold en la repetición 1 es idéntica para
+12, 18, 39 y 116 ROIs). Es, por lo tanto, un diseño de medidas repetidas /
+pareado, no de grupos independientes. Se usa:
+
+- **Friedman** (`friedman_omnibus_by_site.csv`) como prueba ómnibus por
+  sitio, sobre los cuatro tamaños de ROI a la vez. Reporta el p-valor
+  asintótico chi-cuadrado (`p_value_chi2_asymptotic`, `scipy.stats.friedmanchisquare`)
+  y un p-valor de permutación (`p_value_permutation`, aproximadamente exacto:
+  con solo n=5 bloques la aproximación asintótica es poco confiable, así que
+  se complementa permutando la asignación de rangos dentro de cada bloque,
+  500.000 remuestreos, semilla fija en `analysis_config.json`
+  —`hypothesis_test_permutation_seed`/`hypothesis_test_permutation_iterations`—).
+- **Wilcoxon signed-rank pareado, exacto** (`wilcoxon_pairwise_by_site.csv`)
+  para las 6 comparaciones por pares dentro de cada sitio, con **corrección
+  Holm** dentro de esa familia de 6.
+
+**El piso de resolución con n=5 pares.** Con solo cinco repeticiones, el
+p-valor exacto de dos colas de Wilcoxon nunca puede ser menor que
+`2 * (1/2**5) = 0.0625` — es el valor que se obtiene cuando las cinco
+diferencias tienen el mismo signo, el caso más extremo posible. Ese piso ya
+está por encima de 0.05 antes de cualquier corrección; Holm solo lo empeora.
+En los datos actuales, **ninguna de las 24 comparaciones por pares es
+significativa a alpha=0.05 tras Holm**, ni siquiera en NYU, el único sitio
+cuyo Friedman ómnibus sí lo es (`p_value_permutation` ≈ 0.0014). Esto **no es
+evidencia de ausencia de diferencia** en NYU: es un límite estructural del
+diseño con esta n, no una conclusión sustantiva. Léase junto con
+`friedman_omnibus_by_site.csv`, nunca solo la tabla de pares.
+
+**Exploratoria y post-hoc, no independiente.** Esta prueba se construyó
+después de revisar extensamente las tablas descriptivas e intervalos de
+`primary_12_vs_116.csv` y `secondary_pairwise_comparisons.csv` — hereda el
+mismo problema de exposición previa a los resultados documentado arriba
+(preinscripción) y en D2: un resultado significativo aquí es contexto
+adicional compatible con lo que ya se observaba en los intervalos
+descriptivos (en NYU, el intervalo 12−116 era el más cercano a excluir cero
+de los cuatro sitios), no una confirmación estadística independiente y
+nueva. Ver `analysis_manifest.json` → `hypothesis_test` para los parámetros
+exactos y esta misma advertencia en el manifiesto.
+
 ## Cómo interpretar el máximo puntual
 
 En `descriptive_performance.csv`, el tamaño de ROI con la media de AUC más
@@ -187,7 +279,14 @@ intervalo, nunca al máximo aislado.
 
 El bootstrap (10.000 iteraciones × 4 sitios) toma, en esta implementación
 sobre CPU con un núcleo y `scikit-learn`, del orden de 15 a 20 minutos en
-total (~230 s por sitio observados en esta ejecución). Ese costo es esperado
-y no justifica optimizar, paralelizar ni sustituir
-`sklearn.metrics.roc_auc_score` — ver `outputs/analysis_manifest.json` para
-los tiempos exactos observados.
+total. Ese costo es esperado y no justifica optimizar, paralelizar ni
+sustituir `sklearn.metrics.roc_auc_score` — ver
+`outputs/analysis_manifest.json` (`timing_seconds`) para los tiempos
+exactos observados en la última ejecución productiva real.
+
+Cada sitio imprime un mensaje de progreso cada 1.000 iteraciones (10%):
+`sitio · iteraciones completadas/10000 · porcentaje`. La condición de
+impresión no llama al generador aleatorio, no cambia el orden de los
+bucles ni los índices bootstrap y no guarda los remuestreos crudos: el
+resultado es numéricamente idéntico con o sin los mensajes (verificado en
+`tests/test_analysis.py`).
