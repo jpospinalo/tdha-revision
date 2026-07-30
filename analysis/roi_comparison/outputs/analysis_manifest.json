@@ -4,9 +4,9 @@
   "analysis_config_sha256": "2b9d852c4f21d2b11dbdcdd3cc88b82864989e9a87f385ed4211d22a9ffd7a34",
   "run_manifest_sha256": "34cd68d346328194b9ccf4e6941a3e6836d47bde1f4cfa915826d230dd75cc72",
   "results_readme_sha256": "b083f24d0e007697043145e08475dafcc58007debf3e6a5af76d9bffc1cfb28e",
-  "generated_at": "2026-07-30T01:53:00.414824+00:00",
+  "generated_at": "2026-07-30T02:43:40.010978+00:00",
   "command": "run_statistical_analysis.py --repo-root /sessions/laughing-wizardly-archimedes/mnt/tdha-revision --config /sessions/laughing-wizardly-archimedes/mnt/tdha-revision/analysis/roi_comparison/config/analysis_config.json --manifest /sessions/laughing-wizardly-archimedes/mnt/tdha-revision/analysis/roi_comparison/config/run_manifest.csv --input-dir /sessions/laughing-wizardly-archimedes/mnt/tdha-revision/analysis/roi_comparison/outputs/data --output-dir /sessions/laughing-wizardly-archimedes/mnt/tdha-revision/analysis/roi_comparison/outputs --overwrite",
-  "repo_commit": "fd4a9cf11c0251e4d098540fb521372136fee1a1",
+  "repo_commit": "5de30e34f4fe61bc5f1ad5ec64942c03fbc64b1e",
   "changed_paths_outside_analysis": [],
   "versions": {
     "python": "3.10.12",
@@ -179,6 +179,7 @@
     "D5_estimand": "desempeno medio del pipeline de validacion cruzada (no ensamble de probabilidades, no modelo final desplegado)"
   },
   "reconciliation_status": "PASS (16/16, ver comparability_audit.csv)",
+  "preregistration_status": "No es una preinscripcion prospectiva ciega a los resultados. El plan 5.6 se cerro despues de una revision de factibilidad en la que ya eran visibles las diferencias medias y varianzas por sitio entre 12 y 116 ROIs (plan, secciones 1 y 2). Los resultados se presentan como estimacion con apoyo exploratorio, no como confirmacion definitiva; una afirmacion confirmatoria requeriria una cohorte o conjunto de datos externo no usado en estas decisiones.",
   "d3_narrative_generated": "Las estimaciones puntuales de la diferencia AUC 12−116 difieren en magnitud y signo entre sitios: NYU: positiva; Peking: negativa; NeuroIMAGE: negativa; OHSU: negativa. Sin embargo, los intervalos presentan una región de solapamiento común y la precisión disponible no permite determinar si este patrón refleja heterogeneidad real o variabilidad de muestreo. Los sitios se presentan por separado; el análisis no estima ni contrasta un efecto común y tampoco afirma heterogeneidad estadística.",
   "figure_vertical_limits": {
     "auc_panel_y_min": 0.3432620320855615,
@@ -219,7 +220,7 @@
     },
     "paired_roi_profiles.svg": {
       "path": "analysis/roi_comparison/outputs/figures/paired_roi_profiles.svg",
-      "sha256": "7b68b1dbdaa9ae21670adcefbea4c52c3779db33c71e6e6ca8c9b27874f15166"
+      "sha256": "61d9a7f10cb567a2420e781238f4b28bc5fe02aa5abbbd20d9f4abd6bf94e7e7"
     },
     "paired_roi_profiles.png": {
       "path": "analysis/roi_comparison/outputs/figures/paired_roi_profiles.png",
@@ -227,11 +228,35 @@
     },
     "primary_contrast_forest.svg": {
       "path": "analysis/roi_comparison/outputs/figures/primary_contrast_forest.svg",
-      "sha256": "2309dca1298c1f8904ff30db4d7dc9636c41b3353367f8999384db83e2c5117a"
+      "sha256": "7568118865dc5454b1b68a8a2b5cb6952461e79f5d9271b5fb730a59756d6dfb"
     },
     "primary_contrast_forest.png": {
       "path": "analysis/roi_comparison/outputs/figures/primary_contrast_forest.png",
       "sha256": "c75b0aeb2904d6b6ac5e6ed912858ac8d39e7c541442d22c07d92899bb32f967"
+    },
+    "secondary_contrast_18_vs_116_forest.svg": {
+      "path": "analysis/roi_comparison/outputs/figures/secondary_contrast_18_vs_116_forest.svg",
+      "sha256": "51beba1f88e9b313463dd6998b6380e9c623f90274ef39dad8fbb1c4a22dbe8c"
+    },
+    "secondary_contrast_18_vs_116_forest.png": {
+      "path": "analysis/roi_comparison/outputs/figures/secondary_contrast_18_vs_116_forest.png",
+      "sha256": "5feb3f047be2671e2b077a51b21f031f94d3ef0741e258a620a0a53718914845"
+    },
+    "secondary_contrast_39_vs_116_forest.svg": {
+      "path": "analysis/roi_comparison/outputs/figures/secondary_contrast_39_vs_116_forest.svg",
+      "sha256": "63f2e30329d24f7c6cfa4e5780194e8959427a0ed6f1c2e5945b2c9a57b34437"
+    },
+    "secondary_contrast_39_vs_116_forest.png": {
+      "path": "analysis/roi_comparison/outputs/figures/secondary_contrast_39_vs_116_forest.png",
+      "sha256": "e9da613babc9d01c4e505ab4a7b42854f35f592bc3ab2d7cbab632ff2b46175b"
+    },
+    "contrasts_vs_116_forest.svg": {
+      "path": "analysis/roi_comparison/outputs/figures/contrasts_vs_116_forest.svg",
+      "sha256": "7f88b7b61ee08fcd4e9b1ab4c74a254eda1c85a62b7288beb279aed4f787bbee"
+    },
+    "contrasts_vs_116_forest.png": {
+      "path": "analysis/roi_comparison/outputs/figures/contrasts_vs_116_forest.png",
+      "sha256": "7f44e63cecc4c61732bf0335d4a6805b77278e4f42fb31c2e3ebd5fb343981eb"
     },
     "subject_scores.csv": {
       "path": "analysis/roi_comparison/outputs/data/subject_scores.csv",
@@ -248,6 +273,5 @@
   },
   "results_read_only": true,
   "limitation": "Los intervalos bootstrap estan condicionados a las predicciones, entrenamientos y cinco particiones de validacion cruzada existentes; no capturan la variabilidad de un reentrenamiento o reparticion completos.",
-  "timing_note": "El bootstrap se calculo en trozos reanudables debido al limite de tiempo por invocacion del entorno de shell usado durante la implementacion (no del script entregado, que no tiene tal limite). Se preservo el estado real del generador numpy (rng.bit_generator.state) entre trozos, por lo que la secuencia de 10.000 remuestreos por sitio es identica, iteracion por iteracion, a una ejecucion continua con la misma semilla. Los tiempos aqui reportados son la suma real de computo medida en cada trozo, no una estimacion.",
-  "preregistration_status": "No es una preinscripcion prospectiva ciega a los resultados. El plan 5.6 se cerro despues de una revision de factibilidad en la que ya eran visibles las diferencias medias y varianzas por sitio entre 12 y 116 ROIs (plan, secciones 1 y 2). Los resultados se presentan como estimacion con apoyo exploratorio, no como confirmacion definitiva; una afirmacion confirmatoria requeriria una cohorte o conjunto de datos externo no usado en estas decisiones."
+  "timing_note": "El bootstrap se calculo en trozos reanudables debido al limite de tiempo por invocacion del entorno de shell usado durante la implementacion (no del script entregado, que no tiene tal limite). Se preservo el estado real del generador numpy (rng.bit_generator.state) entre trozos, por lo que la secuencia de 10.000 remuestreos por sitio es identica, iteracion por iteracion, a una ejecucion continua con la misma semilla. Los tiempos aqui reportados son la suma real de computo medida en cada trozo, no una estimacion."
 }

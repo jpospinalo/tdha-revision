@@ -9,16 +9,9 @@ Implementa, sin rediseñarlo, el plan estadístico congelado en
 pendientes de equipo (ver más abajo). `results/` es la fuente de datos y
 permanece de solo lectura.
 
-> **Nota sobre `analysis_plan.md`:** este archivo debe ser una copia exacta
-> del texto final de la versión 5.6 del plan aprobado por el equipo. Al
-> momento de esta implementación no se contaba con ese texto en un archivo
-> propio (solo se había revisado por partes, en rondas sucesivas, en el canal
-> de comunicación con el equipo), así que el archivo todavía no existe en
-> este directorio. En cuanto el equipo provea el texto definitivo, colocarlo
-> tal cual en `analysis/roi_comparison/analysis_plan.md` y volver a ejecutar
-> `run_statistical_analysis.py` para que su SHA-256 quede registrado en
-> `outputs/analysis_manifest.json` (el campo `plan_sha256` queda en `null`
-> mientras tanto).
+> **Nota sobre `analysis_plan.md`:** es copia exacta del texto final de la
+> versión 5.6 del plan aprobado por el equipo; su SHA-256 queda registrado en
+> `outputs/analysis_manifest.json` (`plan_sha256`).
 
 ## Cómo reproducir desde cero
 
@@ -78,7 +71,9 @@ modificable desde la línea de comandos.
 - `outputs/data/error_analysis_long.csv`, `subject_error_profiles.csv` —
   análisis de errores por sujeto (12 vs. 116).
 - `outputs/figures/` — perfiles por ROI y forest plot del contraste
-  principal, en SVG y PNG.
+  principal, en SVG y PNG; más tres figuras adicionales de contrastes
+  secundarios frente a 116 (ver "Figuras de contrastes secundarios frente a
+  116" más abajo).
 - `outputs/analysis_manifest.json` — hashes, versiones, parámetros del
   bootstrap, tiempos observados y resumen de la resolución D1–D5.
 
@@ -145,6 +140,37 @@ completo de esta limitación.
 - **D5 — estimando:** desempeño medio del *pipeline* de validación cruzada
   (cinco repeticiones de 10-fold), no el de un ensamble de probabilidades
   promediadas entre repeticiones, ni el de un único modelo final desplegado.
+
+## Figuras de contrastes secundarios frente a 116
+
+`outputs/figures/` incluye, además de las dos figuras del §10 de las
+instrucciones de implementación (`paired_roi_profiles`,
+`primary_contrast_forest`), tres figuras adicionales que **no** forman parte
+del conjunto original especificado — se agregaron después, a pedido, para
+visualizar contrastes que ya estaban calculados pero no graficados:
+
+- `secondary_contrast_18_vs_116_forest.{svg,png}` — contraste 18−116 por sitio.
+- `secondary_contrast_39_vs_116_forest.{svg,png}` — contraste 39−116 por sitio.
+- `contrasts_vs_116_forest.{svg,png}` — los tres contrastes frente a 116
+  (12, 18 y 39) lado a lado, en la misma escala horizontal.
+
+Estas figuras no recalculan nada: leen directamente `primary_12_vs_116.csv`
+y las filas de AUC de `secondary_pairwise_comparisons.csv` para los
+contrastes `18-116` y `39-116`, que ya existían como dos de los cinco
+contrastes secundarios definidos en el plan (§8). Importante para su
+interpretación:
+
+- **12−116 es el único contraste primario y preespecificado.** 18−116 y
+  39−116 son secundarios y exploratorios: el plan pide reportarlos "sin
+  declaraciones de significancia" y sin corrección por comparaciones
+  múltiples (§8), precisamente porque se leen varios contrastes sin ajustar.
+  Un intervalo que no cruza cero entre varios sin ajustar no es, por sí
+  solo, evidencia fuerte — es exactamente el patrón esperable por azar al
+  mirar suficientes comparaciones sin corrección.
+- Se aplican las mismas reglas D2/D3/D5 que al contraste principal: sin
+  margen, sin efecto combinado entre sitios, sin ensamble de probabilidades.
+- Se hereda también el estado de preinscripción de la sección anterior: son
+  resultados posteriores a la revisión de factibilidad, nunca confirmatorios.
 
 ## Cómo interpretar el máximo puntual
 

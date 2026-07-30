@@ -258,6 +258,12 @@ def main() -> int:
         "paired_roi_profiles.png": figures_dir / "paired_roi_profiles.png",
         "primary_contrast_forest.svg": figures_dir / "primary_contrast_forest.svg",
         "primary_contrast_forest.png": figures_dir / "primary_contrast_forest.png",
+        "secondary_contrast_18_vs_116_forest.svg": figures_dir / "secondary_contrast_18_vs_116_forest.svg",
+        "secondary_contrast_18_vs_116_forest.png": figures_dir / "secondary_contrast_18_vs_116_forest.png",
+        "secondary_contrast_39_vs_116_forest.svg": figures_dir / "secondary_contrast_39_vs_116_forest.svg",
+        "secondary_contrast_39_vs_116_forest.png": figures_dir / "secondary_contrast_39_vs_116_forest.png",
+        "contrasts_vs_116_forest.svg": figures_dir / "contrasts_vs_116_forest.svg",
+        "contrasts_vs_116_forest.png": figures_dir / "contrasts_vs_116_forest.png",
         "analysis_manifest.json": output_dir / "analysis_manifest.json",
     }
     if not args.overwrite:
@@ -487,6 +493,71 @@ def main() -> int:
     fig2.savefig(out_files["primary_contrast_forest.svg"])
     fig2.savefig(out_files["primary_contrast_forest.png"], dpi=150)
     plt.close(fig2)
+
+    # ---- 10.4 Contrastes secundarios frente a 116 (18 y 39): figuras exploratorias --
+    # Estas figuras NO forman parte del contraste principal (12 frente a 116, unico
+    # preespecificado como primario en el plan 5.6, seccion 8). Visualizan dos de los
+    # cinco contrastes secundarios ya calculados en secondary_pairwise_comparisons.csv
+    # (18-116 y 39-116), con el mismo bootstrap pareado, sin declaraciones de
+    # significancia y sin correccion por comparaciones multiples -- exactamente como
+    # exige el plan para los contrastes secundarios. No se reescala ni se reinterpreta
+    # el contraste principal.
+    def _forest_series(df_subset: pd.DataFrame, value_col: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        d = df_subset.set_index("site").loc[site_order]
+        return d[value_col].to_numpy(), d["bilateral_ci_low"].to_numpy(), d["bilateral_ci_high"].to_numpy()
+
+    def _draw_forest_panel(ax, est: np.ndarray, lo: np.ndarray, hi: np.ndarray, title: str) -> None:
+        y_pos_local = np.arange(len(site_order))
+        xerr = [np.clip(est - lo, 0, None), np.clip(hi - est, 0, None)]
+        ax.errorbar(est, y_pos_local, xerr=xerr, fmt="o", color="black", capsize=4)
+        ax.axvline(0, color="lightgray", linestyle="--", linewidth=1)
+        ax.set_yticks(y_pos_local)
+        ax.set_yticklabels(site_order)
+        ax.set_title(title)
+        ax.set_xlabel("Diferencia AUC, IC bootstrap bilateral 95%")
+
+    secondary_auc = secondary_pairwise[secondary_pairwise["metric"] == "auc"]
+
+    individual_specs = [
+        ("18-116", "Contraste 18 − 116 (secundaria, exploratoria)", "secondary_contrast_18_vs_116_forest"),
+        ("39-116", "Contraste 39 − 116 (secundaria, exploratoria)", "secondary_contrast_39_vs_116_forest"),
+    ]
+    for contrast_label, title, fname_stub in individual_specs:
+        sub = secondary_auc[secondary_auc["contrast"] == contrast_label]
+        est, lo, hi = _forest_series(sub, "estimate")
+        fig_s, ax_s = plt.subplots(figsize=(6, 4))
+        _draw_forest_panel(ax_s, est, lo, hi, title)
+        fig_s.tight_layout()
+        fig_s.savefig(out_files[f"{fname_stub}.svg"])
+        fig_s.savefig(out_files[f"{fname_stub}.png"], dpi=150)
+        plt.close(fig_s)
+
+    # Figura combinada: 12-116 (primaria) junto a 18-116 y 39-116 (secundarias),
+    # en la misma escala horizontal para que sean directamente comparables.
+    combo_specs = [
+        ("12 − 116 (primaria)", primary_df.rename(columns={"delta_auc": "estimate"})),
+        ("18 − 116 (secundaria, exploratoria)", secondary_auc[secondary_auc["contrast"] == "18-116"]),
+        ("39 − 116 (secundaria, exploratoria)", secondary_auc[secondary_auc["contrast"] == "39-116"]),
+    ]
+    combo_data = []
+    all_lo_combo, all_hi_combo = [], []
+    for title, df_c in combo_specs:
+        est, lo, hi = _forest_series(df_c, "estimate")
+        combo_data.append((title, est, lo, hi))
+        all_lo_combo.append(lo)
+        all_hi_combo.append(hi)
+    xmin = float(np.min(np.concatenate(all_lo_combo))) - 0.02
+    xmax = float(np.max(np.concatenate(all_hi_combo))) + 0.02
+
+    fig_c, axes_c = plt.subplots(1, 3, figsize=(15, 4), sharey=True)
+    for ax_c, (title, est, lo, hi) in zip(axes_c, combo_data):
+        _draw_forest_panel(ax_c, est, lo, hi, title)
+        ax_c.set_xlim(xmin, xmax)
+    fig_c.suptitle("Contraste de cada tamaño de ROI frente a 116, por sitio (sin efecto combinado)")
+    fig_c.tight_layout()
+    fig_c.savefig(out_files["contrasts_vs_116_forest.svg"])
+    fig_c.savefig(out_files["contrasts_vs_116_forest.png"], dpi=150)
+    plt.close(fig_c)
 
     # ---- analysis_manifest.json ------------------------------------------------------
     try:
