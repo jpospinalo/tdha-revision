@@ -20,6 +20,13 @@ permanece de solo lectura.
 > La resolución D1–D5 (más abajo) complementa el plan congelado: no lo
 > modifica ni lo reinterpreta, solo cierra las decisiones que el plan dejó
 > explícitamente para el equipo.
+>
+> [`REVISION_PLAN_ANALISIS_ESTADISTICO.md`](REVISION_PLAN_ANALISIS_ESTADISTICO.md)
+> registra la discusión posterior sobre el plan: confirma que D2 quedó cerrado
+> como estimación sin margen y deja constancia de cuatro aperturas evaluadas
+> (síntesis entre sitios, metaanálisis, QC por pliegue y reapertura de D2) que
+> se descartaron, con su razón técnica. Es un registro de decisiones, **no** el
+> plan ni una versión alternativa de este.
 
 ## Cómo reproducir desde cero
 
