@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import atexit
 import hashlib
-import itertools
 import json
 import os
 import shutil
@@ -30,8 +29,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy import stats as scipy_stats
-from statsmodels.stats.multitest import multipletests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from build_analysis_dataset import (  # noqa: E402
@@ -405,115 +402,6 @@ def generate_d3_narrative(primary_df: pd.DataFrame) -> str:
     return text
 
 
-def compute_friedman_omnibus_by_site(
-    metrics_by_repeat: pd.DataFrame, site_order: list, roi_order: list,
-    n_permutations: int, seed: int,
-) -> pd.DataFrame:
-    """Prueba de Friedman (ómnibus, medidas repetidas) por sitio, sobre las
-    cinco repeticiones. Dentro de un sitio, las cinco repeticiones comparten
-    exactamente los mismos folds entre los cuatro tamaños de ROI (verificado
-    empíricamente sobre folds.csv), por lo que la comparación es pareada, no
-    de grupos independientes.
-
-    Exploratoria y post-hoc: se agrega a pedido de una revisión externa, no
-    forma parte de las instrucciones v1.5 ni del plan 5.6. Ver README,
-    sección "Prueba de hipótesis exploratoria", para la justificación y las
-    salvedades (incluida la exposición previa a los resultados, D2/
-    preregistration_status).
-
-    Reporta el p-valor asintótico chi-cuadrado (scipy.stats.friedmanchisquare)
-    y un p-valor de permutación: con solo n=5 bloques, la aproximación
-    asintótica es poco confiable, así que se complementa permutando, dentro
-    de cada bloque (repetición) de forma independiente, la asignación de
-    rangos entre los cuatro tamaños de ROI bajo la hipótesis nula de
-    intercambiabilidad -- equivalente a la prueba exacta, aproximada por
-    Monte Carlo con `n_permutations` remuestreos y semilla fija.
-    """
-    rng = np.random.default_rng(seed)
-    k = len(roi_order)
-    rows = []
-    for site in site_order:
-        sub = metrics_by_repeat[metrics_by_repeat["site"] == site]
-        mat = np.empty((5, k), dtype=np.float64)
-        for j, roi in enumerate(roi_order):
-            vals = sub[sub["roi_set"] == roi].sort_values("repeat")["auc"].to_numpy()
-            if len(vals) != 5:
-                raise SystemExit(f"Friedman: {site} ROI {roi} no tiene 5 repeticiones (tiene {len(vals)}).")
-            mat[:, j] = vals
-        n = mat.shape[0]
-
-        stat_asym, p_asym = scipy_stats.friedmanchisquare(*[mat[:, j] for j in range(k)])
-
-        ranks = np.apply_along_axis(scipy_stats.rankdata, 1, mat)
-        R = ranks.sum(axis=0)
-        stat_obs = (12 * n) / (k * (k + 1)) * np.sum(R ** 2) - 3 * n * (k + 1)
-
-        rand_vals = rng.random((n_permutations, n, k))
-        perm_ranks = np.argsort(np.argsort(rand_vals, axis=2), axis=2) + 1
-        Rp = perm_ranks.sum(axis=1)
-        stat_perm = (12 * n) / (k * (k + 1)) * np.sum(Rp ** 2, axis=1) - 3 * n * (k + 1)
-        p_perm = float(np.mean(stat_perm >= stat_obs - 1e-9))
-
-        rows.append({
-            "site": site, "n_repeats": n, "n_roi_groups": k,
-            "friedman_statistic": float(stat_obs),
-            "p_value_chi2_asymptotic": float(p_asym),
-            "p_value_permutation": p_perm,
-            "n_permutations": n_permutations,
-        })
-    out = pd.DataFrame(rows)
-    out["site"] = pd.Categorical(out["site"], categories=site_order, ordered=True)
-    return out.sort_values("site").reset_index(drop=True)
-
-
-def compute_wilcoxon_pairwise_by_site(
-    metrics_by_repeat: pd.DataFrame, site_order: list, roi_order: list,
-) -> pd.DataFrame:
-    """Wilcoxon signed-rank pareado (exacto, dado n=5) para las C(4,2)=6
-    comparaciones de tamaño de ROI dentro de cada sitio, con corrección Holm
-    dentro de cada sitio (familia de 6 comparaciones). Exploratoria y
-    post-hoc, mismo estatus que ``compute_friedman_omnibus_by_site``.
-
-    Con n=5 pares, el p-valor exacto de dos colas mínimo alcanzable es
-    2*(1/2**5) = 0.0625: ninguna comparación puede ser significativa a
-    alpha=0.05 antes de corrección, y Holm solo lo empeora. Se reporta
-    explícitamente (columna implícita: ninguna fila puede tener
-    p_value_raw < 0.0625); no se omite ni se suaviza en el texto.
-    """
-    pairs = list(itertools.combinations(roi_order, 2))
-    rows = []
-    for site in site_order:
-        sub = metrics_by_repeat[metrics_by_repeat["site"] == site]
-        site_rows = []
-        for roi_a, roi_b in pairs:
-            xa = sub[sub["roi_set"] == roi_a].sort_values("repeat")["auc"].to_numpy()
-            xb = sub[sub["roi_set"] == roi_b].sort_values("repeat")["auc"].to_numpy()
-            if len(xa) != 5 or len(xb) != 5:
-                raise SystemExit(f"Wilcoxon: {site} {roi_a}/{roi_b} no tienen 5 repeticiones cada uno.")
-            diff = xa - xb
-            n_nonzero = int(np.sum(diff != 0))
-            try:
-                stat_w, p_w = scipy_stats.wilcoxon(
-                    xa, xb, alternative="two-sided", mode="exact", zero_method="wilcox"
-                )
-            except ValueError:
-                stat_w, p_w = scipy_stats.wilcoxon(xa, xb, alternative="two-sided")
-            site_rows.append({
-                "site": site, "roi_a": roi_a, "roi_b": roi_b,
-                "mean_diff_auc": float(diff.mean()), "n_pairs_used": n_nonzero,
-                "wilcoxon_statistic": float(stat_w), "p_value_raw": float(p_w),
-            })
-        pvals = np.array([r["p_value_raw"] for r in site_rows])
-        reject, p_holm, _, _ = multipletests(pvals, alpha=0.05, method="holm")
-        for r, ph, rj in zip(site_rows, p_holm, reject):
-            r["p_value_holm"] = float(ph)
-            r["reject_holm_alpha05"] = bool(rj)
-        rows.extend(site_rows)
-    out = pd.DataFrame(rows)
-    out["site"] = pd.Categorical(out["site"], categories=site_order, ordered=True)
-    return out.sort_values(["site", "roi_a", "roi_b"]).reset_index(drop=True)
-
-
 def compute_input_hash_inventory(repo_root: Path, manifest: pd.DataFrame) -> dict:
     """CORRECCIONES_V19 §4/§11: inventario determinista de SHA-256 de los
     insumos protegidos, capturado al inicio y al final de la ejecución
@@ -641,13 +529,6 @@ def main() -> int:
     ci_level = config["ci_level"]
     if abs(ci_level - 0.95) > 1e-9:
         raise SystemExit("ci_level distinto de 0.95 no está soportado por esta implementación (D2/plan 5.6).")
-    hyp_test_n_perm = config.get("hypothesis_test_permutation_iterations")
-    hyp_test_seed = config.get("hypothesis_test_permutation_seed")
-    if hyp_test_n_perm is None or hyp_test_seed is None:
-        raise SystemExit(
-            "analysis_config.json debe definir hypothesis_test_permutation_iterations "
-            "y hypothesis_test_permutation_seed."
-        )
 
     input_dir = Path(args.input_dir)
     output_dir = Path(args.output_dir)
@@ -703,8 +584,6 @@ def main() -> int:
         "secondary_contrast_39_vs_116_forest.png": figures_dir / "secondary_contrast_39_vs_116_forest.png",
         "contrasts_vs_116_forest.svg": figures_dir / "contrasts_vs_116_forest.svg",
         "contrasts_vs_116_forest.png": figures_dir / "contrasts_vs_116_forest.png",
-        "friedman_omnibus_by_site.csv": tables_dir / "friedman_omnibus_by_site.csv",
-        "wilcoxon_pairwise_by_site.csv": tables_dir / "wilcoxon_pairwise_by_site.csv",
         "analysis_manifest.json": output_dir / "analysis_manifest.json",
     }
     try:
@@ -822,22 +701,6 @@ def main() -> int:
                 })
     secondary_intervals = pd.DataFrame(interval_rows)
     secondary_intervals.to_csv(out_files["secondary_metric_intervals.csv"], index=False)
-
-    # ---- Pruebas de hipótesis exploratorias (post-hoc, no preinscritas) ------------
-    # Agregadas a pedido de una revisión externa; no forman parte de las
-    # instrucciones v1.5 ni del plan 5.6. Diseño pareado/medidas repetidas
-    # (mismos folds entre tamaños de ROI dentro de un sitio, verificado
-    # empíricamente) -> Friedman (ómnibus) + Wilcoxon signed-rank pareado con
-    # Holm (6 comparaciones por sitio), no ANOVA/Tukey de grupos independientes.
-    # Ver README para la justificación completa, incluida la advertencia sobre
-    # el piso p=0.0625 con n=5 pares y la exposición previa a los resultados
-    # que ya afecta este mismo análisis (mismo problema que D2).
-    friedman_omnibus = compute_friedman_omnibus_by_site(
-        metrics_by_repeat, site_order, roi_order, hyp_test_n_perm, hyp_test_seed
-    )
-    friedman_omnibus.to_csv(out_files["friedman_omnibus_by_site.csv"], index=False)
-    wilcoxon_pairwise = compute_wilcoxon_pairwise_by_site(metrics_by_repeat, site_order, roi_order)
-    wilcoxon_pairwise.to_csv(out_files["wilcoxon_pairwise_by_site.csv"], index=False)
 
     # ---- 9. Análisis de errores (12 vs 116) -----------------------------------------
     error_rows = []
@@ -1136,31 +999,6 @@ def main() -> int:
             "seed_scope": config["bootstrap_seed_scope"], "method": config["bootstrap_method"],
             "quantile_method": config["bootstrap_quantile_method"], "ci_level": ci_level,
         },
-        "hypothesis_test": {
-            "status": "exploratorio_post_hoc_no_preinscrito",
-            "design": "medidas_repetidas_pareadas_por_repeticion_mismos_folds_entre_tamanos_roi",
-            "omnibus_test": "friedman",
-            "omnibus_p_values_reported": ["chi2_asymptotic", "permutation"],
-            "pairwise_test": "wilcoxon_signed_rank_exact",
-            "pairwise_correction": "holm_dentro_de_cada_sitio_6_comparaciones",
-            "permutation_seed": hyp_test_seed,
-            "permutation_iterations": hyp_test_n_perm,
-            "wilcoxon_min_two_sided_p_with_n5": 0.0625,
-            "note": (
-                "Prueba agregada a pedido de una revision externa; no forma parte del "
-                "plan 5.6 ni de las instrucciones v1.5. Se agrega despues de haber "
-                "revisado extensamente las tablas e intervalos descriptivos, por lo que "
-                "hereda el mismo problema de exposicion previa a los resultados "
-                "documentado en preregistration_status: un resultado significativo aqui "
-                "es contexto adicional compatible con lo ya observado, no evidencia "
-                "independiente nueva. Con n=5 repeticiones pareadas, el p-valor exacto "
-                "de dos colas de Wilcoxon nunca puede ser menor a 0.0625, por lo que "
-                "ninguna comparacion por pares puede declararse significativa a "
-                "alpha=0.05 tras la correccion Holm, incluso si el patron es consistente "
-                "en las cinco repeticiones; esto es un limite de resolucion del diseno, "
-                "no evidencia de ausencia de diferencia."
-            ),
-        },
         "timing_seconds": {**site_timings, "total": total_time},
         "prob_matrix_bytes_float64": int(prob_matrix_bytes),
         "d1_d5_resolution": {
@@ -1220,8 +1058,6 @@ def main() -> int:
     print(f"  precision_diagnostics.csv: {len(precision_df)} filas")
     print(f"  secondary_pairwise_comparisons.csv: {len(secondary_pairwise)} filas")
     print(f"  secondary_metric_intervals.csv: {len(secondary_intervals)} filas")
-    print(f"  friedman_omnibus_by_site.csv: {len(friedman_omnibus)} filas")
-    print(f"  wilcoxon_pairwise_by_site.csv: {len(wilcoxon_pairwise)} filas")
     print(f"  error_analysis_long.csv: {len(error_long)} filas")
     print(f"  subject_error_profiles.csv: {len(subject_error_profiles)} filas")
     return 0

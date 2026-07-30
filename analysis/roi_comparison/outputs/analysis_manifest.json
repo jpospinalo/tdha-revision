@@ -1,54 +1,45 @@
 {
   "plan_version": "5.6",
   "plan_sha256": "199857a46006a082d97f6a055ffdaaa075fd25be87bbb4147e806aae28367163",
-  "analysis_config_sha256": "183eec873201b0b146b8812d08f1083b50694308934b2f9b5c9b98891617584f",
+  "analysis_config_sha256": "2b9d852c4f21d2b11dbdcdd3cc88b82864989e9a87f385ed4211d22a9ffd7a34",
   "run_manifest_sha256": "34cd68d346328194b9ccf4e6941a3e6836d47bde1f4cfa915826d230dd75cc72",
   "results_readme_sha256": "b083f24d0e007697043145e08475dafcc58007debf3e6a5af76d9bffc1cfb28e",
-  "generated_at": "2026-07-30T04:36:02.630240+00:00",
-  "command": "run_statistical_analysis.py --repo-root /sessions/laughing-wizardly-archimedes/mnt/tdha-revision --config /sessions/laughing-wizardly-archimedes/mnt/tdha-revision/analysis/roi_comparison/config/analysis_config.json --manifest /sessions/laughing-wizardly-archimedes/mnt/tdha-revision/analysis/roi_comparison/config/run_manifest.csv --input-dir /sessions/laughing-wizardly-archimedes/mnt/tdha-revision/analysis/roi_comparison/outputs/data --output-dir /sessions/laughing-wizardly-archimedes/mnt/tdha-revision/analysis/roi_comparison/outputs --overwrite",
+  "generated_at": "2026-07-30T16:33:11.489684+00:00",
+  "command": "analysis/roi_comparison/scripts/run_statistical_analysis.py --repo-root . --config analysis/roi_comparison/config/analysis_config.json --manifest analysis/roi_comparison/config/run_manifest.csv --input-dir analysis/roi_comparison/outputs/data --output-dir analysis/roi_comparison/outputs --overwrite",
   "git_provenance_status": "available",
-  "repo_commit_before": "c1585e3536cb61734bbf3d296f6abd67ba884b4d",
-  "repo_commit_after": "c1585e3536cb61734bbf3d296f6abd67ba884b4d",
+  "repo_commit_before": "13847e7536327df352e29ec671f43a189d5f10bb",
+  "repo_commit_after": "13847e7536327df352e29ec671f43a189d5f10bb",
   "changed_paths_before": [
+    ".gitignore",
     "analysis/roi_comparison/README.md",
-    "analysis/roi_comparison/analysis_plan.md",
     "analysis/roi_comparison/config/analysis_config.json",
-    "analysis/roi_comparison/outputs/analysis_manifest.json",
-    "analysis/roi_comparison/outputs/figures/contrasts_vs_116_forest.svg",
-    "analysis/roi_comparison/outputs/figures/paired_roi_profiles.svg",
-    "analysis/roi_comparison/outputs/figures/primary_contrast_forest.svg",
-    "analysis/roi_comparison/outputs/figures/secondary_contrast_18_vs_116_forest.svg",
-    "analysis/roi_comparison/outputs/figures/secondary_contrast_39_vs_116_forest.svg",
-    "analysis/roi_comparison/outputs/tables/comparability_audit.csv",
+    "analysis/roi_comparison/outputs/tables/friedman_omnibus_by_site.csv",
+    "analysis/roi_comparison/outputs/tables/wilcoxon_pairwise_by_site.csv",
     "analysis/roi_comparison/roi_comparison.ipynb",
-    "analysis/roi_comparison/scripts/build_analysis_dataset.py",
     "analysis/roi_comparison/scripts/run_statistical_analysis.py",
     "analysis/roi_comparison/tests/test_analysis.py",
-    "analysis/roi_comparison/outputs/tables/friedman_omnibus_by_site.csv",
-    "analysis/roi_comparison/outputs/tables/wilcoxon_pairwise_by_site.csv"
+    "requirements.txt",
+    ".vscode_test_dummy"
   ],
   "changed_paths_after": [
+    ".gitignore",
     "analysis/roi_comparison/README.md",
-    "analysis/roi_comparison/analysis_plan.md",
     "analysis/roi_comparison/config/analysis_config.json",
-    "analysis/roi_comparison/outputs/analysis_manifest.json",
-    "analysis/roi_comparison/outputs/figures/contrasts_vs_116_forest.svg",
-    "analysis/roi_comparison/outputs/figures/paired_roi_profiles.svg",
-    "analysis/roi_comparison/outputs/figures/primary_contrast_forest.svg",
-    "analysis/roi_comparison/outputs/figures/secondary_contrast_18_vs_116_forest.svg",
-    "analysis/roi_comparison/outputs/figures/secondary_contrast_39_vs_116_forest.svg",
-    "analysis/roi_comparison/outputs/tables/comparability_audit.csv",
+    "analysis/roi_comparison/outputs/tables/friedman_omnibus_by_site.csv",
+    "analysis/roi_comparison/outputs/tables/wilcoxon_pairwise_by_site.csv",
     "analysis/roi_comparison/roi_comparison.ipynb",
-    "analysis/roi_comparison/scripts/build_analysis_dataset.py",
     "analysis/roi_comparison/scripts/run_statistical_analysis.py",
     "analysis/roi_comparison/tests/test_analysis.py",
-    "analysis/roi_comparison/outputs/.staging-7k_0hqnv/",
-    "analysis/roi_comparison/outputs/tables/friedman_omnibus_by_site.csv",
-    "analysis/roi_comparison/outputs/tables/wilcoxon_pairwise_by_site.csv"
+    "requirements.txt",
+    ".vscode_test_dummy"
   ],
-  "changed_paths_outside_analysis": [],
-  "input_hash_inventory_fingerprint_before": "1e848dcdc5b3ee38e0fb2027dbcaf3bdc5abf84497beb5a3a788907318737a8f",
-  "input_hash_inventory_fingerprint_after": "1e848dcdc5b3ee38e0fb2027dbcaf3bdc5abf84497beb5a3a788907318737a8f",
+  "changed_paths_outside_analysis": [
+    ".gitignore",
+    "requirements.txt",
+    ".vscode_test_dummy"
+  ],
+  "input_hash_inventory_fingerprint_before": "a888f609974241d3526607006c96eefc28823511407b12239b5b8b580a44389b",
+  "input_hash_inventory_fingerprint_after": "a888f609974241d3526607006c96eefc28823511407b12239b5b8b580a44389b",
   "input_hash_inventory_before": {
     "results_readme_sha256": "b083f24d0e007697043145e08475dafcc58007debf3e6a5af76d9bffc1cfb28e",
     "run_artifacts": {
@@ -198,7 +189,7 @@
       }
     },
     "protected_files": {
-      "requirements_txt_sha256": "524cc009d0cd34ec62277d20841d26384aac816a072aeff59e9fd9544dd56389",
+      "requirements_txt_sha256": "b1d03c51587a9a1463d5500f553a45c8310e1f9f9a05c9b07b559af6f7f79656",
       "tdha_experimentos_ipynb_sha256": "08a9b5704183ea1059b046a1625770bcd322df1dc62ef44223db77269874192b",
       "src": {
         "src/analyze_ensemble.py": "dd00387f4581d206406cae0faf00fa60343600ea3b1e962e2aa90ed10b8f7006",
@@ -366,7 +357,7 @@
       }
     },
     "protected_files": {
-      "requirements_txt_sha256": "524cc009d0cd34ec62277d20841d26384aac816a072aeff59e9fd9544dd56389",
+      "requirements_txt_sha256": "b1d03c51587a9a1463d5500f553a45c8310e1f9f9a05c9b07b559af6f7f79656",
       "tdha_experimentos_ipynb_sha256": "08a9b5704183ea1059b046a1625770bcd322df1dc62ef44223db77269874192b",
       "src": {
         "src/analyze_ensemble.py": "dd00387f4581d206406cae0faf00fa60343600ea3b1e962e2aa90ed10b8f7006",
@@ -387,11 +378,11 @@
   },
   "protected_files_unchanged": true,
   "versions": {
-    "python": "3.10.12",
-    "numpy": "2.2.6",
-    "pandas": "2.3.3",
-    "scikit_learn": "1.7.2",
-    "matplotlib": "3.10.9"
+    "python": "3.13.2",
+    "numpy": "2.5.1",
+    "pandas": "3.0.5",
+    "scikit_learn": "1.8.0",
+    "matplotlib": "3.11.1"
   },
   "runs": [
     {
@@ -548,27 +539,12 @@
     "quantile_method": "linear",
     "ci_level": 0.95
   },
-  "hypothesis_test": {
-    "status": "exploratorio_post_hoc_no_preinscrito",
-    "design": "medidas_repetidas_pareadas_por_repeticion_mismos_folds_entre_tamanos_roi",
-    "omnibus_test": "friedman",
-    "omnibus_p_values_reported": [
-      "chi2_asymptotic",
-      "permutation"
-    ],
-    "pairwise_test": "wilcoxon_signed_rank_exact",
-    "pairwise_correction": "holm_dentro_de_cada_sitio_6_comparaciones",
-    "permutation_seed": 42,
-    "permutation_iterations": 500000,
-    "wilcoxon_min_two_sided_p_with_n5": 0.0625,
-    "note": "Prueba agregada a pedido de una revision externa; no forma parte del plan 5.6 ni de las instrucciones v1.5. Se agrega despues de haber revisado extensamente las tablas e intervalos descriptivos, por lo que hereda el mismo problema de exposicion previa a los resultados documentado en preregistration_status: un resultado significativo aqui es contexto adicional compatible con lo ya observado, no evidencia independiente nueva. Con n=5 repeticiones pareadas, el p-valor exacto de dos colas de Wilcoxon nunca puede ser menor a 0.0625, por lo que ninguna comparacion por pares puede declararse significativa a alpha=0.05 tras la correccion Holm, incluso si el patron es consistente en las cinco repeticiones; esto es un limite de resolucion del diseno, no evidencia de ausencia de diferencia."
-  },
   "timing_seconds": {
-    "NYU": 0.003289249994850252,
-    "Peking": 0.0033888340039993636,
-    "NeuroIMAGE": 0.002514209001674317,
-    "OHSU": 0.0025745420061866753,
-    "total": 0.011766835006710608
+    "NYU": 213.16299649999928,
+    "Peking": 237.44813133299976,
+    "NeuroIMAGE": 212.98894950000067,
+    "OHSU": 207.37192591700114,
+    "total": 870.9720032500009
   },
   "prob_matrix_bytes_float64": 74400,
   "d1_d5_resolution": {
@@ -605,7 +581,7 @@
     },
     "precision_diagnostics.csv": {
       "path": "analysis/roi_comparison/outputs/tables/precision_diagnostics.csv",
-      "sha256": "4ffb12f06ce7aab8a9b63d619b7c05cabdd5337eacbbb1f533164563e98d3a14"
+      "sha256": "7287dfefc5ea02fbce9306aac473efa3344bb3a4c05a29d2bdcb9b1301781582"
     },
     "secondary_pairwise_comparisons.csv": {
       "path": "analysis/roi_comparison/outputs/tables/secondary_pairwise_comparisons.csv",
@@ -629,51 +605,43 @@
     },
     "paired_roi_profiles.svg": {
       "path": "analysis/roi_comparison/outputs/figures/paired_roi_profiles.svg",
-      "sha256": "8cee7e1fa5e66f8363bc021988669318fe53e1c88355b9caa3cbfc600d01e018"
+      "sha256": "ce2af52ad30c7aa7f733bfe0e55e2043446179a09cff932e2695a50217515e53"
     },
     "paired_roi_profiles.png": {
       "path": "analysis/roi_comparison/outputs/figures/paired_roi_profiles.png",
-      "sha256": "5f2c9dd4ba0dca45ab1ce8e345c4bdf66200132103e3a84be1928ca8280acba7"
+      "sha256": "e0456e0c8a58bee086b5866b4802ffc8a1ad87e32cd924ae6cb17b9811a21889"
     },
     "primary_contrast_forest.svg": {
       "path": "analysis/roi_comparison/outputs/figures/primary_contrast_forest.svg",
-      "sha256": "6ed814be7a47f82368842e4be6395aab5194a8c3c52f8b83e5f6ec8334eed640"
+      "sha256": "c5147d3b3a39104a09f52e7c99e9fb699d94b9af6cd7f04358f848021590bf87"
     },
     "primary_contrast_forest.png": {
       "path": "analysis/roi_comparison/outputs/figures/primary_contrast_forest.png",
-      "sha256": "c75b0aeb2904d6b6ac5e6ed912858ac8d39e7c541442d22c07d92899bb32f967"
+      "sha256": "76057e087eee104b000e0524bf8dd48f22ce0f2c1d23c51779866a2e73a71171"
     },
     "secondary_contrast_18_vs_116_forest.svg": {
       "path": "analysis/roi_comparison/outputs/figures/secondary_contrast_18_vs_116_forest.svg",
-      "sha256": "25d5004c4eab2bfd4348f0cf66cc3a0db1197dc6b9a9a206a363f45e6f67d2a8"
+      "sha256": "c52406bb05af164cf7c25bd90e067e61c2e268b8c66f2276b9c948583622f129"
     },
     "secondary_contrast_18_vs_116_forest.png": {
       "path": "analysis/roi_comparison/outputs/figures/secondary_contrast_18_vs_116_forest.png",
-      "sha256": "5feb3f047be2671e2b077a51b21f031f94d3ef0741e258a620a0a53718914845"
+      "sha256": "fe9c3e7a7dc99739017538861e502e4ceea8199b0ebe981d0aa84fc66ae6b4e3"
     },
     "secondary_contrast_39_vs_116_forest.svg": {
       "path": "analysis/roi_comparison/outputs/figures/secondary_contrast_39_vs_116_forest.svg",
-      "sha256": "87abb5c5ffbad2173757b1300b28237c58689407971166c7c8308bb57a1acf07"
+      "sha256": "72a0df80018420b30634fcd3278e48f24c3b7ac1542695297c77a55472c448b4"
     },
     "secondary_contrast_39_vs_116_forest.png": {
       "path": "analysis/roi_comparison/outputs/figures/secondary_contrast_39_vs_116_forest.png",
-      "sha256": "e9da613babc9d01c4e505ab4a7b42854f35f592bc3ab2d7cbab632ff2b46175b"
+      "sha256": "52df4bf47af4ac07d2ecd21210a13d8b31d073612ff1fadaf4e62bb48f6e5049"
     },
     "contrasts_vs_116_forest.svg": {
       "path": "analysis/roi_comparison/outputs/figures/contrasts_vs_116_forest.svg",
-      "sha256": "55f6eda125de07648b82cbe69944afd5bd6d9bfb5ef353001b8e356e7f420f01"
+      "sha256": "8637ca1b5ebadddc36e76997fa2b5aaf16ec304c7432c49a0eb00698eb948ba3"
     },
     "contrasts_vs_116_forest.png": {
       "path": "analysis/roi_comparison/outputs/figures/contrasts_vs_116_forest.png",
-      "sha256": "7f44e63cecc4c61732bf0335d4a6805b77278e4f42fb31c2e3ebd5fb343981eb"
-    },
-    "friedman_omnibus_by_site.csv": {
-      "path": "analysis/roi_comparison/outputs/tables/friedman_omnibus_by_site.csv",
-      "sha256": "1f861673c1d158defd7400f3f948782a47731660c1b2146917561153decde858"
-    },
-    "wilcoxon_pairwise_by_site.csv": {
-      "path": "analysis/roi_comparison/outputs/tables/wilcoxon_pairwise_by_site.csv",
-      "sha256": "2e009b1d49523c82d3fdc9fa687f7cf9f563c5f44785cfcae88fc4fde7e2732d"
+      "sha256": "d93dd69ef1406d4736fd04660ad20e6c4fb556262cab840b957f9aaa9602dcbc"
     },
     "subject_scores.csv": {
       "path": "analysis/roi_comparison/outputs/data/subject_scores.csv",

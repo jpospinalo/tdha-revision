@@ -18,7 +18,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
-from statsmodels.stats.multitest import multipletests
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -623,96 +622,6 @@ class TestD3Narrative(unittest.TestCase):
         self.assertIn("no demuestra por sí sola heterogeneidad estadística", text)
 
 
-class TestHypothesisTests(unittest.TestCase):
-    """22. Friedman ómnibus + Wilcoxon-Holm pareado por sitio (prueba
-    exploratoria post-hoc agregada a pedido de una revisión externa, fuera
-    del alcance original v1.5/plan 5.6): conteos de filas, corrección Holm
-    correcta, piso de p=0.0625 con n=5 pares, reproducibilidad con semilla
-    fija, y sensibilidad de Friedman a un orden perfectamente consistente
-    entre repeticiones."""
-
-    @staticmethod
-    def _toy_metrics_by_repeat(sites, roi_order, seed=0, perfect_order=False):
-        rng = np.random.default_rng(seed)
-        rows = []
-        for site in sites:
-            for r in range(1, 6):
-                if perfect_order:
-                    # valores estrictamente crecientes en el orden de roi_order,
-                    # con ruido pequeño para no generar empates.
-                    base = np.arange(len(roi_order), dtype=float)
-                    noise = rng.uniform(-0.01, 0.01, size=len(roi_order))
-                    aucs = 0.5 + 0.05 * base + noise
-                else:
-                    aucs = rng.uniform(0.45, 0.65, size=len(roi_order))
-                for roi, auc in zip(roi_order, aucs):
-                    rows.append({
-                        "site": site, "roi_set": roi, "repeat": r,
-                        "n_subjects": 10, "n_control": 5, "n_adhd": 5,
-                        "auc": float(auc), "balanced_accuracy": float(auc),
-                        "f1_macro": float(auc), "sensitivity": float(auc),
-                        "specificity": float(auc), "accuracy": float(auc),
-                    })
-        return pd.DataFrame(rows)
-
-    def test_row_counts(self):
-        sites = ["SiteA", "SiteB"]
-        roi_order = [12, 18, 39, 116]
-        mbr = self._toy_metrics_by_repeat(sites, roi_order, seed=1)
-        fried = rsa.compute_friedman_omnibus_by_site(mbr, sites, roi_order, n_permutations=2000, seed=1)
-        wil = rsa.compute_wilcoxon_pairwise_by_site(mbr, sites, roi_order)
-        self.assertEqual(len(fried), len(sites))
-        self.assertEqual(len(wil), len(sites) * 6)  # C(4,2) = 6 pares por sitio
-
-    def test_wilcoxon_p_floor_with_n5(self):
-        # Con n=5 repeticiones pareadas, el p-valor exacto de dos colas
-        # nunca puede ser menor que 2*(1/2**5) = 0.0625, sin importar el
-        # tamaño del efecto observado.
-        sites = ["SiteA"]
-        roi_order = [12, 18, 39, 116]
-        mbr = self._toy_metrics_by_repeat(sites, roi_order, seed=2)
-        wil = rsa.compute_wilcoxon_pairwise_by_site(mbr, sites, roi_order)
-        self.assertTrue((wil["p_value_raw"] >= 0.0625 - 1e-9).all())
-
-    def test_holm_correction_matches_statsmodels(self):
-        sites = ["SiteA", "SiteB"]
-        roi_order = [12, 18, 39, 116]
-        mbr = self._toy_metrics_by_repeat(sites, roi_order, seed=3)
-        wil = rsa.compute_wilcoxon_pairwise_by_site(mbr, sites, roi_order)
-        for site in sites:
-            sub = wil[wil["site"] == site]
-            _, expected_holm, _, _ = multipletests(sub["p_value_raw"].to_numpy(), alpha=0.05, method="holm")
-            np.testing.assert_allclose(sub["p_value_holm"].to_numpy(), expected_holm)
-
-    def test_friedman_reproducible_with_fixed_seed(self):
-        sites = ["SiteA"]
-        roi_order = [12, 18, 39, 116]
-        mbr = self._toy_metrics_by_repeat(sites, roi_order, seed=4)
-        f1 = rsa.compute_friedman_omnibus_by_site(mbr, sites, roi_order, n_permutations=5000, seed=42)
-        f2 = rsa.compute_friedman_omnibus_by_site(mbr, sites, roi_order, n_permutations=5000, seed=42)
-        self.assertEqual(f1["p_value_permutation"].iloc[0], f2["p_value_permutation"].iloc[0])
-
-    def test_friedman_detects_perfectly_consistent_order(self):
-        # Sanity check direccional: si el orden de los cuatro tamaños de ROI
-        # es idéntico en las cinco repeticiones, el p-valor de permutación
-        # debe ser pequeño (caso extremo, no depende de la fórmula exacta).
-        sites = ["SiteA"]
-        roi_order = [12, 18, 39, 116]
-        mbr = self._toy_metrics_by_repeat(sites, roi_order, seed=5, perfect_order=True)
-        fried = rsa.compute_friedman_omnibus_by_site(mbr, sites, roi_order, n_permutations=20000, seed=5)
-        self.assertLess(fried["p_value_permutation"].iloc[0], 0.01)
-
-    def test_missing_repeat_raises(self):
-        sites = ["SiteA"]
-        roi_order = [12, 18, 39, 116]
-        mbr = self._toy_metrics_by_repeat(sites, roi_order, seed=6)
-        mbr = mbr[~((mbr["site"] == "SiteA") & (mbr["roi_set"] == 12) & (mbr["repeat"] == 1))]
-        with self.assertRaises(SystemExit):
-            rsa.compute_friedman_omnibus_by_site(mbr, sites, roi_order, n_permutations=1000, seed=6)
-        with self.assertRaises(SystemExit):
-            rsa.compute_wilcoxon_pairwise_by_site(mbr, sites, roi_order)
-
-
 class TestCanonicalPlan(unittest.TestCase):
     """CORRECCIONES_V19 §13.1: el plan canónico tiene el SHA-256 esperado."""
 
@@ -755,6 +664,18 @@ class TestAnalysisConfigValidation(unittest.TestCase):
             (REPO_ROOT / "analysis/roi_comparison/config/analysis_config.json").read_text(encoding="utf-8")
         )
         bad.validate_analysis_config(real_cfg)  # no debe lanzar; permite claves documentales extra
+
+    def test_real_repo_config_has_no_hypothesis_test_keys(self):
+        # Corrección v20: Friedman/Wilcoxon (y sus dos claves de configuración
+        # hypothesis_test_permutation_iterations/seed) se retiraron de la
+        # salida oficial por no independencia entre las cinco repeticiones de
+        # validación cruzada. Esta prueba evita que vuelvan a aparecer sin que
+        # alguien lo note.
+        real_cfg = json.loads(
+            (REPO_ROOT / "analysis/roi_comparison/config/analysis_config.json").read_text(encoding="utf-8")
+        )
+        offending = [k for k in real_cfg if k.startswith("hypothesis_test_")]
+        self.assertEqual(offending, [], f"claves hypothesis_test_* inesperadas: {offending}")
 
 
 class TestSubjectDiscrepancyInFolds(unittest.TestCase):

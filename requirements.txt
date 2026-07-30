@@ -15,3 +15,7 @@ nilearn>=0.10
 
 # Gráficos del notebook
 matplotlib>=3.7
+
+# Ejecución del notebook en VS Code (kernel de Jupyter; incluye IPython,
+# usado por roi_comparison.ipynb para display/Markdown/Image)
+ipykernel>=6.0

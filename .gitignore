@@ -1,5 +1,25 @@
+# Entornos virtuales
 env/
+venv/
+.venv/
+ENV/
+.env
+
+# Python
 *pyc*
+__pycache__/
+.pytest_cache/
+
+# Datos y notebooks
 raw_data/
-.DS_Store
 .ipynb_checkpoints
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+
+# Directorios temporales de escritura atómica del análisis de ROIs
+# (huérfanos si una corrida se interrumpe a mitad de la promoción final;
+# nunca deberían contener una salida final, ver README del módulo)
+analysis/roi_comparison/outputs/.staging-*/

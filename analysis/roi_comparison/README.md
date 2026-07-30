@@ -101,10 +101,6 @@ modificable desde la línea de comandos.
   `primary_12_vs_116.csv`, `precision_diagnostics.csv`,
   `secondary_pairwise_comparisons.csv`, `secondary_metric_intervals.csv`,
   `error_analysis_summary.csv` — resultados del análisis estadístico.
-- `outputs/tables/friedman_omnibus_by_site.csv`,
-  `wilcoxon_pairwise_by_site.csv` — prueba de hipótesis exploratoria y
-  post-hoc, agregada a pedido de una revisión externa (ver "Prueba de
-  hipótesis exploratoria" más abajo); no forma parte del plan 5.6.
 - `outputs/data/error_analysis_long.csv`, `subject_error_profiles.csv` —
   análisis de errores por sujeto (12 vs. 116).
 - `outputs/figures/` — perfiles por ROI y forest plot del contraste
@@ -180,6 +176,11 @@ completo de esta limitación.
 - **D5 — estimando:** desempeño medio del *pipeline* de validación cruzada
   (cinco repeticiones de 10-fold), no el de un ensamble de probabilidades
   promediadas entre repeticiones, ni el de un único modelo final desplegado.
+- **Repeticiones de validación cruzada:** no se usan las cinco repeticiones
+  de validación cruzada como cinco observaciones independientes para
+  pruebas Friedman/Wilcoxon. Las repeticiones reutilizan sujetos y
+  entrenamientos solapados; la inferencia oficial se mantiene en estimación
+  con bootstrap pareado por sujeto.
 
 ## Figuras de contrastes secundarios frente a 116
 
@@ -211,58 +212,6 @@ interpretación:
   margen, sin efecto combinado entre sitios, sin ensamble de probabilidades.
 - Se hereda también el estado de preinscripción de la sección anterior: son
   resultados posteriores a la revisión de factibilidad, nunca confirmatorios.
-
-## Prueba de hipótesis exploratoria (Friedman + Wilcoxon-Holm, por sitio)
-
-`outputs/tables/friedman_omnibus_by_site.csv` (4 filas) y
-`outputs/tables/wilcoxon_pairwise_by_site.csv` (24 filas) se agregaron a
-pedido de una revisión externa del trabajo, que recomendó incluir una prueba
-estadística formal para comparar los cuatro tamaños de ROI. **No forman
-parte de las instrucciones v1.5 ni del plan 5.6**; se documentan aquí con el
-mismo nivel de detalle que el resto, pero con su alcance y limitaciones
-explícitos.
-
-**Por qué esta prueba y no un ANOVA/Tukey de grupos independientes.** Dentro
-de un mismo sitio, las cinco repeticiones comparten exactamente los mismos
-folds entre los cuatro tamaños de ROI (verificado directamente sobre
-`folds.csv`: la asignación sujeto→fold en la repetición 1 es idéntica para
-12, 18, 39 y 116 ROIs). Es, por lo tanto, un diseño de medidas repetidas /
-pareado, no de grupos independientes. Se usa:
-
-- **Friedman** (`friedman_omnibus_by_site.csv`) como prueba ómnibus por
-  sitio, sobre los cuatro tamaños de ROI a la vez. Reporta el p-valor
-  asintótico chi-cuadrado (`p_value_chi2_asymptotic`, `scipy.stats.friedmanchisquare`)
-  y un p-valor de permutación (`p_value_permutation`, aproximadamente exacto:
-  con solo n=5 bloques la aproximación asintótica es poco confiable, así que
-  se complementa permutando la asignación de rangos dentro de cada bloque,
-  500.000 remuestreos, semilla fija en `analysis_config.json`
-  —`hypothesis_test_permutation_seed`/`hypothesis_test_permutation_iterations`—).
-- **Wilcoxon signed-rank pareado, exacto** (`wilcoxon_pairwise_by_site.csv`)
-  para las 6 comparaciones por pares dentro de cada sitio, con **corrección
-  Holm** dentro de esa familia de 6.
-
-**El piso de resolución con n=5 pares.** Con solo cinco repeticiones, el
-p-valor exacto de dos colas de Wilcoxon nunca puede ser menor que
-`2 * (1/2**5) = 0.0625` — es el valor que se obtiene cuando las cinco
-diferencias tienen el mismo signo, el caso más extremo posible. Ese piso ya
-está por encima de 0.05 antes de cualquier corrección; Holm solo lo empeora.
-En los datos actuales, **ninguna de las 24 comparaciones por pares es
-significativa a alpha=0.05 tras Holm**, ni siquiera en NYU, el único sitio
-cuyo Friedman ómnibus sí lo es (`p_value_permutation` ≈ 0.0014). Esto **no es
-evidencia de ausencia de diferencia** en NYU: es un límite estructural del
-diseño con esta n, no una conclusión sustantiva. Léase junto con
-`friedman_omnibus_by_site.csv`, nunca solo la tabla de pares.
-
-**Exploratoria y post-hoc, no independiente.** Esta prueba se construyó
-después de revisar extensamente las tablas descriptivas e intervalos de
-`primary_12_vs_116.csv` y `secondary_pairwise_comparisons.csv` — hereda el
-mismo problema de exposición previa a los resultados documentado arriba
-(preinscripción) y en D2: un resultado significativo aquí es contexto
-adicional compatible con lo que ya se observaba en los intervalos
-descriptivos (en NYU, el intervalo 12−116 era el más cercano a excluir cero
-de los cuatro sitios), no una confirmación estadística independiente y
-nueva. Ver `analysis_manifest.json` → `hypothesis_test` para los parámetros
-exactos y esta misma advertencia en el manifiesto.
 
 ## Cómo interpretar el máximo puntual
 
