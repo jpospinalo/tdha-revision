@@ -1,7 +1,7 @@
 # Registro breve de experimentación
 
 Última actualización: 2026-07-29  
-Alcance actual: NYU, Peking, NeuroIMAGE y OHSU; conjuntos de 12, 18 y 39 ROIs; BrainNetCNN.
+Alcance actual: NYU, Peking, NeuroIMAGE y OHSU; conjuntos de 12, 18, 39 y 116 ROIs; BrainNetCNN.
 
 ## Para qué sirve este archivo
 
@@ -28,21 +28,20 @@ conjuntos de ROIs o sitios entre sí se prioriza siempre el OOF por repetición.
 
 `AUC / balanced accuracy / accuracy OOF` (porcentaje, media entre repeticiones):
 
-| Sitio | 12 ROIs | 18 ROIs | 39 ROIs, baseline |
-|---|---:|---:|---:|
-| NYU | 59.05 / 57.45 / 57.40 | 60.00 / 56.70 / 56.72 | 52.83 / 52.27 / 52.20 |
-| NeuroIMAGE | 47.38 / 44.33 / 45.64 | 61.98 / 57.65 / 57.95 | 50.75 / 53.72 / 54.87 |
-| OHSU | 54.92 / 53.57 / 54.55 | 52.22 / 51.07 / 52.42 | 50.13 / 46.95 / 47.58 |
-| Peking | 56.37 / 54.11 / 55.52 | 56.75 / 53.98 / 55.41 | 62.22 / 60.31 / 61.20 |
+| Sitio | 12 ROIs | 18 ROIs | 39 ROIs, baseline | 116 ROIs |
+|---|---:|---:|---:|---:|
+| NYU | 59.05 / 57.45 / 57.40 | 60.00 / 56.70 / 56.72 | 52.83 / 52.27 / 52.20 | 53.93 / 53.09 / 53.11 |
+| NeuroIMAGE | 47.38 / 44.33 / 45.64 | 61.98 / 57.65 / 57.95 | 50.75 / 53.72 / 54.87 | 51.93 / 50.32 / 51.79 |
+| OHSU | 54.92 / 53.57 / 54.55 | 52.22 / 51.07 / 52.42 | 50.13 / 46.95 / 47.58 | 55.83 / 54.15 / 54.24 |
+| Peking | 56.37 / 54.11 / 55.52 | 56.75 / 53.98 / 55.41 | 62.22 / 60.31 / 61.20 | 60.33 / 58.09 / 59.02 |
 
-- Las tres corridas activas de Peking usan `class_weight=True`; ya no hay una diferencia de
+- Las cuatro corridas activas de Peking usan `class_weight=True`; ya no hay una diferencia de
   `class_weight` entre columnas de esta fila (ver la sección "Peking: corridas activas y su
   procedencia" más abajo).
 - Las corridas OHSU actuales usan `ordered`, producen solo seis ventanas y están registradas
   como exploratorias mientras se decide el baseline estático.
-- No hay resultados de 116 ROIs en el compendio.
 - El conjunto de 39 tiene una composición anatómica diferente; no es una ampliación del de
-  12 o 18 (ver `data/atlas/roi_sets.json`).
+  12 o 18 (ver `data/atlas/roi_sets.json`). El de 116 es el atlas AAL116 completo.
 - Las corridas realizadas con `git.clean=false` son descriptivas y tienen hashes de código,
   pero su procedencia es menos fuerte que la de una corrida ejecutada con árbol limpio. No
   son corridas inválidas. Tres de ellas (`2b729a8c`, `299719fe`, `bc841110`) tienen además
@@ -50,21 +49,37 @@ conjuntos de ROIs o sitios entre sí se prioriza siempre el OOF por repetición.
   — ver "Nota de procedencia" más abajo.
 
 **Conclusión (prudente):** el conjunto de 12 ROIs es la opción más parsimoniosa y sigue
-siendo competitivo, en particular en NYU, pero los resultados no demuestran que sea
-universalmente el conjunto más informativo. El mejor conjunto cambia según el sitio. No se
-declara superioridad estadística ni generalización entre sitios.
+siendo competitivo, pero los resultados no demuestran que sea universalmente el conjunto más
+informativo. El conjunto con la estimación puntual más alta cambia según el sitio: 18 ROIs en
+NYU y NeuroIMAGE, 116 en OHSU y 39 en Peking. Es decir, 12 ROIs no es el máximo en ningún
+sitio, aunque queda cerca del máximo en NYU (59.05 frente a 60.00) y en Peking (56.37 frente
+a 56.75).
+
+Estas son comparaciones de **estimaciones puntuales**, no evidencia de superioridad: no se ha
+ejecutado ninguna comparación pareada con intervalos entre tamaños, y las diferencias de unas
+décimas están muy por debajo de la precisión disponible. El análisis formal de esta pregunta
+está especificado en el plan de análisis estadístico de comparación de 12/18/39/116 ROIs y no
+debe anticiparse desde esta tabla. No se declara superioridad estadística ni generalización
+entre sitios.
 
 ### Comparabilidad y procedencia por sitio
 
-`class_weight` y `git.clean` de las tres corridas activas (12/18/39 ROIs) de cada sitio:
+`class_weight` y `git.clean` de las cuatro corridas activas (12/18/39/116 ROIs) de cada sitio:
 
-- NYU 12/18/39: `class_weight=False`, configuraciones comparables y árbol limpio en las tres.
-- NeuroIMAGE 12/18/39: `class_weight=False`; 18 y 39 con árbol limpio, 12 (`2b729a8c`) con
+- NYU 12/18/39/116: `class_weight=False`, configuraciones comparables y árbol limpio en las
+  cuatro.
+- NeuroIMAGE 12/18/39/116: `class_weight=False`; 18, 39 y 116 con árbol limpio, 12
+  (`2b729a8c`) con `git.clean=false`.
+- OHSU 12/18/39/116: `class_weight=False`; 12, 18 y 116 con árbol limpio, 39 (`299719fe`) con
   `git.clean=false`.
-- OHSU 12/18/39: `class_weight=False`; 12 y 18 con árbol limpio, 39 (`299719fe`) con
-  `git.clean=false`.
-- Peking 12/18/39: `class_weight=True`; 18 y 39 con árbol limpio, 12 (`bc841110`) con
+- Peking 12/18/39/116: `class_weight=True`; 18, 39 y 116 con árbol limpio, 12 (`bc841110`) con
   `git.clean=false` (detalle completo en la sección siguiente).
+
+Las cuatro corridas de 116 ROIs se ejecutaron con árbol limpio y no añaden salvedades de
+procedencia nuevas. Dentro de cada sitio comparten `split_fingerprint`, `bold_hash`,
+`data_code_hash`, `runner_code_hash`, arquitectura y `folds.csv` con las de 12, 18 y 39, así
+que las cuatro configuraciones de un mismo sitio son comparables de forma pareada sujeto a
+sujeto.
 
 ### Nota de procedencia: `git.clean=false` en `2b729a8c`, `299719fe` y `bc841110`
 
@@ -111,6 +126,30 @@ Métricas completas:
 |---|---:|---:|---:|---:|
 | NeuroIMAGE–39 `dc028168` | 54.87% | 50.75% | 53.52% | 53.72% |
 | OHSU–39 `299719fe` | 47.58% | 50.13% | 46.68% | 46.95% |
+
+### 116 ROIs (AAL116 completo): baseline diagnóstico en los cuatro sitios
+
+Corridas activas, con su identificador real — no deben renombrarse:
+
+| Sitio | `run_id` | Accuracy | AUC | F1-macro | Balanced accuracy |
+|---|---|---:|---:|---:|---:|
+| NYU | `NYU_rois116_w60s6_brainnetcnn_control_baseline_v13_160b89cd` | 53.11% | 53.93% | 53.04% | 53.09% |
+| NeuroIMAGE | `NeuroIMAGE_rois116_w61s6_brainnetcnn_control_baseline_v13_669d72bd` | 51.79% | 51.93% | 50.04% | 50.32% |
+| OHSU | `OHSU_rois116_w48s5_brainnetcnn_control_baseline_v13_f82f17b4` | 54.24% | 55.83% | 53.66% | 54.15% |
+| Peking | `Peking_rois116_w60s6_brainnetcnn_240732d1` | 59.02% | 60.33% | 57.86% | 58.09% |
+
+Notas:
+
+- Las cuatro se ejecutaron con `git.clean=true`. `class_weight` sigue la convención de su
+  sitio: `False` en NYU, NeuroIMAGE y OHSU, `True` en Peking.
+- La corrida de Peking, `Peking_rois116_w60s6_brainnetcnn_240732d1`, **no lleva la etiqueta
+  `control_baseline_v13`** que sí llevan las otras tres. Es el identificador real y no se
+  renombra; su configuración se valida por `config.json`, nunca por el nombre. Su carpeta
+  contiene además `peking_dummy.txt`, que no forma parte del contrato de siete artefactos, se
+  ignora y no invalida la corrida.
+- Estas cifras son el baseline diagnóstico que se pedía antes de considerar cualquier barrido
+  de hiperparámetros sobre 116 ROIs. Ese barrido sigue sin iniciarse y no se recomienda
+  todavía.
 
 ### Peking: corridas activas y su procedencia
 
@@ -175,15 +214,18 @@ correcciones de artefactos:
    definitivas; no comparar `5×5` con `10×5` como si la única diferencia fueran los ROIs.
 2. Evaluar OHSU `static` con 12 y 18 ROIs usando exactamente el mismo protocolo.
 3. Evaluar el ensamble NYU 12+18.
-4. Ejecutar 116 ROIs como baseline diagnóstico, primero en Peking y después en NYU; no
-   iniciar un barrido de hiperparámetros de 116 antes de conocer esos baselines.
+4. Ejecutar el análisis estadístico pareado de 12/18/39/116 ROIs conforme a su plan
+   congelado; no anticipar conclusiones desde la tabla de estimaciones puntuales de arriba.
 
-Ya completadas en una actualización anterior:
+Ya completadas:
 
 - ~~Peking–18 baseline con `class_weight=True`~~ — completada (`0bf7fa0e`); no es necesario
   repetirla en esta fase.
 - ~~Ensamble Peking 18+39~~ — evaluado exploratoriamente (ver arriba); no se promueve a
   referencia y no es necesario repetirlo en esta fase.
+- ~~Ejecutar 116 ROIs como baseline diagnóstico~~ — completada en los **cuatro** sitios (ver
+  "116 ROIs (AAL116 completo)" más arriba), no solo en Peking y NYU como se había planeado.
+  Sigue vigente la indicación de no iniciar un barrido de hiperparámetros sobre 116.
 
 Configuración usada en Peking–18 `0bf7fa0e` (ya ejecutada; la única diferencia frente a la
 corrida histórica `b8e8a44d` fue `class_weight=False → True` y la etiqueta de la nueva
