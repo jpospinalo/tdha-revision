@@ -12,5 +12,6 @@ Technical documentation for the current version of the ADHD-200 dynamic function
 | `limitations.md` | Scope and known limitations. |
 | `auditoria-metricas.md` | Audit of the manuscript figures against the versioned results. |
 | `modificaciones_eventanado.md` | Integration notes for the windowing changes. |
+| `PLAN_RESPUESTA_REVISORES.md` | **Approved and frozen plan** for answering the reviewers: evidence available without retraining, the ten-run campaign, mandatory transparency statements, and the checks required before resubmission. |
 
 It complements the source code and the manuscript, and summarizes the relevant decisions without documenting every function.
