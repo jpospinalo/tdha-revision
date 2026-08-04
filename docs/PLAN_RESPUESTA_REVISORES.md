@@ -1,14 +1,22 @@
 # Plan para responder los comentarios de los revisores
 
-**Versión:** 3.2 — **definitiva y congelada**
-**Fecha:** 30 de julio de 2026
-**Estado:** aprobado por el equipo. Campaña de diez corridas aprobada. Documento cerrado tras incorporar las tres correcciones finales de redacción.
+**Versión:** 3.4 — **definitiva y congelada**
+**Fecha:** 30 de julio de 2026; enmienda del 1 de agosto de 2026; enmienda del 3 de agosto de 2026
+**Estado:** aprobado por el equipo. Campaña de diez corridas aprobada. Documento cerrado tras incorporar las tres correcciones finales de redacción de la v3.2, una enmienda puntual por instrucción de la revista, y la activación de la contingencia de baseline lineal prevista en §9.1.
 
 Este es el **único documento de planificación vigente** para la respuesta a los revisores. Las versiones previas (v3.0) y el registro intermedio de la deliberación (evaluación de la v3.1) quedaron retiradas del repositorio una vez incorporadas aquí; el resumen de qué se corrigió en el cierre está en la nota de arriba.
 
-**Correcciones incorporadas en el cierre:** (1) se retira «validación externa» como nombre del diseño y se fija la regla léxica exterior/externo (§2.3), que además resolvía una contradicción con §4.4; (2) la respuesta a R2.5 se da por sitio y no en bloque, y se separa el hecho documentado de la inferencia pendiente sobre NYU (§4.1, §4.2, D4); (3) se retira la afirmación de imposibilidad en la justificación para excluir GRU y Transformer (§8.2).
+**Correcciones incorporadas en el cierre (v3.2):** (1) se retira «validación externa» como nombre del diseño y se fija la regla léxica exterior/externo (§2.3), que además resolvía una contradicción con §4.4; (2) la respuesta a R2.5 se da por sitio y no en bloque, y se separa el hecho documentado de la inferencia pendiente sobre NYU (§4.1, §4.2, D4); (3) se retira la afirmación de imposibilidad en la justificación para excluir GRU y Transformer (§8.2).
 
-Esta versión integra la v3.1 y la evaluación posterior. **No modifica la campaña de diez corridas**, no abre una segunda ronda de ajuste y no añade experimentos. Los cambios respecto de la v3.1 son de formulación, de ubicación de resultados y de precisión en las declaraciones.
+**Enmienda incorporada el 1 de agosto de 2026 (v3.3):** la revista instruyó directamente reenviar el manuscrito con los resultados nuevos, sin consulta previa al editor. Se retira la consulta al editor como paso del plan (§5.1, §11, D1); el resto de la campaña, sus condiciones y su calendario no cambian. Sobre §4.2: la cronología de ajuste de hiperparámetros de BrainNetCNN ya estaba documentada en `results/README.md` (sección «Historial: NYU, 12 ROIs», commit del 27 de julio) desde antes de este plan; queda confirmado que el ajuste se hizo observando NYU con 12 ROIs, por lo que aplica la rama (a) de §4.2.
+
+**Enmienda incorporada el 3 de agosto de 2026 (v3.4):** se activa la contingencia prevista en §9.1 para el baseline lineal. La infraestructura de partición (`build_split_plan`, `split_fingerprint`) y de inferencia bootstrap (`analysis/roi_comparison/`) ya existe y se reutiliza sin cambios, de modo que el costo señalado en la nota original de §9.1 —«integración de artefactos, pruebas y una versión nueva del pipeline»— ya no aplica en la magnitud descrita allí. Se añaden **dieciséis** corridas: regresión logística con penalización L2 fija (`C=1.0`, sin búsqueda de hiperparámetro), conectividad estática, cuatro sitios, **los cuatro grupos de ROIs (12, 18, 39, 116)**. Estandarización ajustada exclusivamente con el subconjunto `fit` de cada pliegue. Mismas particiones, semilla y `class_weight` por sitio que su comparador BrainNetCNN pareado, verificado por igualdad de `split_fingerprint`, `bold_hash` y `roi_indices_hash` antes de aceptar cualquier resultado.
+
+El comparador difiere por grupo de ROIs y debe declararse: para roi_set=12 existe una corrida BrainNetCNN `static` (las cuatro de §8.1), así que el contraste es de un solo factor —misma representación, cambia solo la arquitectura—. Para 18, 39 y 116 no existe corrida `static` en el repositorio y crearla reabriría la campaña de diez corridas ya cerrada; el comparador es entonces la corrida `ordered` ya usada como referencia primaria en la Tabla 6 (localizada vía `run_manifest.csv`), lo que introduce la misma confusión representación/arquitectura que el manuscrito ya declara para su propia dimensión «signal representation» (§2.6). Cada corrida registra en su `config.json` cuál de los dos comparadores usó (`comparator_representation`) y si hay confusión declarada (`representation_confound`).
+
+Se reporta como quinta dimensión de sensibilidad (§2.6 del manuscrito), con el mismo procedimiento bootstrap pareado a 2.000 remuestreos que las demás dimensiones. El resultado se declara exploratorio —decidido después de conocer el resto de la campaña de diez corridas— y se reporta en cualquier dirección. Detalle de implementación en `docs/Guia_implementacion_baseline_ML.md`. Ver §9.1 y §8.4 para el texto actualizado de esta sección.
+
+Esta versión integra la v3.1 y la evaluación posterior. La enmienda del 3 de agosto **sí añade ocho corridas** al proyecto, bajo la contingencia ya prevista en §9.1; no reabre ninguna de las diez corridas de la campaña original ni su calendario, que siguen cerrados en los términos de §8.4. Los demás cambios respecto de la v3.1 son de formulación, de ubicación de resultados y de precisión en las declaraciones.
 
 La organización operativa —quién ejecuta qué y en qué momento— queda fuera de este documento y depende de la disponibilidad del equipo. Aquí solo se fija **qué hay que hacer, con qué diseño y con qué reglas de interpretación**, además del orden de dependencias entre bloques (§11).
 
@@ -240,22 +248,20 @@ No afirmar aplicabilidad clínica, utilidad diagnóstica, generalización a otro
 
 ## 5. Estrategia editorial
 
-El manuscrito revisado cambia arquitectura principal, protocolo de validación, número de sitios, resultados, análisis estadístico, explicación de los paneles y alcance de las conclusiones. El equipo **no debe decidir unilateralmente** que basta con una revisión ordinaria ni asumir que debe retirar el artículo.
+El manuscrito revisado cambia arquitectura principal, protocolo de validación, número de sitios, resultados, análisis estadístico, explicación de los paneles y alcance de las conclusiones.
 
-### 5.1 Consulta al editor y ejecución en paralelo
+### 5.1 Envío directo, sin consulta previa al editor
 
-Se enviará una consulta breve y transparente al editor que: explique que al atender los comentarios sobre validación se detectaron problemas en el análisis original; indique que se rehízo el pipeline y se retirarán todas las métricas históricas; resuma los cambios de arquitectura, cohortes y análisis; y pregunte si prefiere recibirlo como revisión sustancial o mediante retiro y nuevo envío.
+**No se enviará consulta previa al editor.** La revista instruyó directamente reenviar el manuscrito con los resultados nuevos; esa instrucción ya resuelve la vía de presentación y sustituye lo que antes preveía esta sección. No se abre una gestión editorial adicional antes del envío.
 
-**La campaña no queda bloqueada por esa respuesta.** La consulta resuelve la vía de presentación; no cambia las preguntas científicas ni una sola de las diez corridas, que responden solicitudes directas de los revisores. Se ejecutan en paralelo, con cuatro condiciones previas:
+Se mantienen sin cambio las condiciones operativas de la campaña, que no dependían de esa consulta:
 
 1. Congelar el manifiesto exacto de las diez corridas.
 2. Registrar que no se modificarán configuraciones a partir de resultados parciales.
 3. Comprometerse a reportar resultados favorables, nulos o adversos con las mismas reglas.
-4. Mantener pendientes de la respuesta editorial únicamente el formato de envío, la carta definitiva y la organización final del manuscrito.
+4. El formato de envío ya está dado por la instrucción de la revista; quedan pendientes únicamente la carta definitiva y la organización final del manuscrito.
 
-Esto no equivale a afirmar que ejecutar en paralelo carezca de todo costo: el editor podría solicitar un alcance distinto. La decisión se justifica por la pertinencia científica de las corridas, el plazo disponible y el hecho de que responden peticiones explícitas de los revisores.
-
-> **Redacción para el plan:** «La consulta al editor se enviará al inicio. En paralelo, y después de congelar el manifiesto, se ejecutarán el bloque sin entrenamiento y las diez corridas preespecificadas. Ninguna configuración se adaptará a resultados intermedios. La respuesta editorial determinará la vía y el formato de presentación, no las decisiones científicas ya congeladas.»
+> **Redacción para el plan:** «Por instrucción directa de la revista, el manuscrito se reenvía con los resultados nuevos, sin consulta previa al editor. La carta de envío declara la corrección y los cambios de pipeline, cohortes y análisis (§5.2), pero no pregunta por la vía de presentación: ya está definida.»
 
 ### 5.2 Contenido de la carta final
 
@@ -389,7 +395,7 @@ Este diseño evita un cambio extremo de paso que reduciría drásticamente el n�
 | Sensibilidad 120/24 s | 2 | NYU, Peking |
 | **Total** | **10** | |
 
-**Campaña cerrada.** No se elegirá una segunda ronda a partir de estos resultados antes de resometer el manuscrito.
+**Campaña cerrada.** No se elegirá una segunda ronda a partir de estos resultados antes de resometer el manuscrito. Esto no incluye la contingencia de baseline lineal de §9.1, prevista desde el cierre de esta versión y activada por enmienda separada el 3 de agosto de 2026: dieciséis corridas adicionales de regresión logística (no de BrainNetCNN), ajenas a esta campaña de diez y a su regla de no reabrir una segunda ronda.
 
 ---
 
@@ -397,11 +403,42 @@ Este diseño evita un cambio extremo de paso que reduciría drásticamente el n�
 
 ### 9.1 Baseline lineal
 
-No se implementa en esta revisión. El comentario del revisor admite «métodos tradicionales **o** otros marcos de aprendizaje profundo», y la reevaluación de la LSTM satisface la segunda alternativa. Una regresión logística rigurosa no es añadir una capa: exige estandarización ajustada dentro de cada fold, política de regularización y selección de su intensidad sin fuga, integración de artefactos, pruebas y una versión nueva del pipeline.
+**Contingencia activada el 3 de agosto de 2026** (enmienda v3.4, nota al inicio del documento). El
+comentario del revisor admite «métodos tradicionales **o** otros marcos de aprendizaje profundo», y
+la reevaluación de la LSTM (§8.2) ya satisfacía la segunda alternativa por sí sola; se decide
+implementar además la primera porque, a diferencia de julio, la infraestructura de partición y de
+inferencia bootstrap ya existe y el costo original —«integración de artefactos, pruebas y una
+versión nueva del pipeline»— dejó de aplicar en la magnitud con la que se descartó entonces.
 
-> **Nota de contingencia:** «Si el editor solicita explícitamente un baseline lineal, se preparará un protocolo específico con penalización preespecificada y estandarización ajustada exclusivamente dentro de cada fold de entrenamiento. La penalización fija evita una búsqueda adicional de ese hiperparámetro, pero no sustituye los controles de fuga, artefactos y pruebas del pipeline.»
+**Protocolo, siguiendo exactamente la nota de contingencia original:** penalización L2
+preespecificada, `C=1.0`, sin búsqueda de hiperparámetro. Estandarización ajustada exclusivamente
+dentro del subconjunto `fit` de cada pliegue, nunca sobre `inner_val` ni `outer_val`. Conectividad
+estática, cuatro sitios, **los cuatro grupos de ROIs (12, 18, 39, 116): dieciséis corridas**.
+Mismas particiones (`build_split_plan`), semilla (42) y política de `class_weight` por sitio que
+la corrida BrainNetCNN pareada, verificado por igualdad de `split_fingerprint`, `bold_hash` y
+`roi_indices_hash` antes de aceptar cualquier resultado — si no coinciden, la corrida no se usa.
 
-Si se solicita, será objeto de un plan breve separado y de una versión de código verificada.
+**Dos familias de comparador, declaradas por corrida:**
+
+| Grupo de ROIs | Comparador | Confusión |
+|---|---|---|
+| 12 | Corrida BrainNetCNN `static` (§8.1) | Ninguna: un solo factor cambia (arquitectura) |
+| 18, 39, 116 | Corrida BrainNetCNN `ordered`, la referencia primaria de la Tabla 6 (vía `run_manifest.csv`) | Representación y arquitectura cambian a la vez, igual que la dimensión «signal representation» de §2.6 |
+
+No existe corrida `static` de BrainNetCNN para 18, 39 ni 116: las cuatro corridas `static` de §8.1
+se limitaron a 12 ROIs. Generarlas ahí exigiría corridas nuevas de BrainNetCNN, lo que reabriría la
+campaña de diez corridas ya cerrada; se descarta por esa razón, no por costo. Detalle de
+implementación, código de referencia y guardarraíles en `docs/Guia_implementacion_baseline_ML.md`.
+
+**Reporte.** Quinta dimensión de sensibilidad en §2.6 del manuscrito, con el mismo bootstrap pareado
+estratificado por clase a 2.000 remuestreos que las otras cuatro dimensiones. Se declara exploratoria
+—decidida después de conocer el resto de la campaña de diez corridas— y se reporta en cualquier
+dirección: si el modelo lineal iguala a BrainNetCNN, refuerza la lectura de cautela del artículo; si
+BrainNetCNN lo supera con claridad, es la primera justificación empírica de este estudio para usar
+aprendizaje profundo.
+
+**No aplica a esta contingencia:** ninguna de las exclusiones de §9.2 se revisa por esta activación;
+siguen fuera de alcance por las mismas razones allí expuestas.
 
 ### 9.2 Otros experimentos excluidos
 
@@ -446,9 +483,10 @@ No se fija calendario. El orden lógico es:
 
 1. Aprobar las decisiones de §12.
 2. Reconstruir y registrar la cronología de ajuste de hiperparámetros (§4.1), de la que depende la rama aplicable de §4.2.
-3. Enviar la consulta al editor (§5.1); no bloquea lo demás.
-4. Congelar la versión del repositorio y el manifiesto de las diez configuraciones.
-5. Asignar responsable y verificador por bloque.
+3. Congelar la versión del repositorio y el manifiesto de las diez configuraciones.
+4. Asignar responsable y verificador por bloque.
+
+No hay consulta previa al editor que gestionar (§5.1): la revista instruyó el envío directo con los resultados nuevos.
 
 **Independiente de las corridas** (puede avanzar en paralelo desde el inicio)
 
@@ -472,7 +510,7 @@ Reescribir título, resumen, *Highlights*, Métodos, Resultados, Discusión y Co
 
 | ID | Decisión | Recomendación |
 |---|---|---|
-| D1 | Vía editorial | Consultar al editor; ejecutar en paralelo con manifiesto congelado |
+| D1 | Vía editorial | Sin consulta previa; envío directo con los resultados nuevos, por instrucción de la revista |
 | D2 | Cambio de título, arquitectura y conclusión | Aprobar y declararlo explícitamente |
 | D3 | Exposición del ajuste de hiperparámetros | Declaración obligatoria; producir la nota fechada |
 | D4 | Relación NYU–ajuste–Δ(12−116) | Declarar el papel de NYU en el desarrollo en todos los casos; aplicar la rama correspondiente de §4.2 y vincular el ajuste con el signo de Δ **únicamente si la cronología lo confirma** |

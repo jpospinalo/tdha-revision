@@ -1,0 +1,1218 @@
+{
+  "auc_formula": "mann_whitney_u_vectorized_tie_aware",
+  "ci_method": "percentile_2.5_97.5",
+  "elapsed_seconds": 0.0,
+  "executed_at_utc": "2026-08-04T04:46:04.027862+00:00",
+  "generator": "PCG64",
+  "n_contrasts": 26,
+  "n_iter": 10000,
+  "resampling": "paired_by_subject_stratified_by_class",
+  "results": {
+    "NYU__lstm128": {
+      "ci_method": "percentile_2.5_97.5",
+      "delta": -0.0648531289910601,
+      "delta_ci": [
+        -0.10939974457215834,
+        -0.019923371647509677
+      ],
+      "generator": "PCG64",
+      "n_adhd": 90,
+      "n_control": 87,
+      "n_iter": 10000,
+      "n_subjects": 177,
+      "new_auc_point": 0.5256194125159642,
+      "new_ci": [
+        0.46998659003831417,
+        0.581021711366539
+      ],
+      "new_config_sha256": "f049c8a7a9152ac96cb4cf656fe323d7479d667c66ada39492167a0819397efa",
+      "new_dir": "results/runs/12/NYU_rois12_w60s6_lstm_rev32_lstm128_ordered_0209fc13",
+      "new_predictions_sha256": "c3c5c83f0d21afc6613807f92eef57a638cea1bc4cd23b47572c9cb99ebe4aa3",
+      "new_reps": [
+        0.4969348659003831,
+        0.5545338441890166,
+        0.5388250319284803,
+        0.5226053639846743,
+        0.5151979565772669
+      ],
+      "ref_auc_point": 0.5904725415070243,
+      "ref_ci": [
+        0.5381558109833972,
+        0.6432445721583653
+      ],
+      "ref_config_sha256": "7e064f1ed2e7e0309b821f8d9983573d0512a457dc385ce009e9deeea77245ae",
+      "ref_dir": "results/runs/12/NYU_rois12_w60s6_brainnetcnn_control_baseline_v13_3e220e5c",
+      "ref_predictions_sha256": "b4af0f109c6f9c156a00699b78c239ca32a25ac7810e93d41ce35fefbd0e2963",
+      "ref_reps": [
+        0.6242656449553001,
+        0.6015325670498085,
+        0.5514687100893998,
+        0.5781609195402299,
+        0.5969348659003831
+      ],
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "NYU__static": {
+      "ci_method": "percentile_2.5_97.5",
+      "delta": -0.040536398467433066,
+      "delta_ci": [
+        -0.08199361430395913,
+        0.0018397190293741807
+      ],
+      "generator": "PCG64",
+      "n_adhd": 90,
+      "n_control": 87,
+      "n_iter": 10000,
+      "n_subjects": 177,
+      "new_auc_point": 0.5499361430395913,
+      "new_ci": [
+        0.5016602809706259,
+        0.600103448275862
+      ],
+      "new_config_sha256": "0e0289afe6b08a9aaa1408d0f599679051db25b251a060f5377d9ea679769a3e",
+      "new_dir": "results/runs/12/NYU_rois12_static_brainnetcnn_rev32_static_r12_f78fe9f1",
+      "new_predictions_sha256": "0a6331f15a4359281a4881d4df396a43cb93e88d9881a3f674e455b983c8bbf5",
+      "new_reps": [
+        0.518007662835249,
+        0.5406130268199234,
+        0.5933588761174969,
+        0.5344827586206897,
+        0.5632183908045978
+      ],
+      "ref_auc_point": 0.5904725415070243,
+      "ref_ci": [
+        0.5381558109833972,
+        0.6432445721583653
+      ],
+      "ref_config_sha256": "7e064f1ed2e7e0309b821f8d9983573d0512a457dc385ce009e9deeea77245ae",
+      "ref_dir": "results/runs/12/NYU_rois12_w60s6_brainnetcnn_control_baseline_v13_3e220e5c",
+      "ref_predictions_sha256": "b4af0f109c6f9c156a00699b78c239ca32a25ac7810e93d41ce35fefbd0e2963",
+      "ref_reps": [
+        0.6242656449553001,
+        0.6015325670498085,
+        0.5514687100893998,
+        0.5781609195402299,
+        0.5969348659003831
+      ],
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "NYU__window120_24": {
+      "ci_method": "percentile_2.5_97.5",
+      "delta": -0.04694763729246498,
+      "delta_ci": [
+        -0.0862068965517242,
+        -0.008119412515964186
+      ],
+      "generator": "PCG64",
+      "n_adhd": 90,
+      "n_control": 87,
+      "n_iter": 10000,
+      "n_subjects": 177,
+      "new_auc_point": 0.5435249042145593,
+      "new_ci": [
+        0.4965753512132822,
+        0.5911130268199234
+      ],
+      "new_config_sha256": "914e9936ae04ffda8209c368aa2a1d55ead95640a0cfd5bb52802a3b5e0533e7",
+      "new_dir": "results/runs/12/NYU_rois12_w60s12_brainnetcnn_rev32_window120_step24_84fa43da",
+      "new_predictions_sha256": "acf681483b5e190c72c67e9bc8c336d3a9ed9a167f437a7b737717350eece619",
+      "new_reps": [
+        0.5517241379310345,
+        0.4842911877394635,
+        0.5586206896551725,
+        0.5790549169859515,
+        0.543933588761175
+      ],
+      "ref_auc_point": 0.5904725415070243,
+      "ref_ci": [
+        0.5381558109833972,
+        0.6432445721583653
+      ],
+      "ref_config_sha256": "7e064f1ed2e7e0309b821f8d9983573d0512a457dc385ce009e9deeea77245ae",
+      "ref_dir": "results/runs/12/NYU_rois12_w60s6_brainnetcnn_control_baseline_v13_3e220e5c",
+      "ref_predictions_sha256": "b4af0f109c6f9c156a00699b78c239ca32a25ac7810e93d41ce35fefbd0e2963",
+      "ref_reps": [
+        0.6242656449553001,
+        0.6015325670498085,
+        0.5514687100893998,
+        0.5781609195402299,
+        0.5969348659003831
+      ],
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "NYU__window140_12": {
+      "ci_method": "percentile_2.5_97.5",
+      "delta": -0.03269476372924662,
+      "delta_ci": [
+        -0.0653895274584928,
+        0.0006909323116219731
+      ],
+      "generator": "PCG64",
+      "n_adhd": 90,
+      "n_control": 87,
+      "n_iter": 10000,
+      "n_subjects": 177,
+      "new_auc_point": 0.5577777777777777,
+      "new_ci": [
+        0.5066915708812261,
+        0.6092515964240102
+      ],
+      "new_config_sha256": "3c04ac1de9c2d324c5c0287d00e993f5b41a5b12d3f140a37f12e026fda2cdec",
+      "new_dir": "results/runs/12/NYU_rois12_w70s6_brainnetcnn_rev32_window140_step12_d236544e",
+      "new_predictions_sha256": "61b62d696d9edcd131ff636211e55dde65a321fd63923820d2001496e35b8aa6",
+      "new_reps": [
+        0.5685823754789272,
+        0.5492975734355043,
+        0.5054916985951469,
+        0.569220945083014,
+        0.5962962962962963
+      ],
+      "ref_auc_point": 0.5904725415070243,
+      "ref_ci": [
+        0.5381558109833972,
+        0.6432445721583653
+      ],
+      "ref_config_sha256": "7e064f1ed2e7e0309b821f8d9983573d0512a457dc385ce009e9deeea77245ae",
+      "ref_dir": "results/runs/12/NYU_rois12_w60s6_brainnetcnn_control_baseline_v13_3e220e5c",
+      "ref_predictions_sha256": "b4af0f109c6f9c156a00699b78c239ca32a25ac7810e93d41ce35fefbd0e2963",
+      "ref_reps": [
+        0.6242656449553001,
+        0.6015325670498085,
+        0.5514687100893998,
+        0.5781609195402299,
+        0.5969348659003831
+      ],
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "NeuroIMAGE__static": {
+      "ci_method": "percentile_2.5_97.5",
+      "delta": 0.05401069518716567,
+      "delta_ci": [
+        -0.06310160427807476,
+        0.17381016042780736
+      ],
+      "generator": "PCG64",
+      "n_adhd": 17,
+      "n_control": 22,
+      "n_iter": 10000,
+      "n_subjects": 39,
+      "new_auc_point": 0.527807486631016,
+      "new_ci": [
+        0.4449197860962567,
+        0.6133689839572193
+      ],
+      "new_config_sha256": "5bf623935a0f00f1e4bc5b7b967efe726e763c329f549376f976fc8b7c257321",
+      "new_dir": "results/runs/12/NeuroIMAGE_rois12_static_brainnetcnn_rev32_static_r12_2dcba12c",
+      "new_predictions_sha256": "78acebdd12eb21d03a2eb81e4e5bb2804df75d54bfde5a815452dfb8ad90866e",
+      "new_reps": [
+        0.553475935828877,
+        0.5267379679144385,
+        0.4973262032085561,
+        0.5481283422459893,
+        0.5133689839572193
+      ],
+      "ref_auc_point": 0.4737967914438503,
+      "ref_ci": [
+        0.37326203208556147,
+        0.5732620320855615
+      ],
+      "ref_config_sha256": "602d1ff5c85a2eec861bbbaee2fab0c332b25a0bbaad5c93cd5fbada819512e0",
+      "ref_dir": "results/runs/12/NeuroIMAGE_rois12_w61s6_brainnetcnn_control_baseline_v13_2b729a8c",
+      "ref_predictions_sha256": "72058547e68803bc05fe1ba6b8eb5d639e5471e336a9742b90d50bb87888e876",
+      "ref_reps": [
+        0.4598930481283422,
+        0.34224598930481287,
+        0.5401069518716577,
+        0.5294117647058822,
+        0.49732620320855614
+      ],
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "OHSU__static": {
+      "ci_method": "percentile_2.5_97.5",
+      "delta": -0.03439849624060154,
+      "delta_ci": [
+        -0.10864661654135338,
+        0.041165413533834516
+      ],
+      "generator": "PCG64",
+      "n_adhd": 28,
+      "n_control": 38,
+      "n_iter": 10000,
+      "n_subjects": 66,
+      "new_auc_point": 0.5148496240601504,
+      "new_ci": [
+        0.43928571428571433,
+        0.5866541353383459
+      ],
+      "new_config_sha256": "93f3c96cddf548b855654175eed2a4d409e71e9847720028b33708f03929f6e3",
+      "new_dir": "results/runs/12/OHSU_rois12_static_brainnetcnn_rev32_lstm128_ordered_85129048",
+      "new_predictions_sha256": "6e0782ca6344485549f2515cca7167056ae7e97bdb5b9115e33108c4a5f84362",
+      "new_reps": [
+        0.40601503759398494,
+        0.5300751879699248,
+        0.518796992481203,
+        0.5845864661654135,
+        0.5347744360902256
+      ],
+      "ref_auc_point": 0.549248120300752,
+      "ref_ci": [
+        0.47105263157894733,
+        0.6244360902255639
+      ],
+      "ref_config_sha256": "4038ae2854d8e14d0298e3b8b1f6dbcdf84913335fbc24c2aa8258c3f9ddd004",
+      "ref_dir": "results/runs/12/OHSU_rois12_w48s5_brainnetcnn_control_baseline_v13_1a7c37ce",
+      "ref_predictions_sha256": "a0fe3b52e10e168af48f403d9edca2d6e9cd3e085a842199a382abd921f4ca37",
+      "ref_reps": [
+        0.4708646616541353,
+        0.5112781954887218,
+        0.5516917293233083,
+        0.6860902255639098,
+        0.5263157894736843
+      ],
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "Peking__lstm128": {
+      "ci_method": "percentile_2.5_97.5",
+      "delta": -0.0009918175055789735,
+      "delta_ci": [
+        -0.046839201586907984,
+        0.04440924869823944
+      ],
+      "generator": "PCG64",
+      "n_adhd": 74,
+      "n_control": 109,
+      "n_iter": 10000,
+      "n_subjects": 183,
+      "new_auc_point": 0.5627572526655096,
+      "new_ci": [
+        0.5022315893875527,
+        0.6215478551946442
+      ],
+      "new_config_sha256": "0c681a1b0ef0da561205ce1fc42c99f28f1384afd0defdff024dd99269ae7db3",
+      "new_dir": "results/runs/12/Peking_rois12_w60s6_lstm_rev32_lstm128_ordered_38b74bdf",
+      "new_predictions_sha256": "1af63e5fe6f93fd0f640c298e353c34ef2cafd2e4ed797d73ae305f9837d3a8d",
+      "new_reps": [
+        0.6025291346392264,
+        0.5793454004463179,
+        0.5428961071162905,
+        0.5531862137366725,
+        0.5358294073890404
+      ],
+      "ref_auc_point": 0.5637490701710886,
+      "ref_ci": [
+        0.5068162658070915,
+        0.6210798413091991
+      ],
+      "ref_config_sha256": "ed21750627a544595040d0efcd22a295140f929b9f98d2b8529e4c78e22e83f8",
+      "ref_dir": "results/runs/12/Peking_rois12_w60s6_brainnetcnn_control_baseline_v13_bc841110",
+      "ref_predictions_sha256": "a82502af96a13e00dca79c189fc686c49631645ff0afedcab2ef9ca21d0620b1",
+      "ref_reps": [
+        0.46466650136374904,
+        0.6505083064716093,
+        0.5469873543268038,
+        0.5896355070666998,
+        0.5669476816265807
+      ],
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "Peking__static": {
+      "ci_method": "percentile_2.5_97.5",
+      "delta": -0.03488718075874053,
+      "delta_ci": [
+        -0.08264319365236794,
+        0.012745474832630731
+      ],
+      "generator": "PCG64",
+      "n_adhd": 74,
+      "n_control": 109,
+      "n_iter": 10000,
+      "n_subjects": 183,
+      "new_auc_point": 0.528861889412348,
+      "new_ci": [
+        0.4833622613439128,
+        0.5744365236796429
+      ],
+      "new_config_sha256": "887405214d92a57d8395ffcdbfc9a77ee59c2f4b8db794810dedb5045cfcf1dd",
+      "new_dir": "results/runs/12/Peking_rois12_static_brainnetcnn_rev32_lstm128_ordered_61d3f2af",
+      "new_predictions_sha256": "52ff9189d6062747aa4d5506c06b96835f2a4af331228cd8e5dbf7defda5dba2",
+      "new_reps": [
+        0.5035953384577238,
+        0.5659558641210017,
+        0.5786015373171336,
+        0.5014877262583683,
+        0.494668980907513
+      ],
+      "ref_auc_point": 0.5637490701710886,
+      "ref_ci": [
+        0.5068162658070915,
+        0.6210798413091991
+      ],
+      "ref_config_sha256": "ed21750627a544595040d0efcd22a295140f929b9f98d2b8529e4c78e22e83f8",
+      "ref_dir": "results/runs/12/Peking_rois12_w60s6_brainnetcnn_control_baseline_v13_bc841110",
+      "ref_predictions_sha256": "a82502af96a13e00dca79c189fc686c49631645ff0afedcab2ef9ca21d0620b1",
+      "ref_reps": [
+        0.46466650136374904,
+        0.6505083064716093,
+        0.5469873543268038,
+        0.5896355070666998,
+        0.5669476816265807
+      ],
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "Peking__window120_24": {
+      "ci_method": "percentile_2.5_97.5",
+      "delta": -0.00848003967270028,
+      "delta_ci": [
+        -0.046070543020084356,
+        0.03002727498140345
+      ],
+      "generator": "PCG64",
+      "n_adhd": 74,
+      "n_control": 109,
+      "n_iter": 10000,
+      "n_subjects": 183,
+      "new_auc_point": 0.5552690304983883,
+      "new_ci": [
+        0.49789176791470374,
+        0.6113563104388793
+      ],
+      "new_config_sha256": "224e76082c1fccca3905b250b28f008d807adcbed3c5e26922038c27f32c6600",
+      "new_dir": "results/runs/12/Peking_rois12_w60s12_brainnetcnn_rev32_window120_step24_43775a9b",
+      "new_predictions_sha256": "bcece05589a9198aa7494f96e7544a31c9eaf05401e21ebfb36c10216a0566b3",
+      "new_reps": [
+        0.48065955864121,
+        0.5591371187701463,
+        0.5769898338705679,
+        0.5823208529630548,
+        0.5772377882469626
+      ],
+      "ref_auc_point": 0.5637490701710886,
+      "ref_ci": [
+        0.5068162658070915,
+        0.6210798413091991
+      ],
+      "ref_config_sha256": "ed21750627a544595040d0efcd22a295140f929b9f98d2b8529e4c78e22e83f8",
+      "ref_dir": "results/runs/12/Peking_rois12_w60s6_brainnetcnn_control_baseline_v13_bc841110",
+      "ref_predictions_sha256": "a82502af96a13e00dca79c189fc686c49631645ff0afedcab2ef9ca21d0620b1",
+      "ref_reps": [
+        0.46466650136374904,
+        0.6505083064716093,
+        0.5469873543268038,
+        0.5896355070666998,
+        0.5669476816265807
+      ],
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "Peking__window140_12": {
+      "ci_method": "percentile_2.5_97.5",
+      "delta": -0.003917679147037001,
+      "delta_ci": [
+        -0.03173878006446814,
+        0.02432494421026528
+      ],
+      "generator": "PCG64",
+      "n_adhd": 74,
+      "n_control": 109,
+      "n_iter": 10000,
+      "n_subjects": 183,
+      "new_auc_point": 0.5598313910240516,
+      "new_ci": [
+        0.49977560128936277,
+        0.6204072650632284
+      ],
+      "new_config_sha256": "fe9de9a8675bc3bbdfc0414ddd18e44d3443f280f095a99fcb543a6def243bcb",
+      "new_dir": "results/runs/12/Peking_rois12_w70s6_brainnetcnn_rev32_window140_step12_24b0ab4f",
+      "new_predictions_sha256": "1d0eb6944d71f22e160083f166269f2e81c4bf1b043902370b82c4eabbfefbde",
+      "new_reps": [
+        0.49615670716588145,
+        0.5514505331019092,
+        0.5559137118770145,
+        0.6236052566327795,
+        0.5720307463426729
+      ],
+      "ref_auc_point": 0.5637490701710886,
+      "ref_ci": [
+        0.5068162658070915,
+        0.6210798413091991
+      ],
+      "ref_config_sha256": "ed21750627a544595040d0efcd22a295140f929b9f98d2b8529e4c78e22e83f8",
+      "ref_dir": "results/runs/12/Peking_rois12_w60s6_brainnetcnn_control_baseline_v13_bc841110",
+      "ref_predictions_sha256": "a82502af96a13e00dca79c189fc686c49631645ff0afedcab2ef9ca21d0620b1",
+      "ref_reps": [
+        0.46466650136374904,
+        0.6505083064716093,
+        0.5469873543268038,
+        0.5896355070666998,
+        0.5669476816265807
+      ],
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__NYU__roi116": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "ordered",
+      "delta": 0.023882503192848015,
+      "delta_ci": [
+        -0.03826436781609199,
+        0.08605555555555554
+      ],
+      "generator": "PCG64",
+      "n_adhd": 90,
+      "n_control": 87,
+      "n_iter": 10000,
+      "n_subjects": 177,
+      "new_auc_point": 0.5631928480204342,
+      "new_ci": [
+        0.4858492975734355,
+        0.6368071519795657
+      ],
+      "new_config_sha256": "8e0d6df8988882dbaff17c3cfdffc96f26ab9c3f1ee9c9a3304006ad58a582a1",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/116/NYU_rois116_static_logreg_baseline_aafd45ca",
+      "new_predictions_sha256": "31123341395e4095699ca53a48465a383dda338ca3f2ae73deebd5d4adb542a4",
+      "new_reps": [
+        0.5790549169859515,
+        0.5648786717752236,
+        0.547765006385696,
+        0.5411238825031929,
+        0.5831417624521074
+      ],
+      "ref_auc_point": 0.5393103448275862,
+      "ref_ci": [
+        0.4880197956577267,
+        0.5896047254150703
+      ],
+      "ref_config_sha256": "0eb33e466ac07eac14d03452982766b672ef9e60124a9fc1cc75ca3490a1eec4",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/116/NYU_rois116_w60s6_brainnetcnn_control_baseline_v13_160b89cd",
+      "ref_predictions_sha256": "2bea2332dc9cb5e8f51642c8ad94e38bd6c21ae3ab1d13d4fee4b37b66f8c73c",
+      "ref_reps": [
+        0.5441890166028098,
+        0.5765006385696041,
+        0.5019157088122604,
+        0.5458492975734355,
+        0.5280970625798211
+      ],
+      "representation_confound": true,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__NYU__roi12": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "static",
+      "delta": 0.025134099616858308,
+      "delta_ci": [
+        -0.04697445721583638,
+        0.09525223499361432
+      ],
+      "generator": "PCG64",
+      "n_adhd": 90,
+      "n_control": 87,
+      "n_iter": 10000,
+      "n_subjects": 177,
+      "new_auc_point": 0.5750702426564496,
+      "new_ci": [
+        0.5010197956577267,
+        0.6480217113665389
+      ],
+      "new_config_sha256": "51437f9199641d7e811e94b6b37173db2c305aa0d6f28efed0ea4b863bd95509",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/12/NYU_rois12_static_logreg_baseline_aafd45ca",
+      "new_predictions_sha256": "483d8436951e66221022004f3b07e048416d202d5c5d7c98d064740b62f945e8",
+      "new_reps": [
+        0.5909323116219668,
+        0.5846743295019157,
+        0.5879948914431673,
+        0.5814814814814815,
+        0.5302681992337164
+      ],
+      "ref_auc_point": 0.5499361430395913,
+      "ref_ci": [
+        0.5016602809706259,
+        0.600103448275862
+      ],
+      "ref_config_sha256": "0e0289afe6b08a9aaa1408d0f599679051db25b251a060f5377d9ea679769a3e",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/12/NYU_rois12_static_brainnetcnn_rev32_static_r12_f78fe9f1",
+      "ref_predictions_sha256": "0a6331f15a4359281a4881d4df396a43cb93e88d9881a3f674e455b983c8bbf5",
+      "ref_reps": [
+        0.518007662835249,
+        0.5406130268199234,
+        0.5933588761174969,
+        0.5344827586206897,
+        0.5632183908045978
+      ],
+      "representation_confound": false,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__NYU__roi18": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "ordered",
+      "delta": -0.039080459770115095,
+      "delta_ci": [
+        -0.11019220945083019,
+        0.030446998722860722
+      ],
+      "generator": "PCG64",
+      "n_adhd": 90,
+      "n_control": 87,
+      "n_iter": 10000,
+      "n_subjects": 177,
+      "new_auc_point": 0.5608939974457214,
+      "new_ci": [
+        0.487352490421456,
+        0.6323173690932311
+      ],
+      "new_config_sha256": "efd5f8b6337242c39bdef0669aa08e784f85cf5f8547caa17cdfe3a7d356a8ab",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/18/NYU_rois18_static_logreg_baseline_aafd45ca",
+      "new_predictions_sha256": "6bd28332df6321ebe52929f7aace53b08b02dbbe778e0e8ce254dbb698d6e4b6",
+      "new_reps": [
+        0.5604086845466155,
+        0.5680715197956576,
+        0.569220945083014,
+        0.5845466155810983,
+        0.5222222222222223
+      ],
+      "ref_auc_point": 0.5999744572158365,
+      "ref_ci": [
+        0.5471749680715198,
+        0.6530293742017881
+      ],
+      "ref_config_sha256": "007e9af148cb50c73464ae512eb7854a30ee8e960b72a307c3d81eb60503df0e",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/18/NYU_rois18_w60s6_brainnetcnn_control_baseline_v13_662d71a9",
+      "ref_predictions_sha256": "046ef3b28a8d68099382e9c6a98c6c73571bf5563c0e4ac222be4b4b0245d58e",
+      "ref_reps": [
+        0.6651340996168582,
+        0.5784163473818646,
+        0.6003831417624521,
+        0.5932311621966794,
+        0.5627075351213282
+      ],
+      "representation_confound": true,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__NYU__roi39": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "ordered",
+      "delta": 0.0012260536398467359,
+      "delta_ci": [
+        -0.06217369093231174,
+        0.06536398467432936
+      ],
+      "generator": "PCG64",
+      "n_adhd": 90,
+      "n_control": 87,
+      "n_iter": 10000,
+      "n_subjects": 177,
+      "new_auc_point": 0.5295274584929757,
+      "new_ci": [
+        0.4544540229885057,
+        0.6050076628352491
+      ],
+      "new_config_sha256": "df1b8b15f7c3e54abae0dd4fa2adfe233e1a54ff56f1c81a8c725e4efb53441b",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/39/NYU_rois39_static_logreg_baseline_aafd45ca",
+      "new_predictions_sha256": "1d4ee140869f4ed6e78a4466949e0c318a9c334d348dff433ceecc66885b9775",
+      "new_reps": [
+        0.5325670498084291,
+        0.570242656449553,
+        0.4985951468710089,
+        0.5266922094508302,
+        0.5195402298850575
+      ],
+      "ref_auc_point": 0.5283014048531289,
+      "ref_ci": [
+        0.47445593869731806,
+        0.5815344827586207
+      ],
+      "ref_config_sha256": "1c3e2ffc48c0905f591666ba695666e4448852a32750219145d1b1f97b105ee1",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/39/NYU_rois39_w60s6_brainnetcnn_control_base_line_1521c348",
+      "ref_predictions_sha256": "bd00c4b1de7016748bade5198c18c4214577ab6cab4e7c0af8aa5f5e575393f8",
+      "ref_reps": [
+        0.5499361430395913,
+        0.513154533844189,
+        0.5361430395913154,
+        0.5199233716475096,
+        0.5223499361430396
+      ],
+      "representation_confound": true,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__NeuroIMAGE__roi116": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "ordered",
+      "delta": 0.030481283422459815,
+      "delta_ci": [
+        -0.10695187165775394,
+        0.17165775401069522
+      ],
+      "generator": "PCG64",
+      "n_adhd": 17,
+      "n_control": 22,
+      "n_iter": 10000,
+      "n_subjects": 39,
+      "new_auc_point": 0.5497326203208556,
+      "new_ci": [
+        0.39090909090909093,
+        0.7042780748663102
+      ],
+      "new_config_sha256": "032cd1930929a7ea350bb2ac67b22bef25988727a8c2ac2921049b77bea95b7d",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/116/NeuroIMAGE_rois116_static_logreg_baseline_bc5c92b2",
+      "new_predictions_sha256": "ca53a0ef723187d83b7ee4d170bb68f19808eede419fbb594f96312d776daa7a",
+      "new_reps": [
+        0.5053475935828877,
+        0.5080213903743316,
+        0.6122994652406417,
+        0.5267379679144385,
+        0.5962566844919787
+      ],
+      "ref_auc_point": 0.5192513368983958,
+      "ref_ci": [
+        0.4149732620320856,
+        0.625668449197861
+      ],
+      "ref_config_sha256": "d89c3e6385cc7b2fb78a13b43d47e2f0b31e210b16c0e8a5826a71967a0e6c61",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/116/NeuroIMAGE_rois116_w61s6_brainnetcnn_control_baseline_v13_669d72bd",
+      "ref_predictions_sha256": "6f502d254ddbf7e29172171a9b8d7c41e1311be43e083821958ad74044620f1a",
+      "ref_reps": [
+        0.516042780748663,
+        0.45989304812834225,
+        0.6925133689839572,
+        0.4732620320855615,
+        0.4545454545454545
+      ],
+      "representation_confound": true,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__NeuroIMAGE__roi12": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "static",
+      "delta": 0.10427807486631024,
+      "delta_ci": [
+        -0.053475935828877,
+        0.25883689839572177
+      ],
+      "generator": "PCG64",
+      "n_adhd": 17,
+      "n_control": 22,
+      "n_iter": 10000,
+      "n_subjects": 39,
+      "new_auc_point": 0.6320855614973262,
+      "new_ci": [
+        0.48020053475935826,
+        0.7791443850267379
+      ],
+      "new_config_sha256": "b2e2afe571a78384d90c199695c3a50cd1b0fac3ebecdade3da21a6409f94817",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/12/NeuroIMAGE_rois12_static_logreg_baseline_bc5c92b2",
+      "new_predictions_sha256": "c60c930cad48337b4443309d97b6a7664068dfa762862c3dccdb7cc9082660d8",
+      "new_reps": [
+        0.5240641711229946,
+        0.6443850267379678,
+        0.6550802139037433,
+        0.6684491978609626,
+        0.6684491978609626
+      ],
+      "ref_auc_point": 0.527807486631016,
+      "ref_ci": [
+        0.4449197860962567,
+        0.6133689839572193
+      ],
+      "ref_config_sha256": "5bf623935a0f00f1e4bc5b7b967efe726e763c329f549376f976fc8b7c257321",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/12/NeuroIMAGE_rois12_static_brainnetcnn_rev32_static_r12_2dcba12c",
+      "ref_predictions_sha256": "78acebdd12eb21d03a2eb81e4e5bb2804df75d54bfde5a815452dfb8ad90866e",
+      "ref_reps": [
+        0.553475935828877,
+        0.5267379679144385,
+        0.4973262032085561,
+        0.5481283422459893,
+        0.5133689839572193
+      ],
+      "representation_confound": false,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__NeuroIMAGE__roi18": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "ordered",
+      "delta": -0.0550802139037434,
+      "delta_ci": [
+        -0.1989304812834224,
+        0.0887700534759357
+      ],
+      "generator": "PCG64",
+      "n_adhd": 17,
+      "n_control": 22,
+      "n_iter": 10000,
+      "n_subjects": 39,
+      "new_auc_point": 0.5647058823529412,
+      "new_ci": [
+        0.4048128342245989,
+        0.7203208556149733
+      ],
+      "new_config_sha256": "206a1a992878442891593bf9c9ff19c93ce7113684cf09008dd4ced2fecea178",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/18/NeuroIMAGE_rois18_static_logreg_baseline_bc5c92b2",
+      "new_predictions_sha256": "9a342af0db6f23bb33715268772b96c0af19b2ddb1f02adf5842a603da96bff9",
+      "new_reps": [
+        0.5401069518716577,
+        0.5427807486631016,
+        0.5481283422459893,
+        0.5989304812834225,
+        0.5935828877005348
+      ],
+      "ref_auc_point": 0.6197860962566846,
+      "ref_ci": [
+        0.5160294117647058,
+        0.7203208556149733
+      ],
+      "ref_config_sha256": "07b95530a4f70eb57fe81db92b54a73ae3a5fe24bc63e4190f895b70a7f32555",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/18/NeuroIMAGE_rois18_w61s6_brainnetcnn_control_baseline_v13_93342cf0",
+      "ref_predictions_sha256": "bde017fa6064a9137ab3d51fe79d9315756e6730a38ff105a7efcb753023b736",
+      "ref_reps": [
+        0.6149732620320856,
+        0.5935828877005347,
+        0.5935828877005347,
+        0.6684491978609626,
+        0.6283422459893048
+      ],
+      "representation_confound": true,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__NeuroIMAGE__roi39": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "ordered",
+      "delta": 0.0037433155080213165,
+      "delta_ci": [
+        -0.14224598930481291,
+        0.14760695187165765
+      ],
+      "generator": "PCG64",
+      "n_adhd": 17,
+      "n_control": 22,
+      "n_iter": 10000,
+      "n_subjects": 39,
+      "new_auc_point": 0.5112299465240642,
+      "new_ci": [
+        0.3518582887700535,
+        0.6721925133689839
+      ],
+      "new_config_sha256": "f45fb6cb4b57cda6bec003a9e98ee1fd99d9a3f695714f8a5e37c9990a15da6d",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/39/NeuroIMAGE_rois39_static_logreg_baseline_bc5c92b2",
+      "new_predictions_sha256": "6e2412bfad55dcfc3d318646bf5a8dfe6b587c27d5363e4751862b476390c028",
+      "new_reps": [
+        0.553475935828877,
+        0.446524064171123,
+        0.47860962566844917,
+        0.5080213903743316,
+        0.5695187165775402
+      ],
+      "ref_auc_point": 0.5074866310160429,
+      "ref_ci": [
+        0.41818181818181815,
+        0.6000133689839571
+      ],
+      "ref_config_sha256": "22e3374e547098db2fdd764fc9ae90adb83ba1f50d8a69a83d746a538c698c81",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/39/NeuroIMAGE_rois39_w61s6_brainnetcnn_control_baseline_v13_dc028168",
+      "ref_predictions_sha256": "e37184eba3d5e7eaf08794cd9eefbacb22e485ac4939a67e16a5dbdf9e5acb44",
+      "ref_reps": [
+        0.5508021390374331,
+        0.553475935828877,
+        0.49465240641711233,
+        0.41711229946524064,
+        0.5213903743315508
+      ],
+      "representation_confound": true,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__OHSU__roi116": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "ordered",
+      "delta": -0.012030075187969946,
+      "delta_ci": [
+        -0.10563909774436081,
+        0.08120300751879705
+      ],
+      "generator": "PCG64",
+      "n_adhd": 28,
+      "n_control": 38,
+      "n_iter": 10000,
+      "n_subjects": 66,
+      "new_auc_point": 0.5462406015037594,
+      "new_ci": [
+        0.41710056390977446,
+        0.6757518796992481
+      ],
+      "new_config_sha256": "78ee1f52d0c353d57c3e968eaa3dd644a0aa91f8461467c0c8cb6bed478cfffc",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/116/OHSU_rois116_static_logreg_baseline_a59dca47",
+      "new_predictions_sha256": "01baa89dea6e1c574c4aaa81b6ec8e6bde79eae683024e171007295741d40c7b",
+      "new_reps": [
+        0.5610902255639098,
+        0.5516917293233082,
+        0.5159774436090225,
+        0.5639097744360902,
+        0.5385338345864662
+      ],
+      "ref_auc_point": 0.5582706766917294,
+      "ref_ci": [
+        0.47819078947368426,
+        0.6381578947368421
+      ],
+      "ref_config_sha256": "f8fc95206aa9ac294490283a318ae280c8eec4c73951ee13877a90afb5949536",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/116/OHSU_rois116_w48s5_brainnetcnn_control_baseline_v13_f82f17b4",
+      "ref_predictions_sha256": "9292cd33083cc52eaba938bc0b0f56a60cd8cc127db8bfc8b7733ff9d4d2444f",
+      "ref_reps": [
+        0.5263157894736842,
+        0.5545112781954887,
+        0.5592105263157895,
+        0.6231203007518797,
+        0.5281954887218046
+      ],
+      "representation_confound": true,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__OHSU__roi12": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "static",
+      "delta": -0.018984962406014994,
+      "delta_ci": [
+        -0.1345911654135339,
+        0.10413533834586453
+      ],
+      "generator": "PCG64",
+      "n_adhd": 28,
+      "n_control": 38,
+      "n_iter": 10000,
+      "n_subjects": 66,
+      "new_auc_point": 0.49586466165413545,
+      "new_ci": [
+        0.37293233082706767,
+        0.6218045112781955
+      ],
+      "new_config_sha256": "bc0101c2b86ce00289f0702dad68fe88a27e626f667d86e99bd428be72fe59d2",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/12/OHSU_rois12_static_logreg_baseline_a59dca47",
+      "new_predictions_sha256": "61cd9feaa612f8eda2c9ec4b83908506a62e3d915e2add8f1c52cb6b1917cb87",
+      "new_reps": [
+        0.47462406015037595,
+        0.4915413533834587,
+        0.4849624060150376,
+        0.5018796992481204,
+        0.5263157894736843
+      ],
+      "ref_auc_point": 0.5148496240601504,
+      "ref_ci": [
+        0.43928571428571433,
+        0.5866541353383459
+      ],
+      "ref_config_sha256": "93f3c96cddf548b855654175eed2a4d409e71e9847720028b33708f03929f6e3",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/12/OHSU_rois12_static_brainnetcnn_rev32_lstm128_ordered_85129048",
+      "ref_predictions_sha256": "6e0782ca6344485549f2515cca7167056ae7e97bdb5b9115e33108c4a5f84362",
+      "ref_reps": [
+        0.40601503759398494,
+        0.5300751879699248,
+        0.518796992481203,
+        0.5845864661654135,
+        0.5347744360902256
+      ],
+      "representation_confound": false,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__OHSU__roi18": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "ordered",
+      "delta": 0.10639097744360915,
+      "delta_ci": [
+        -0.007335526315789374,
+        0.2156109022556391
+      ],
+      "generator": "PCG64",
+      "n_adhd": 28,
+      "n_control": 38,
+      "n_iter": 10000,
+      "n_subjects": 66,
+      "new_auc_point": 0.6285714285714287,
+      "new_ci": [
+        0.506578947368421,
+        0.743796992481203
+      ],
+      "new_config_sha256": "788392f10eb21f209df7279bf45eb3def9b8c33ca36e5800965b3147dbd7efd7",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/18/OHSU_rois18_static_logreg_baseline_a59dca47",
+      "new_predictions_sha256": "6152f4ef3027e6ab5760688fc296213ae4777b9672b99103203f559d3656f073",
+      "new_reps": [
+        0.6362781954887218,
+        0.6428571428571429,
+        0.5930451127819549,
+        0.6390977443609023,
+        0.631578947368421
+      ],
+      "ref_auc_point": 0.5221804511278195,
+      "ref_ci": [
+        0.443796992481203,
+        0.6009398496240601
+      ],
+      "ref_config_sha256": "22903184fc8a6edcce29ed16b3bd060c6edb5041a969f0f6a1250ad651d07519",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/18/OHSU_rois18_w48s5_brainnetcnn_2ce6c48e",
+      "ref_predictions_sha256": "e09bd14969c9390db4a1590ff0615b9e3e3654db83deca17b978ef6ce3cec07b",
+      "ref_reps": [
+        0.5516917293233082,
+        0.4755639097744361,
+        0.46804511278195493,
+        0.5056390977443609,
+        0.6099624060150377
+      ],
+      "representation_confound": true,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__OHSU__roi39": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "ordered",
+      "delta": -0.13834586466165422,
+      "delta_ci": [
+        -0.2332706766917293,
+        -0.04680451127819546
+      ],
+      "generator": "PCG64",
+      "n_adhd": 28,
+      "n_control": 38,
+      "n_iter": 10000,
+      "n_subjects": 66,
+      "new_auc_point": 0.36296992481203005,
+      "new_ci": [
+        0.24661654135338346,
+        0.4853430451127819
+      ],
+      "new_config_sha256": "e0b4f51d042fa7626dbfd2e24f9d099be6717fc6ed52c4483d9dd09174d3d6d8",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/39/OHSU_rois39_static_logreg_baseline_a59dca47",
+      "new_predictions_sha256": "68064e163c8c767530820a609cc086280f19edaf594abdea5a9ea74e50021009",
+      "new_reps": [
+        0.44360902255639095,
+        0.3270676691729323,
+        0.3674812030075188,
+        0.3223684210526316,
+        0.3543233082706767
+      ],
+      "ref_auc_point": 0.5013157894736843,
+      "ref_ci": [
+        0.40544642857142854,
+        0.5969971804511277
+      ],
+      "ref_config_sha256": "2cfbf7ef20ea88a11334912f48c8d12240b4d6c1bff21ad3645f99031a1891c2",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/39/OHSU_rois39_w48s5_brainnetcnn_control_baseline_v13_299719fe",
+      "ref_predictions_sha256": "09a1044a6994f0880e9dcfd75e9b8103d39f839618dbb3d74a195609f8ab474f",
+      "ref_reps": [
+        0.45770676691729323,
+        0.4586466165413534,
+        0.5338345864661654,
+        0.5357142857142857,
+        0.5206766917293233
+      ],
+      "representation_confound": true,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__Peking__roi116": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "ordered",
+      "delta": -0.011009174311926606,
+      "delta_ci": [
+        -0.07371683610215729,
+        0.05303868088271759
+      ],
+      "generator": "PCG64",
+      "n_adhd": 74,
+      "n_control": 109,
+      "n_iter": 10000,
+      "n_subjects": 183,
+      "new_auc_point": 0.5922886188941235,
+      "new_ci": [
+        0.5143057277460947,
+        0.6690571534837589
+      ],
+      "new_config_sha256": "8553348d87942a2dcc0505dc10df1e41cf3f40d0a1008bba725d649f811db186",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/116/Peking_rois116_static_logreg_baseline_1e9626ad",
+      "new_predictions_sha256": "36b62b6ffff5d7b5d53684c48071c70aa2cf17b19bcd51005c54fb65344aeb18",
+      "new_reps": [
+        0.5732705182246466,
+        0.6226134391272006,
+        0.5923630052070419,
+        0.600049590875279,
+        0.5731465410364494
+      ],
+      "ref_auc_point": 0.6032977932060501,
+      "ref_ci": [
+        0.5435655839325564,
+        0.6607990329779322
+      ],
+      "ref_config_sha256": "4c59009af60c545c9a6eaf26458c4463c68a9b76b5c48b8633a78ddf535ec7a5",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/116/Peking_rois116_w60s6_brainnetcnn_240732d1",
+      "ref_predictions_sha256": "83a571c8dfaed651d59346727b60aacaa23113f03082fb3977c1738f31ab4b51",
+      "ref_reps": [
+        0.5802132407636995,
+        0.6397222910984379,
+        0.5924869823952393,
+        0.6141829903297793,
+        0.5898834614430944
+      ],
+      "representation_confound": true,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__Peking__roi12": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "static",
+      "delta": 0.06330275229357807,
+      "delta_ci": [
+        -0.011084180510786149,
+        0.13945078105628564
+      ],
+      "generator": "PCG64",
+      "n_adhd": 74,
+      "n_control": 109,
+      "n_iter": 10000,
+      "n_subjects": 183,
+      "new_auc_point": 0.5921646417059261,
+      "new_ci": [
+        0.5199838829655344,
+        0.6634763203570543
+      ],
+      "new_config_sha256": "78887efa8127258705996817e8ef01cf680d9250b0ffc9576821013a22f2c553",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/12/Peking_rois12_static_logreg_baseline_1e9626ad",
+      "new_predictions_sha256": "7e97911013d1aab1a35c7773183f35e65393e43de8ffd10914e03b3cfdb3da3d",
+      "new_reps": [
+        0.6136870815769897,
+        0.636746838581701,
+        0.5612447309695016,
+        0.5675675675675675,
+        0.5815769898338706
+      ],
+      "ref_auc_point": 0.528861889412348,
+      "ref_ci": [
+        0.4833622613439128,
+        0.5744365236796429
+      ],
+      "ref_config_sha256": "887405214d92a57d8395ffcdbfc9a77ee59c2f4b8db794810dedb5045cfcf1dd",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/12/Peking_rois12_static_brainnetcnn_rev32_lstm128_ordered_61d3f2af",
+      "ref_predictions_sha256": "52ff9189d6062747aa4d5506c06b96835f2a4af331228cd8e5dbf7defda5dba2",
+      "ref_reps": [
+        0.5035953384577238,
+        0.5659558641210017,
+        0.5786015373171336,
+        0.5014877262583683,
+        0.494668980907513
+      ],
+      "representation_confound": false,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__Peking__roi18": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "ordered",
+      "delta": -0.06315397966774117,
+      "delta_ci": [
+        -0.13769154475576498,
+        0.012597941978675895
+      ],
+      "generator": "PCG64",
+      "n_adhd": 74,
+      "n_control": 109,
+      "n_iter": 10000,
+      "n_subjects": 183,
+      "new_auc_point": 0.5043639970245475,
+      "new_ci": [
+        0.43039796677411357,
+        0.5764964046615422
+      ],
+      "new_config_sha256": "2949d07cab168136e97394f7605753e9b6b474a28f8c4969876fbe63651afb94",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/18/Peking_rois18_static_logreg_baseline_1e9626ad",
+      "new_predictions_sha256": "e23c3c5d25654ba35ecc22b5af869b37ad2895a55086e36bf005690f1d485903",
+      "new_reps": [
+        0.4709893379618151,
+        0.5137614678899083,
+        0.4923134143317629,
+        0.4987602281180263,
+        0.5459955368212249
+      ],
+      "ref_auc_point": 0.5675179766922887,
+      "ref_ci": [
+        0.5060494668980907,
+        0.6282426233573023
+      ],
+      "ref_config_sha256": "aaec52844565b5f78f4fa5f9ae95527e24723c6be91f728c2fae77c5cf1af9f7",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/18/Peking_rois18_w60s6_brainnetcnn_control_baseline_v13_0bf7fa0e",
+      "ref_predictions_sha256": "f5a8cceffaa5c849886201c105696282f65b270af31c50bd447a33ce2486ae01",
+      "ref_reps": [
+        0.5529382593602777,
+        0.6078601537317134,
+        0.5533101909248699,
+        0.5412844036697249,
+        0.5821968757748575
+      ],
+      "representation_confound": true,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    },
+    "baseline__Peking__roi39": {
+      "ci_method": "percentile_2.5_97.5",
+      "comparator_representation": "ordered",
+      "delta": 0.0015621125712868,
+      "delta_ci": [
+        -0.06181750557897345,
+        0.06516303000247943
+      ],
+      "generator": "PCG64",
+      "n_adhd": 74,
+      "n_control": 109,
+      "n_iter": 10000,
+      "n_subjects": 183,
+      "new_auc_point": 0.6237788246962558,
+      "new_ci": [
+        0.5486219935531862,
+        0.6977932060500869
+      ],
+      "new_config_sha256": "27a430d93f727b3f7fd5a568651c1bb7fa7aaf31744744c7637d1c7935f331b4",
+      "new_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/39/Peking_rois39_static_logreg_baseline_1e9626ad",
+      "new_predictions_sha256": "c4836372ce77543a737f114fcc786ddeae0719fd797ac99603078fc9f13dedfe",
+      "new_reps": [
+        0.6264567319613191,
+        0.6317877510538061,
+        0.6552194396231094,
+        0.6079841309199108,
+        0.5974460699231342
+      ],
+      "ref_auc_point": 0.622216712124969,
+      "ref_ci": [
+        0.5651109595834366,
+        0.6773890404165633
+      ],
+      "ref_config_sha256": "3928bea9a6513dbd08ce6ba2c488ba33715213f1337cbb9b06870fb28eacb890",
+      "ref_dir": "/sessions/laughing-wizardly-archimedes/mnt/tdha-revision/results/runs/39/Peking_rois39_w60s6_brainnetcnn_control_baseline_v13_396e34d2",
+      "ref_predictions_sha256": "b055ba080efbd57e86bf469dd509b32fc26ca45847e2a7735ca022a0aafec524",
+      "ref_reps": [
+        0.670096702206794,
+        0.594718571782792,
+        0.6273245722787008,
+        0.5990577733696999,
+        0.6198859409868585
+      ],
+      "representation_confound": true,
+      "resampling": "paired_by_subject_stratified_by_class",
+      "seed": 42
+    }
+  },
+  "retraining": false,
+  "script_path": "analysis/roi_comparison/scripts/recalculate_manuscript_bootstrap_10k.py",
+  "script_version": "1.0.1",
+  "seed": 42
+}

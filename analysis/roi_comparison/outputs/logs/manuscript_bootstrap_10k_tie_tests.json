@@ -1,0 +1,172 @@
+{
+  "test1_synthetic_simple_tie": {
+    "y": [
+      0,
+      0,
+      1,
+      1,
+      0,
+      1
+    ],
+    "scores": [
+      0.3,
+      0.5,
+      0.5,
+      0.5,
+      0.2,
+      0.9
+    ],
+    "sklearn_auc": 0.888888888888889,
+    "v3_rank_based_auc": 1.0,
+    "v4_mannwhitney_auc": 0.8888888888888888,
+    "v3_diff_vs_sklearn": 0.11111111111111105,
+    "v4_diff_vs_sklearn": 1.1102230246251565e-16,
+    "v3_within_1e-12": false,
+    "v4_within_1e-12": true
+  },
+  "test1b_adversarial_heavy_ties_20_trials": {
+    "n_trials": 20,
+    "max_v3_diff": 0.03914141414141409,
+    "max_v4_diff": 1.1102230246251565e-16,
+    "n_v3_within_1e-12": 1,
+    "n_v4_within_1e-12": 20,
+    "detail": [
+      {
+        "trial": 0,
+        "sklearn_auc": 0.5805626598465473,
+        "v3_diff": 0.007672634271099765,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 1,
+        "sklearn_auc": 0.4775,
+        "v3_diff": 0.0,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 2,
+        "sklearn_auc": 0.4475703324808184,
+        "v3_diff": 0.02301790281329924,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 3,
+        "sklearn_auc": 0.33125000000000004,
+        "v3_diff": 0.03375000000000006,
+        "v4_diff": 5.551115123125783e-17
+      },
+      {
+        "trial": 4,
+        "sklearn_auc": 0.6868686868686869,
+        "v3_diff": 0.012626262626262652,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 5,
+        "sklearn_auc": 0.5997474747474748,
+        "v3_diff": 0.008838383838383757,
+        "v4_diff": 1.1102230246251565e-16
+      },
+      {
+        "trial": 6,
+        "sklearn_auc": 0.42045454545454547,
+        "v3_diff": 0.0037878787878787845,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 7,
+        "sklearn_auc": 0.5050125313283208,
+        "v3_diff": 0.023809523809523836,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 8,
+        "sklearn_auc": 0.6553884711779449,
+        "v3_diff": 0.028822055137844638,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 9,
+        "sklearn_auc": 0.4649122807017544,
+        "v3_diff": 0.023809523809523836,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 10,
+        "sklearn_auc": 0.40494791666666663,
+        "v3_diff": 0.00651041666666663,
+        "v4_diff": 5.551115123125783e-17
+      },
+      {
+        "trial": 11,
+        "sklearn_auc": 0.7142857142857144,
+        "v3_diff": 0.005012531328320913,
+        "v4_diff": 1.1102230246251565e-16
+      },
+      {
+        "trial": 12,
+        "sklearn_auc": 0.364,
+        "v3_diff": 0.0040000000000000036,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 13,
+        "sklearn_auc": 0.40281329923273657,
+        "v3_diff": 0.014066496163682884,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 14,
+        "sklearn_auc": 0.5546875,
+        "v3_diff": 0.00520833333333337,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 15,
+        "sklearn_auc": 0.4002525252525253,
+        "v3_diff": 0.03914141414141409,
+        "v4_diff": 5.551115123125783e-17
+      },
+      {
+        "trial": 16,
+        "sklearn_auc": 0.51125,
+        "v3_diff": 0.01874999999999999,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 17,
+        "sklearn_auc": 0.43861892583120204,
+        "v3_diff": 0.01662404092071612,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 18,
+        "sklearn_auc": 0.5562659846547314,
+        "v3_diff": 0.01662404092071612,
+        "v4_diff": 0.0
+      },
+      {
+        "trial": 19,
+        "sklearn_auc": 0.5889724310776943,
+        "v3_diff": 0.005012531328320802,
+        "v4_diff": 0.0
+      }
+    ]
+  },
+  "test2_real_bootstrap_resamples": {
+    "source_run": "results/runs/12/NYU_rois12_w60s6_brainnetcnn_control_baseline_v13_3e220e5c",
+    "n_iter_generated": 2000,
+    "n_iter_sampled_for_check": 100,
+    "mean_within_class_duplicate_subjects_per_iter": 65.09,
+    "max_v3_diff_vs_sklearn": 2.220446049250313e-16,
+    "max_v4_diff_vs_sklearn": 2.220446049250313e-16,
+    "v3_within_1e-12": true,
+    "v4_within_1e-12": true
+  },
+  "test3_cross_class_tie_sweep": {
+    "n_unique_runs_checked": 42,
+    "n_run_repeat_combinations_checked": 210,
+    "n_combinations_with_cross_class_ties": 0,
+    "detail": []
+  }
+}

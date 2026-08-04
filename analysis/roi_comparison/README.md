@@ -246,3 +246,100 @@ impresión no llama al generador aleatorio, no cambia el orden de los
 bucles ni los índices bootstrap y no guarda los remuestreos crudos: el
 resultado es numéricamente idéntico con o sin los mensajes (verificado en
 `tests/test_analysis.py`).
+
+## Contraste del baseline de regresión logística (análisis independiente, fuera del plan 5.6)
+
+Desde el 3 de agosto de 2026 existe un segundo análisis, separado de todo lo
+descrito arriba, en `outputs/baseline/`. Compara las 16 corridas del baseline
+lineal (`results/runs/{roi_set}/*_logreg_baseline_*`, activadas por la
+enmienda de esa fecha a `docs/PLAN_RESPUESTA_REVISORES.md` §9.1) contra su
+comparador BrainNetCNN pareado.
+
+**Por qué es un pipeline aparte y no una extensión del anterior.** Todo lo
+descrito en las secciones previas de este README está anclado al plan 5.6:
+`analysis_plan.md` se verifica por SHA-256 exacto, `run_manifest.csv` debe
+tener exactamente 16 filas de la comparación primaria de tamaño de ROI, y
+`build_analysis_dataset.py` tiene hardcodeados `EXPECTED_SUBJECT_COUNTS`,
+`ROI_INDICES_HASH` y otras constantes específicas de esa campaña. El baseline
+es un análisis nuevo, decidido después de conocer esos resultados, sobre 16
+corridas distintas que ese pipeline no conoce — extenderlo ahí violaría el
+candado que lo protege en vez de respetarlo. Por eso vive en su propio
+script, su propio manifiesto y su propia carpeta de salidas, sin leer ni
+escribir nada bajo `outputs/data/`, `outputs/tables/` u `outputs/figures/`
+del análisis primario.
+
+**Entradas:**
+
+- `config/baseline_manifest.csv` — 16 filas (4 sitios × 4 tamaños de ROI),
+  generadas a partir de los `config.json` de las corridas
+  `*_logreg_baseline_*` (campos `paired_run`, `comparator_representation`,
+  `representation_confound` ya escritos por `src/run_baseline_ml.py` en el
+  momento de la corrida). Cuatro filas (roi_set=12) comparan `static` contra
+  `static`: un solo factor cambia, la arquitectura. Las otras doce (18, 39,
+  116) comparan contra el comparador `ordered` de la Tabla 6, porque no
+  existe corrida BrainNetCNN `static` para esos tamaños; ahí
+  `representation_confound=true` y arquitectura y representación cambian a
+  la vez (mismo aviso ya aceptado para la dimensión "signal representation"
+  del manuscrito). Ver `docs/Guia_implementacion_baseline_ML.md` §0.
+
+**Script:** `scripts/build_baseline_contrast.py`. Reutiliza
+`metrics_from_arrays`/la definición de AUC de `build_analysis_dataset.py`
+(no la redefine); antes de calcular nada, revalida de forma independiente
+que `split_fingerprint` y `roi_indices_hash` coincidan entre cada corrida
+baseline y su comparador, y que ambos artefactos compartan exactamente los
+mismos sujetos — si algo no coincide, no escribe nada.
+
+```bash
+python analysis/roi_comparison/scripts/build_baseline_contrast.py \
+  --repo-root . --overwrite
+```
+
+Por defecto corre las 16 combinaciones en un solo proceso. También admite
+`--only-site {NYU,Peking,NeuroIMAGE,OHSU}` (escribe un checkpoint parcial en
+`outputs/baseline/.checkpoints/`) seguido de `--finalize` para combinarlos:
+existe solo para poder completar cada tramo dentro del límite de tiempo de
+una herramienta en sandbox (así se ejecutó la primera vez, el 3 de agosto de
+2026) y no cambia el resultado numérico, porque cada sitio reinicia su
+propio generador aleatorio (`reset_per_site`) con independencia de los
+demás. El uso normal, sin límite de tiempo, es sin esos dos argumentos.
+
+**Bootstrap:** pareado por sujeto, estratificado por clase, PCG64, seed=42,
+reset por sitio, **2.000** remuestreos (no 10.000: es la misma convención ya
+usada para los diez contrastes de sensibilidad del manuscrito — arquitectura
+LSTM y condiciones de ventana —, documentada en
+`docs/Guia_implementacion_baseline_ML.md` §6). Calcula, por combinación, el
+AUC OOF medio de las cinco repeticiones del comparador (`ref`) y del
+baseline (`new`), su diferencia (`delta = new − ref`) y los tres intervalos
+bootstrap bilaterales del 95%.
+
+**Salidas:**
+
+- `outputs/baseline/data/baseline_contrast_results.json` — mismo esquema que
+  usa el resto del proyecto de manuscrito para estos contrastes (`ref_run`,
+  `new_run`, `n_subjects`, `n_iter`, `ref_auc_point`, `ref_ci`, `ref_reps`,
+  `new_auc_point`, `new_ci`, `new_reps`, `delta`, `delta_ci`, más
+  `comparator_representation` y `representation_confound`), anidado por
+  `{sitio: {roi_set: {...}}}`. Es la entrada que debe leer cualquier script
+  de figuras o de construcción del manuscrito que quiera incluir el
+  baseline.
+- `outputs/baseline/tables/baseline_contrast.csv` — la misma información en
+  formato tabular, una fila por combinación.
+- `outputs/baseline/baseline_contrast_manifest.json` — procedencia: SHA-256
+  del manifiesto y de los `config.json`/`predictions_val.csv` de las 32
+  corridas involucradas (16 baseline + 16 comparadores), versiones de
+  librerías, parámetros del bootstrap, y `team_review_status` explícito
+  (`"pendiente"` mientras el equipo no revise estos números).
+
+**Verificado el 3 de agosto de 2026:** las 16 filas tienen valores finitos
+en rango, los tres intervalos por fila están bien ordenados (`low <= high`),
+la partición 4 limpias / 12 con confusión declarada coincide con el diseño
+documentado, y `new_auc_point` reproduce exactamente (a tres decimales) los
+valores de AUC OOF ya publicados en `docs/Guia_implementacion_baseline_ML.md`
+§3 — la tabla de esa guía se calculó de las mismas `predictions_val.csv` por
+una vía distinta (agregación directa, sin bootstrap), así que la coincidencia
+es una verificación cruzada real, no una tautología.
+
+**Lo que falta:** revisión del equipo de estos 16 contrastes, y la
+integración en el manuscrito (Tabla 7 y la quinta dimensión de sensibilidad
+de §2.6) — ver `docs/Guia_implementacion_baseline_ML.md` §6, que sigue vigente
+para esa parte.
