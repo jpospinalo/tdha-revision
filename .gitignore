@@ -19,6 +19,11 @@ raw_data/
 .idea/
 .DS_Store
 
+# R
+.Rhistory
+.Rdata
+.Rproj.user/
+
 # Directorios temporales de escritura atómica del análisis de ROIs
 # (huérfanos si una corrida se interrumpe a mitad de la promoción final;
 # nunca deberían contener una salida final, ver README del módulo)
