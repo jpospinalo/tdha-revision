@@ -1,16 +1,18 @@
-# `analysis/loso/` (reservado, no implementado)
+# `analysis/loso/` (reservado, no implementado todavía)
 
-Este directorio está reservado para un futuro análisis leave-site-out (LOSO):
+Este directorio está reservado para el análisis leave-site-out (LOSO):
 evaluar la transferencia del clasificador entrenando en unos sitios y
 validando en el sitio excluido, en vez de la validación cruzada interna por
 sitio usada en `results/runs/`.
 
-**No implica que LOSO se vaya a ejecutar.** La decisión vigente para el
-envío actual del manuscrito es no implementar LOSO en ninguna variante (ver
-`docs/finalization/limitations_handoff.md` §1 y
-`docs/Concepto_LOSO_armonizacion_multisitio.md`, histórico). Este directorio
-solo fija el contrato de dónde iría ese trabajo *si* se decide hacerlo en una
-fase posterior, para que no se mezcle con el pipeline actual.
+**Decisión del equipo (2026-08-07): LOSO se implementará.** Queda por decidir
+si entra al cuerpo del paper o como material complementario del envío —
+ninguna de las dos cosas está resuelta todavía. Hasta que esa decisión de
+alcance se cierre y arranque la implementación, este directorio sigue vacío:
+fija el contrato de dónde va ese trabajo, no ejecuta nada por sí mismo. Ver
+`docs/finalization/limitations_handoff.md` §1 (marcado parcialmente
+superseded por esta decisión) y `docs/Concepto_LOSO_armonizacion_multisitio.md`
+(histórico, no es la especificación de esta implementación).
 
 No hay código ni resultados aquí todavía. Ninguna parte de
 `analysis/roi_comparison/` depende de este directorio ni asume que exista.
@@ -54,5 +56,9 @@ analysis/loso/scripts/
 analysis/loso/outputs/
 ```
 
-Cualquiera de estos requiere una decisión explícita del equipo, no solo la
-existencia de este README.
+La decisión de implementar LOSO ya está tomada, pero eso no autoriza por sí
+solo a crear estos archivos: falta resolver el alcance (paper vs.
+suplemento) y el diseño concreto (cargador multisitio, partición
+`LeaveOneGroupOut`/`GroupKFold`, tratamiento de BrainNetCNN windowed —ver la
+limitación de capacidad variable entre sitios en
+`docs/finalization/limitations_handoff.md` §2— antes de escribir código.

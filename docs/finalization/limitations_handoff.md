@@ -1,5 +1,7 @@
 # Paquete de traspaso — Limitations / Discussion (Fase 4-bis)
 
+> **PARCIALMENTE SUPERSEDED (2026-08-07):** el equipo decidió implementar LOSO. Aún no está decidido si entra al cuerpo del paper o como material complementario del envío. Mientras esa decisión de alcance no se cierre y LOSO no esté implementado, el contenido de este documento sigue siendo la descripción correcta de lo que Methods/Results afirman **hoy** (ningún modelo se evalúa fuera de su propio sitio). El punto 1 (transporte cross-site) es el que con mayor certeza necesitará reescritura una vez existan resultados LOSO. No usar este documento como especificación de cómo describir LOSO — eso se define cuando LOSO exista.
+
 **Destinatario:** el coautor que tenga asignadas Discussion, Limitations, Abstract e Introduction. Ninguna de esas secciones existe hoy en `Manuscript_Methods_Results_English_Working_v9_9.docx` (solo contiene Methods, Results y References); este documento no las escribe, entrega el contenido ya acordado para que quien las redacte no tenga que empezar desde cero ni renegociar puntos ya cerrados con el equipo.
 
 **Base:** acuerdos alcanzados en las rondas de discusión LOSO/multisitio y en la revisión del plan de implementación (agosto de 2026), verificados contra el código y los datos del repositorio en el HEAD `4c15d39` y posteriores.
@@ -10,7 +12,7 @@
 
 > *The present study evaluates within-site discrimination and the stability of methodological conclusions across heterogeneous acquisition sites. Each model was trained and evaluated within the same site; the study therefore does not estimate transport of a single trained model to an unseen acquisition site.*
 
-Por qué: no se implementó ningún esquema LOSO ni de entrenamiento multisitio (decisión cerrada del plan, §1). Todo lo reportado es rendimiento intra-sitio.
+Por qué: al cierre de esta fase (2026-08-07) no se había implementado ningún esquema LOSO ni de entrenamiento multisitio. Todo lo reportado en Methods/Results hoy es rendimiento intra-sitio. **Actualización pendiente:** el equipo decidió implementar LOSO (alcance — paper vs. suplemento — aún no decidido); esta frase describe correctamente el estado actual del manuscrito, pero deberá reescribirse cuando existan resultados LOSO, ya sea eliminando la limitación (si LOSO entra al cuerpo) o acotándola explícitamente a la parte del análisis que sigue siendo intra-sitio (si LOSO queda solo como material complementario).
 
 ## 2. Capacidad variable del modelo entre sitios
 
