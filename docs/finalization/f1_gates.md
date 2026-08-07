@@ -59,6 +59,10 @@ Texto para Methods:
 
 > *For Peking, class weighting was applied during training to address the class imbalance present in that site's cohort; this policy was documented prior to the corresponding experimental run and applied uniformly across the site's evaluations. No other site required this adjustment.*
 
+**Nota append-only (2026-08-07) — implementación de la política, no el gate:**
+
+La política Peking `class_weight=True` permaneció prespecificada. Durante la auditoría posterior se detectó que seis corridas `reviewer_sensitivity` omitieron accidentalmente el flag en el script. Esas corridas se conservaron como provenance y fueron sustituidas en los análisis canónicos por seis corridas corregidas con weighting, sin cambiar folds, seeds ni las demás especificaciones. Detalle completo: rama `fix/peking-class-weight-consistency`, mapeo run-a-run en `docs/paper_reference_configuration.md` §"Corrección class_weight Peking (2026-08-07)". Esto no reabre ni reescribe la cronología original de G2 (arriba): la política siempre fue `True` para Peking; lo que falló fue la ejecución del script de sensibilidad para seis condiciones, no la especificación de la política.
+
 ---
 
 ## Checkpoint F1 (parcial)

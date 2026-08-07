@@ -73,6 +73,34 @@ de otro.
 | NeuroIMAGE | `False` | — |
 | OHSU | `False` | — |
 
+### Corrección class_weight Peking (2026-08-07)
+
+Las seis corridas `reviewer_sensitivity` de Peking usadas en Figure 3 / Table 5
+fueron ejecutadas originalmente sin `--class-weight` en
+`run_reviewer_sensitivity.sh`, violando la política de esta tabla. Se
+detectó, verificó contra los seis `config.json` (`class_weight=False`,
+`split_fingerprint=1e9626ad3839ff46` en las seis) y se corrigió en la rama
+`fix/peking-class-weight-consistency`. Las corridas históricas se conservan
+como provenance pero **no se usan** en ningún artefacto canónico del
+manuscrito desde esta corrección:
+
+| Condición | Corrida histórica (superseded, `class_weight=False`) | Corrida corregida (canónica, `class_weight=True`) |
+|---|---|---|
+| LSTM estático | `Peking_rois12_static_lstm_reviewer_sensitivity_da7862e4` | `Peking_rois12_static_lstm_reviewer_sensitivity_weighted_fix_f0640423` |
+| GRU 120 s / 12 s | `Peking_rois12_w60s6_gru_reviewer_sensitivity_60c51708` | `Peking_rois12_w60s6_gru_reviewer_sensitivity_weighted_fix_8a4926b2` |
+| DeepSets estático | `Peking_rois12_static_deepsets_reviewer_sensitivity_1b2c1963` | `Peking_rois12_static_deepsets_reviewer_sensitivity_weighted_fix_e7e3d566` |
+| DeepSets 120 s / 12 s | `Peking_rois12_w60s6_deepsets_reviewer_sensitivity_b954a3cf` | `Peking_rois12_w60s6_deepsets_reviewer_sensitivity_weighted_fix_fbe99635` |
+| BrainNetCNN 60 s / 12 s | `Peking_rois12_w30s6_brainnetcnn_reviewer_sensitivity_9070ebdd` | `Peking_rois12_w30s6_brainnetcnn_reviewer_sensitivity_weighted_fix_2bfac330` |
+| GRU 60 s / 12 s | `Peking_rois12_w30s6_gru_reviewer_sensitivity_a2065789` | `Peking_rois12_w30s6_gru_reviewer_sensitivity_weighted_fix_2e23b0b9` |
+
+Las seis corridas corregidas comparten `split_fingerprint=1e9626ad3839ff46`
+con sus contrapartes históricas (mismas particiones; solo cambia
+`class_weight`), verificado fold-a-fold (folds.csv, `predictions_val.csv`,
+`class_weight_0`/`class_weight_1`) antes de sustituir los selectores en
+`generate_manuscript_figures_v6.py` y `generate_algorithm_comparison_audit.py`.
+Efecto neto en las seis celdas de Table 5/Figure 3 afectadas: ningún cambio
+de signo ni de inclusión de cero; solo magnitud e IC.
+
 ## 6. Configuración de BrainNetCNN
 
 Congelada antes del lote multisitio (ver `docs/finalization/f1_gates.md` §1.2)
@@ -95,14 +123,33 @@ no dos — `results/runs/**` no pertenece íntegramente a uno solo:
 - **Environment A** (26 corridas: las 16 combinaciones de referencia de
   Table 4 más las `rev32`): Python 3.12.13, TensorFlow 2.20.0, Keras 3.13.2,
   hardware mixto (17 sobre Tesla T4, 9 sobre CPU).
-- **Environment B** (14 corridas de sensibilidad `*_reviewer_sensitivity_*`,
-  todas en CPU, más los scripts de `analysis/roi_comparison/scripts/*` y
-  `analysis/finalization/*.py`): Python 3.13.2, TensorFlow 2.21.0,
-  Keras 3.15.1. No es exclusivamente un entorno de análisis.
+- **Environment B**: Python 3.13.2, NumPy 2.5.1, pandas 3.0.5,
+  scikit-learn 1.8.0, TensorFlow 2.21.0, Keras 3.15.1, todas en CPU. No es
+  exclusivamente un entorno de análisis: entrenó redes neuronales y corre
+  los scripts de análisis. Desde la corrección de class_weight de Peking
+  (2026-08-07, ver §5) hay **20** corridas `*reviewer_sensitivity*` bajo
+  `results/runs/12/` en este entorno, no 14: las 8 condiciones no
+  afectadas (NYU ×6, NeuroIMAGE ×1, OHSU ×1) más las 6 corridas
+  históricas de Peking (`class_weight=False`, superseded, solo
+  provenance) más las 6 corridas corregidas de Peking
+  (`*_weighted_fix_*`, `class_weight=True`, canónicas). De esas 20,
+  **14** son las canónicas usadas por el manuscrito (8 no afectadas + 6
+  corregidas); las 6 históricas de Peking están *presentes* en
+  `results/runs/` pero no son *usadas* por ningún artefacto canónico. No
+  confundir "presente en results/runs" con "usado por el manuscrito".
+  Los scripts derivados (`generate_manuscript_figures_v6.py`,
+  `generate_algorithm_comparison_audit.py`, etc.) también corren en este
+  entorno y usan, entre otros paquetes, `scipy.stats.rankdata`; la versión
+  exacta de SciPy de Environment B no quedó registrada en la metadata de
+  ninguna corrida (SciPy no es un paquete de entrenamiento, así que
+  `config.json` no la captura) y no se reconstruye por inferencia.
 - **Environment C** (16 corridas de regresión logística estática,
   `*_static_logreg_baseline_*`): Python 3.10.12, scikit-learn 1.7.2.
-  Sin metadata de NumPy/pandas/TensorFlow/Keras (no aplica: no usa red
-  neuronal); no se completa por inferencia.
+  NumPy/pandas: usados (la regresión logística y el manejo de datos los
+  requieren), pero sus versiones exactas no quedaron registradas en la
+  metadata de `config.json` de estas corridas; no se completan por
+  inferencia. TensorFlow/Keras: no aplica — esta familia no usa red
+  neuronal.
 
 ## 8. Comando reconstruible (plantilla)
 
@@ -155,12 +202,12 @@ Baseline logístico estático (12/18/39/116 ROI, por sitio):
 |---|---|---|
 | `analysis/roi_comparison/outputs/tables/descriptive_performance.csv` | Table 4 (AUC + IC + métricas secundarias, 16 combos) | *canonical derived analysis artifact*: predicciones OOF → script de análisis → bootstrap 10k → CSV |
 | `analysis/roi_comparison/outputs/tables/primary_12_vs_116.csv` | Contraste primario 116 vs 12 ROI | idem |
-| `analysis/roi_comparison/outputs/tables/figure4_v6_audit.csv` | Filas de Figure 3 / Table 5 no algorítmicas (paneles, representación, arquitectura, ventaneado) | `analysis/roi_comparison/scripts/generate_manuscript_figures_v6.py`, Environment B |
-| `analysis/roi_comparison/outputs/tables/algorithm_comparison_deepsets_audit.csv` | Fila "DeepSets, 12 ROIs (static comparator)" de Table 5 | `analysis/roi_comparison/scripts/generate_algorithm_comparison_audit.py`, Environment B |
-| `analysis/roi_comparison/outputs/tables/manuscript_bootstrap_10k.csv` | Contrastes de regresión logística (`baseline__*`) de Table 5 | script de bootstrap 10k, Environment B |
+| `analysis/roi_comparison/outputs/tables/figure4_v6_audit.csv` | Filas de Figure 3 / Table 5 no algorítmicas (paneles, representación, arquitectura, ventaneado) | `analysis/roi_comparison/scripts/generate_manuscript_figures_v6.py`, Environment B. Peking usa las 6 corridas `reviewer_sensitivity_weighted_fix` corregidas (§5), no las históricas |
+| `analysis/roi_comparison/outputs/tables/algorithm_comparison_deepsets_audit.csv` | Fila "DeepSets, 12 ROIs (static comparator)" de Table 5 | `analysis/roi_comparison/scripts/generate_algorithm_comparison_audit.py`, Environment B. Peking usa la corrida `reviewer_sensitivity_weighted_fix` corregida (§5) |
+| `analysis/roi_comparison/outputs/tables/manuscript_bootstrap_10k.csv` | Contrastes de regresión logística (`baseline__*`) de Table 5 | script de bootstrap 10k, Environment B; predicciones de entrada de las corridas `*_static_logreg_baseline_*`, Environment C |
 | `analysis/roi_comparison/outputs/analysis_manifest.json` | Reconciliación global | `reconciliation_status: PASS (16/16)` |
-| `analysis/finalization/cohort_audit.csv` | Auditoría de cohorte (n/control/TDAH por sitio) | `analysis/finalization/build_cohort_audit.py`, solo lee `predictions_val.csv` ya almacenados |
-| `analysis/finalization/demographics_by_site_dx.csv` | Demografía por sitio × diagnóstico | `analysis/finalization/build_demographics.py`, fuente externa con hash verificado (ver `docs/data_provenance/adhd200_phenotypics.md`) |
+| `analysis/finalization/cohort_audit.csv` | Auditoría de cohorte (n/control/TDAH por sitio) | script de análisis en Environment B (`analysis/finalization/build_cohort_audit.py`); lee `predictions_val.csv` ya almacenados de las corridas `*_static_logreg_baseline_*`, generadas en Environment C |
+| `analysis/finalization/demographics_by_site_dx.csv` | Demografía por sitio × diagnóstico | script de análisis en Environment B (`analysis/finalization/build_demographics.py`); fuente de datos: fenotípico externo con hash verificado (ver `docs/data_provenance/adhd200_phenotypics.md`), no una corrida de `results/runs/` |
 
 Ningún archivo de esta lista se modifica sin regenerar por script y sin
 volver a certificar F3.

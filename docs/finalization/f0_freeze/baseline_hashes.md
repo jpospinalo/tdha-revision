@@ -24,3 +24,17 @@ cd71522e040f62cb556bb992f7f9590461de89d74c6f998e21b9acc77e653ae7  docs/manuscrit
 43e6f02920d66bd8836b68440bad0d41fa8229d6c7fc687be0528072970029a0  data/bold/OHSU.joblib
 191b53a860b3a750921bdf5e2ac02d8c9d5da361425c01afe4131e20d93eca6e  data/bold/Peking.joblib
 ```
+
+## HISTORICAL FREEZE NOTE (2026-08-07)
+
+This file records the pre-correction F0 checkpoint. The hashes originally
+recorded above for `figure4_v6_audit.csv` and
+`algorithm_comparison_deepsets_audit.csv` were intentionally superseded by
+the later Peking class-weight consistency correction (branch
+`fix/peking-class-weight-consistency`; see
+`docs/paper_reference_configuration.md` §5 for the run-level mapping). The
+hash recorded above for the manuscript DOCX was superseded for the same
+reason: Table 5, Figure 3, and the corresponding Results §3.3 sentences
+were updated to use the corrected Peking runs. The original hash lines
+above are retained unchanged for provenance; they are not replaced with
+post-correction values.
