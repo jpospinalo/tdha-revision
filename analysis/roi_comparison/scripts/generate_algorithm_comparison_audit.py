@@ -48,7 +48,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import rankdata
 
-REPO_ROOT = Path("/sessions/laughing-wizardly-archimedes/mnt/tdha-revision")
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parents[2]
 RUNS = REPO_ROOT / "results" / "runs" / "12"
 OUT = REPO_ROOT / "analysis" / "roi_comparison" / "outputs" / "tables" / "algorithm_comparison_deepsets_audit.csv"
 
