@@ -19,6 +19,10 @@ raw_data/
 .idea/
 .DS_Store
 
+# Archivos de bloqueo temporales de Microsoft Office (aparecen mientras el
+# documento está abierto; nunca deben versionarse)
+~$*
+
 # R
 .Rhistory
 .Rdata
