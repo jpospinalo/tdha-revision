@@ -134,7 +134,7 @@ etiquetados según su estatus:
 - **[exploratorio]**: una variación válida para probar, pero sin resultados que la
   respalden todavía — no citarla como recomendación.
 
-### [aprobado] LSTM sobre NYU, representación `ordered` — configuración base del artículo
+### [histórico] LSTM sobre NYU, representación `ordered` — ejemplo de desarrollo, no la configuración vigente del artículo (usa `batch_size=8`/`epochs=150`; la campaña oficial usa `batch_size=32`/`epochs=300`, ver `docs/paper_reference_configuration.md` §6)
 
 ```python
 SITIO, ROI_SET, MODELO, HIPERPARAMS = "NYU", "12", "lstm", {}

@@ -242,8 +242,13 @@ flags explícitos; no es lo que ocurre si se omiten. Advertencias que el script 
 emite en tiempo de ejecución (comportamiento genérico del runner, no necesariamente el
 usado en la campaña oficial del paper):
 
-- **OHSU** dura 185 s: demasiado corto para una ventana válida, así que su default es la
-  representación **estática**. Bajar `--n-splits` a 5.
+- **OHSU** dura 185 s. **No hay ningún fallback automático a la representación
+  estática en el código** — si no se pasa `--representation static`
+  explícitamente, OHSU se procesa como windowed igual que los demás sitios
+  (con `--window-seconds 120 --step-seconds 12` da 6 ventanas; es lo que hizo
+  la campaña del paper). Su escaneo corto sí es un motivo metodológico
+  razonable para preferir `static` si se quiere evitar pocas ventanas, pero
+  eso hay que pedirlo, no ocurre solo. Considerar bajar `--n-splits` a 5.
 - **NeuroIMAGE** tiene 39 sujetos; con 10 pliegues la validación queda en ~4 sujetos.
   Conviene `--n-splits 5`.
 - **Peking** está desbalanceado; usar `--class-weight` y mirar AUC y especificidad.

@@ -1,9 +1,12 @@
 # Entornos de software usados para el paper
 
 **Tres** entornos distintos produjeron resultados usados en el manuscrito, no
-dos. Ninguno regenera a otro: los modelos de A y C no se reentrenan con B; B
-solo lee predicciones ya almacenadas y calcula estadística
-descriptiva/bootstrap sobre ellas.
+dos. Ninguno regenera a otro: los modelos originalmente entrenados bajo A y C
+no se reentrenan con B. Pero B no es "solo análisis": también entrenó las
+corridas de sensibilidad neuronal posteriores (`*reviewer_sensitivity*`,
+detalle en Environment B más abajo), además de ejecutar los scripts de
+análisis/estadística/bootstrap sobre las predicciones ya almacenadas de A, B
+y C.
 
 Verificado recorriendo los `config.json` reales bajo `results/runs/**`
 (no es una simplificación de memoria): 26 corridas en Environment A, 20 en
@@ -65,6 +68,7 @@ también entrenó las 20 corridas de sensibilidad que aparecen en
 | Keras | 3.15.1 |
 | SciPy | no registrado en la metadata de ninguna corrida (`config.json` no captura paquetes de análisis, solo los de entrenamiento); usado por los scripts derivados (`scipy.stats.rankdata`) pero su versión exacta no se reconstruye por inferencia |
 | GPU | sin GPU (CPU), en las 20 corridas verificadas |
+| Platform | `macOS-26.5.2-arm64-arm-64bit-Mach-O` — verificado en `config["env"]["platform"]` de las 20 corridas `*reviewer_sensitivity*`, sin excepción (no se documenta por inferencia: es el valor real de las 20) |
 
 ## Environment C — baseline de regresión logística
 
