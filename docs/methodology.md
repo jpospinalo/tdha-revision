@@ -69,6 +69,8 @@ Windows are specified in physical time (seconds) and converted to samples using 
 
 Window length respects the dynamic-connectivity lower bound: it must exceed the longest wavelength retained in the signal (Leonardi & Van De Ville, 2015). ATHENA band-pass filters at 0.009 Hz, which puts that floor near 111 s, so the **recommended** physical window is 120 s where the scan allows it — pass it explicitly with `--window-seconds 120` (the notebook's example configs already do). Sites too short for a valid window (OHSU, 185 s) default to the static representation.
 
+**This is a general/legacy recommendation, not the manuscript's campaign configuration.** In the paper's reference campaign, OHSU was evaluated with the same requested 120 s / 12 s windowing as the other three sites, which resolves to 6 windows given its shorter scan — not the static representation. See [`docs/paper_reference_configuration.md`](paper_reference_configuration.md) for the configuration actually used in the manuscript.
+
 This is a recommendation, not the CLI's actual default: `run_experiment.py`, when no window/step arguments are given at all, falls back to `--window 70 --step 2` (`windowing_preset: "legacy_70_2"` in `config.json`) for backward compatibility with early runs, not to 120 s. Always pass `--window-seconds`/`--step-seconds` explicitly rather than relying on the bare default.
 
 Both rectangular and Gaussian windows are supported.

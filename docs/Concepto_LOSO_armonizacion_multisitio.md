@@ -1,5 +1,10 @@
 # Concepto: LOSO vs. armonización + pooling multi-sitio para ampliar la comparación
 
+> **SUPERSEDED / HISTORICAL RECORD**
+> Este documento refleja una etapa anterior de la discusión multisitio.
+> No debe utilizarse como especificación para la implementación LOSO actual.
+> La estrategia vigente se definirá en la fase LOSO posterior a `pre-loso-clean`.
+
 Fecha: 2026-08-06
 
 ## Pregunta
