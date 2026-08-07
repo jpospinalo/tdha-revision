@@ -1,0 +1,5 @@
+site,n,n_control,n_adhd,n_repeats,run_id,matches_table1
+NYU,177,87,90,5,NYU_rois12_static_logreg_baseline_aafd45ca,True
+Peking,183,109,74,5,Peking_rois12_static_logreg_baseline_1e9626ad,True
+NeuroIMAGE,39,22,17,5,NeuroIMAGE_rois12_static_logreg_baseline_bc5c92b2,True
+OHSU,66,38,28,5,OHSU_rois12_static_logreg_baseline_a59dca47,True

@@ -1,0 +1,9 @@
+site,dx,n,age_mean,age_sd,age_min,age_max,n_male,n_female,pct_male,age_missing,gender_missing
+NYU,Control,87,12.46,3.12,7.17,17.96,42,45,48.3,0,0
+NYU,ADHD,90,11.54,2.76,7.24,17.61,68,22,75.6,0,0
+Peking,Control,109,11.66,1.74,8.42,14.92,65,44,59.6,0,0
+Peking,ADHD,74,12.43,1.96,9.0,17.33,68,6,91.9,0,0
+NeuroIMAGE,Control,22,17.53,2.44,11.66,21.74,10,12,45.5,0,0
+NeuroIMAGE,ADHD,17,17.09,2.87,11.05,20.89,15,2,88.2,0,0
+OHSU,Control,38,8.96,1.24,7.17,11.92,17,21,44.7,0,0
+OHSU,ADHD,28,8.8,1.06,7.42,11.83,18,10,64.3,0,0
