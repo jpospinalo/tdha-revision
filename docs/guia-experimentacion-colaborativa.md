@@ -108,10 +108,13 @@ variable del notebook al campo donde comprobar lo que realmente se ejecutó.
 `config_hash`, `run_id`, `split_fingerprint` y `early_stopping_ab_hash` no vienen de
 ninguna variable de la celda: se derivan de la combinación completa de las anteriores.
 
-## Valores recomendados por sitio
+## Valores históricos utilizados durante desarrollo — NO usar para reproducir el paper
 
-Copiar directamente al bloque B de la celda de configuración (ventana física, 90-85%
-de solape según el sitio):
+**Esta tabla no es la configuración de la campaña oficial del paper.** Se usó durante
+desarrollo previo y no coincide con `docs/paper_reference_configuration.md`: la campaña
+oficial usa `STEP_SECONDS=12` en Peking (no 18), 10 pliegues en NeuroIMAGE (no 5), y OHSU
+**ventaneado** con 6 ventanas (no estático/5 pliegues). Para reproducir el paper, usar
+`docs/paper_reference_configuration.md`, no esta tabla.
 
 | Sitio | `WINDOW_SECONDS` | `STEP_SECONDS` | `N_SPLITS` | `CLASS_WEIGHT` |
 |---|---|---|---|---|
@@ -150,7 +153,7 @@ NOMBRE, CORREO = "Juan", "juan@ejemplo.com"
 TAG, OVERWRITE, EJECUTAR_PRUEBA_HUMO = None, False, True
 ```
 
-### [aprobado] BrainNetCNN sobre OHSU, representación `static` — sitio sin ventana válida
+### [histórico] BrainNetCNN sobre OHSU, representación `static` — configuración de desarrollo, no la del paper (la campaña oficial usó OHSU ventaneado, 6 ventanas, 10 pliegues)
 
 ```python
 SITIO, ROI_SET, MODELO = "OHSU", "12", "brainnetcnn"

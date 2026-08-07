@@ -29,9 +29,10 @@ analysis/loso/            estadística, tablas, figuras y manifests derivados
 ```
 
 - `src/`: entrenamiento. Un nuevo runner (`run_loso.py`), separado de
-  `run_experiment.py`, con su propio cargador multisitio y partición
-  `LeaveOneGroupOut`/`GroupKFold` (ninguno de los dos existe hoy en el
-  pipeline).
+  `run_experiment.py`, con su propio cargador multisitio y una partición
+  externa consciente del sitio (site-aware outer LOSO splitting, p. ej.
+  `LeaveOneGroupOut` — no existe hoy en el pipeline; el diseño concreto
+  de partición queda por cerrar, ver más abajo).
 - `results/loso/`: corridas LOSO, con la misma disciplina de `config.json`/
   procedencia/hashes que `results/runs/`.
 - `analysis/loso/`: solo estadística derivada sobre esas corridas ya
@@ -58,7 +59,8 @@ analysis/loso/outputs/
 
 La decisión de implementar LOSO ya está tomada, pero eso no autoriza por sí
 solo a crear estos archivos: falta resolver el alcance (paper vs.
-suplemento) y el diseño concreto (cargador multisitio, partición
-`LeaveOneGroupOut`/`GroupKFold`, tratamiento de BrainNetCNN windowed —ver la
-limitación de capacidad variable entre sitios en
-`docs/finalization/limitations_handoff.md` §2— antes de escribir código.
+suplemento) y el diseño concreto (cargador multisitio, partición externa
+consciente del sitio — site-aware outer LOSO splitting, p. ej.
+`LeaveOneGroupOut` — sin cerrar aún cuál mecanismo exacto, tratamiento de
+BrainNetCNN windowed —ver la limitación de capacidad variable entre sitios
+en `docs/finalization/limitations_handoff.md` §2— antes de escribir código.

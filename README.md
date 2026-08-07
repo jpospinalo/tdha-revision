@@ -194,17 +194,53 @@ deterministas, a costa de perder el camino rápido de cuDNN.
 > y 10 pliegues × 5 repeticiones en los cuatro— ver
 > [`docs/paper_reference_configuration.md`](docs/paper_reference_configuration.md).
 
-| Sitio | Sujetos | Control / TDAH | TR (s) | Puntos | Escaneo (s) | Ventana por defecto |
-|---|---|---|---|---|---|---|
-| NYU | 177 | 87 / 90 | 2.00 | 172 | 344 | 120 s → 19 ventanas |
-| Peking | 183 | 109 / 74 | 2.00 | 232 | 464 | 120 s → 20 ventanas |
-| NeuroIMAGE | 39 | 22 / 17 | 1.96 | 257 | 504 | 120 s → 20 ventanas |
-| OHSU | 66 | 38 / 28 | 2.50 | 74 | 185 | estática |
+| Sitio | Sujetos | Control / TDAH | TR (s) | Puntos | Escaneo (s) |
+|---|---|---|---|---|---|
+| NYU | 177 | 87 / 90 | 2.00 | 172 | 344 |
+| Peking | 183 | 109 / 74 | 2.00 | 232 | 464 |
+| NeuroIMAGE | 39 | 22 / 17 | 1.96 | 257 | 504 |
+| OHSU | 66 | 38 / 28 | 2.50 | 74 | 185 |
 
-La ventana física por defecto es 120 s (supera el piso de ~111 s de la conectividad
-dinámica para el filtrado a 0.009 Hz de ATHENA). Advertencias que el script también emite
-en tiempo de ejecución (comportamiento genérico del runner, no necesariamente el usado
-en la campaña oficial del paper):
+### Bare CLI legacy default (sin `--window`/`--window-seconds` ni `--step`/`--step-seconds`)
+
+Sin argumentos de enventanado explícitos y con `--representation ordered` (u otra
+representación dinámica), el runner cae en el legado de compatibilidad hacia atrás:
+`window_tr=70`, `step_tr=2` (`windowing_preset=legacy_70_2`) — **no** 120 s. Verificado
+con `--dry-run` en los cuatro sitios:
+
+| Sitio | `window_tr` | `step_tr` | `n_windows` (bare default) |
+|---|---|---|---|
+| NYU | 70 | 2 | 52 |
+| Peking | 70 | 2 | 82 |
+| NeuroIMAGE | 70 | 2 | 94 |
+| OHSU | 70 | 2 | 3 |
+
+Este es el comportamiento genérico del runner cuando no se pasa nada — no es una
+recomendación ni la configuración del paper.
+
+### Ventana recomendada (120 s / 12 s), si se pasa explícitamente
+
+Con `--window-seconds 120 --step-seconds 12` explícitos (recomendado; ver más abajo por
+qué 120 s), el número de ventanas resultante por sitio es:
+
+| Sitio | Ventana solicitada | `n_windows` |
+|---|---|---|
+| NYU | 120 s | 19 ventanas |
+| Peking | 120 s | 29 ventanas |
+| NeuroIMAGE | 120 s | 33 ventanas |
+| OHSU | 120 s | estática (185 s de escaneo es insuficiente para una ventana de 120 s con margen) |
+
+Estos números (19/29/33) son los que efectivamente usó la campaña del paper para NYU,
+Peking y NeuroIMAGE — ver el aviso más arriba y
+[`docs/paper_reference_configuration.md`](docs/paper_reference_configuration.md) para la
+configuración exacta, incluyendo que OHSU **sí** se evaluó con ventaneado (6 ventanas) en
+esa campaña, a diferencia de la recomendación genérica de esta sección.
+
+La ventana física de 120 s se recomienda porque supera el piso de ~111 s de la
+conectividad dinámica para el filtrado a 0.009 Hz de ATHENA — pero pasarla requiere los
+flags explícitos; no es lo que ocurre si se omiten. Advertencias que el script también
+emite en tiempo de ejecución (comportamiento genérico del runner, no necesariamente el
+usado en la campaña oficial del paper):
 
 - **OHSU** dura 185 s: demasiado corto para una ventana válida, así que su default es la
   representación **estática**. Bajar `--n-splits` a 5.
