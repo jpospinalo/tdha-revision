@@ -1,13 +1,21 @@
 # Entornos de software usados para el paper
 
-Dos entornos distintos produjeron resultados usados en el manuscrito. Ninguno
-de los dos regenera al otro: los modelos de la campaña experimental (Environment A)
-no se reentrenan con Environment B; Environment B solo lee predicciones ya
-almacenadas y calcula estadística descriptiva/bootstrap sobre ellas.
+**Tres** entornos distintos produjeron resultados usados en el manuscrito, no
+dos. Ninguno regenera a otro: los modelos de A y C no se reentrenan con B; B
+solo lee predicciones ya almacenadas y calcula estadística
+descriptiva/bootstrap sobre ellas.
 
-## Environment A — campaña experimental oficial
+Verificado recorriendo los 56 `config.json` reales bajo `results/runs/**`
+(no es una simplificación de memoria): 26 corridas en Environment A, 14 en
+Environment B, 16 en Environment C. `results/runs/**` **no** pertenece
+íntegramente a un único entorno.
 
-Todas las corridas en `results/runs/**` (entrenamiento de modelos, predicciones OOF).
+## Environment A — entrenamiento neural original (BrainNetCNN, LSTM)
+
+26 corridas: las 16 combinaciones sitio × panel de referencia (Table 4) más
+las corridas `rev32` de comparación estática/LSTM. Hardware mixto: **17
+sobre Tesla T4, 9 sobre CPU** (por `config["env"]["gpu"]`; el hardware real
+está registrado corrida por corrida, no es uniforme dentro del grupo).
 
 | Paquete | Versión |
 |---|---|
@@ -18,13 +26,17 @@ Todas las corridas en `results/runs/**` (entrenamiento de modelos, predicciones 
 | TensorFlow | 2.20.0 |
 | Keras | 3.13.2 |
 | Plataforma | Linux-6.6.122+-x86_64-with-glibc2.35 |
-| GPU | sin GPU (CPU) para las corridas verificadas en `docs/paper_reference_configuration.md` §9 |
+| GPU | mixto — ver arriba; el `config.json` de cada corrida registra el dispositivo real |
 
-## Environment B — análisis derivado y auditoría
+## Environment B — sensibilidades neuronales posteriores y análisis derivado
 
-Scripts en `analysis/roi_comparison/scripts/*` y `analysis/finalization/*.py`:
-cálculo de AUC agregada por repetición, bootstrap de participantes,
-generación de figuras y de los CSV canónicos derivados.
+14 corridas neuronales (`*_reviewer_sensitivity_*`: DeepSets, LSTM-static,
+GRU, ventanas 60s/12 alternativas), todas en CPU. **Este entorno no es
+exclusivamente de análisis**: además de los scripts de
+`analysis/roi_comparison/scripts/*` y `analysis/finalization/*.py`
+(cálculo de AUC agregada, bootstrap, figuras, CSV canónicos derivados),
+también entrenó las 14 corridas de sensibilidad que sí aparecen en
+`results/runs/**`.
 
 | Paquete | Versión |
 |---|---|
@@ -34,15 +46,37 @@ generación de figuras y de los CSV canónicos derivados.
 | scikit-learn | 1.8.0 |
 | TensorFlow | 2.21.0 |
 | Keras | 3.15.1 |
+| GPU | sin GPU (CPU), en las 14 corridas verificadas |
+
+## Environment C — baseline de regresión logística
+
+16 corridas (`*_static_logreg_baseline_*`, las 4 combinaciones de panel ROI
+× 4 sitios). Metadata **parcialmente registrada**: cada `config.json`
+guarda `python` y `sklearn` en la raíz, pero no NumPy/pandas/TensorFlow/Keras
+(no aplica: estas corridas no usan red neuronal). No se completa lo ausente
+por inferencia.
+
+| Paquete | Versión |
+|---|---|
+| Python | 3.10.12 |
+| scikit-learn | 1.7.2 |
+| NumPy/pandas/TensorFlow/Keras | *environment metadata partially recorded in baseline_ml_v1 configs* — no registrado, no inferido |
 
 ## Qué resultado proviene de cuál
 
 | Resultado | Entorno |
 |---|---|
-| Predicciones OOF, `metrics_train.csv`, `metrics_val.csv`, `history.csv`, pesos entrenados | **A** |
-| `descriptive_performance.csv`, `primary_12_vs_116.csv` (Table 4, contraste primario) | **B**, sobre predicciones de A |
-| `figure4_v6_audit.csv`, `algorithm_comparison_deepsets_audit.csv`, `manuscript_bootstrap_10k.csv` (Table 5, Figure 3) | **B**, sobre predicciones de A |
-| `demographics_by_site_dx.csv`, `cohort_audit.csv` | **B**, sobre predicciones de A + fenotípico externo |
+| Predicciones OOF, `metrics_train.csv`, `metrics_val.csv`, `history.csv`, pesos entrenados — 16 combos de referencia (Table 4) y corridas `rev32` | **A** |
+| Predicciones OOF de las 14 corridas de sensibilidad (`*_reviewer_sensitivity_*`) | **B** (entrenamiento) |
+| Predicciones OOF de las 16 corridas de regresión logística estática | **C** |
+| `descriptive_performance.csv`, `primary_12_vs_116.csv` (Table 4, contraste primario) | **B** (análisis), sobre predicciones de A |
+| `figure4_v6_audit.csv`, `algorithm_comparison_deepsets_audit.csv`, `manuscript_bootstrap_10k.csv` (Table 5, Figure 3) | **B** (análisis), sobre predicciones de A, B y C combinadas según el contraste |
+| `demographics_by_site_dx.csv`, `cohort_audit.csv` | **B** (análisis), sobre predicciones de A/C + fenotípico externo |
+
+No todas las predicciones OOF del manuscrito proceden del mismo entorno de
+entrenamiento: Table 4 y las filas `rev32` vienen de A; las filas de
+sensibilidad de Figure 3/Table 5 vienen de B; la fila de regresión logística
+de Table 5 viene de C.
 
 ## Advertencia de reproducibilidad
 

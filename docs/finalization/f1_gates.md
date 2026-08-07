@@ -35,7 +35,7 @@ No hay tuning por sitio: el mismo código, con los mismos hiperparámetros, se e
 
 > *The BrainNetCNN architecture and its hyperparameters (learning rate, patience, regularization) were fixed prior to the multi-site evaluation and were not modified between sites; the same configuration and code version were applied to NYU, Peking, NeuroIMAGE, and OHSU.*
 
-**Distinción explícita que no debe perderse:** esto resuelve la procedencia de los *hiperparámetros del modelo*. No dice nada sobre la procedencia de los *paneles de ROI* (G1, que sigue abierto). Son dos preguntas independientes y no deben fusionarse en el texto: "el modelo no se ajustó por sitio" no implica "los paneles se definieron a priori".
+**Distinción explícita que no debe perderse:** esto resuelve la procedencia de los *hiperparámetros del modelo*, que es una pregunta independiente de la procedencia de los *paneles de ROI* (G1). Ambas quedan cerradas hoy — hiperparámetros por evidencia directa de código/config (arriba), paneles como G1-A por confirmación del equipo (§1.1) — pero se cerraron por vías distintas y no deben fusionarse en el texto: "el modelo no se ajustó por sitio" no implica, por sí solo, "los paneles se definieron a priori".
 
 ---
 

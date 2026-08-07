@@ -25,22 +25,29 @@ Hyperactive/Impulsive, Inattentive) → TDAH. Ver `docs/data_provenance/adhd200_
 ## 2. Paneles de ROI
 
 Cuatro paneles fijos sobre el atlas AAL116: 12, 18, 39, 116 regiones.
-Definidos en `data/atlas/roi_sets.json`. **Procedencia: ver Gate G1 en
-`docs/finalization/f1_gates.md` — no resuelta a la fecha de este documento.**
+Definidos en `data/atlas/roi_sets.json`. **Procedencia: Gate G1 = G1-A,
+cerrado el 2026-08-07** — paneles prespecificados, informados por literatura
+previa y juicio neuroanatómico experto (confirmación directa del equipo).
+Ver `docs/finalization/f1_gates.md` §1.1.
 
 ## 3. Ventana y número de ventanas por sitio — configuración de la campaña oficial
 
-**Todos los sitios usan el mismo parámetro físico de ventana: 120 s, paso 12 s.**
-El número resultante de ventanas difiere solo porque el TR y la duración del
-escaneo difieren entre sitios — no porque se haya usado una ventana distinta
-por sitio.
+**Todos los sitios usan el mismo parámetro *solicitado* de ventana: 120 s,
+paso 12 s** (`requested_window_seconds`/`requested_step_seconds` en
+`config.json`). El valor *efectivo* difiere ligeramente entre sitios porque
+la ventana y el paso se discretizan en unidades de TR
+(`window_tr`/`step_tr`), y el TR no es igual en los cuatro sitios. No decir
+que los cuatro sitios tuvieron exactamente el mismo paso físico efectivo:
 
-| Sitio | TR (s) | Puntos temporales | Duración escaneo (s) | Ventana física | Ventanas resultantes (`n_windows`) |
-|---|---|---|---|---|---|
-| NYU | 2.00 | 172 | 344 | 120 s / 12 s | **19** |
-| Peking | 2.00 | 232 | 464 | 120 s / 12 s | **29** |
-| NeuroIMAGE | 1.96 | 257 | 504 | 120 s / 12 s | **33** |
-| OHSU | 2.50 | 74 | 185 | 120 s / 12 s | **6** |
+| Sitio | TR (s) | Puntos temporales | Duración escaneo (s) | Ventana solicitada/efectiva | Paso solicitado/efectivo | Ventanas resultantes (`n_windows`) |
+|---|---|---|---|---|---|---|
+| NYU | 2.00 | 172 | 344 | 120 s / 120.00 s | 12 s / 12.00 s | **19** |
+| Peking | 2.00 | 232 | 464 | 120 s / 120.00 s | 12 s / 12.00 s | **29** |
+| NeuroIMAGE | 1.96 | 257 | 504 | 120 s / 119.56 s | 12 s / 11.76 s | **33** |
+| OHSU | 2.50 | 74 | 185 | 120 s / 120.00 s | 12 s / 12.50 s | **6** |
+
+(`window_tr`/`step_tr` × `tr_seconds` de cada sitio: NYU 60×2.00/6×2.00;
+Peking 60×2.00/6×2.00; NeuroIMAGE 61×1.96/6×1.96; OHSU 48×2.50/5×2.50.)
 
 **Esto corrige la tabla de "ventana por defecto" del README** (§7 más abajo),
 que describe el comportamiento del runner sin argumentos explícitos, no la
@@ -53,7 +60,7 @@ ventaneado (6 ventanas), igual que los otros tres sitios.
 10 pliegues externos × 5 repeticiones (`n_splits=10`, `n_repeats=5`) en los
 **cuatro** sitios, incluidos NeuroIMAGE (n=39) y OHSU (n=66) — verificado en
 los `config.json` de las corridas de referencia. Validación interna al
-10.15% del particionamiento externo (`inner_val_frac=0.15`). Toda la
+15% del particionamiento externo (`inner_val_frac=0.15`). Toda la
 validación es interna al sitio; ningún sitio funciona como validación externa
 de otro.
 
@@ -82,13 +89,20 @@ esta familia de corridas.
 
 ## 7. Entornos
 
-Ver `docs/paper_environment.md` para la tabla completa. Resumen:
+Ver `docs/paper_environment.md` para la tabla completa. **Tres** entornos,
+no dos — `results/runs/**` no pertenece íntegramente a uno solo:
 
-- **Environment A** (campaña experimental oficial: todas las corridas de
-  `results/runs/`): Python 3.12.13, TensorFlow 2.20.0, Keras 3.13.2.
-- **Environment B** (scripts de análisis derivado y auditoría:
-  `analysis/roi_comparison/scripts/*`): Python 3.13.2, TensorFlow 2.21.0,
-  Keras 3.15.1.
+- **Environment A** (26 corridas: las 16 combinaciones de referencia de
+  Table 4 más las `rev32`): Python 3.12.13, TensorFlow 2.20.0, Keras 3.13.2,
+  hardware mixto (17 sobre Tesla T4, 9 sobre CPU).
+- **Environment B** (14 corridas de sensibilidad `*_reviewer_sensitivity_*`,
+  todas en CPU, más los scripts de `analysis/roi_comparison/scripts/*` y
+  `analysis/finalization/*.py`): Python 3.13.2, TensorFlow 2.21.0,
+  Keras 3.15.1. No es exclusivamente un entorno de análisis.
+- **Environment C** (16 corridas de regresión logística estática,
+  `*_static_logreg_baseline_*`): Python 3.10.12, scikit-learn 1.7.2.
+  Sin metadata de NumPy/pandas/TensorFlow/Keras (no aplica: no usa red
+  neuronal); no se completa por inferencia.
 
 ## 8. Comando reconstruible (plantilla)
 
