@@ -6,13 +6,13 @@
 
 ## 1.1 Procedencia de los paneles ROI — Gate G1
 
-**Estado: sin resolver. No se activa G1-C en este documento.**
+**Estado: G1-A. Cerrado.**
 
-La búsqueda dentro del repositorio ya estaba agotada antes de esta fase (ver Plan v1.1 §1.1): el repositorio arranca el 2026-07-20 con `roi_sets.json` ya completo en el commit inicial del pipeline (`3a9424a`), una sola modificación posterior sin registro de derivación (`543fe01`, 2026-07-29), y ningún mensaje de commit que mencione selección o ablación de paneles.
+La búsqueda dentro del repositorio estaba agotada (ver Plan v1.1 §1.1): el repositorio arranca el 2026-07-20 con `roi_sets.json` ya completo en el commit inicial del pipeline (`3a9424a`), una sola modificación posterior sin registro de derivación (`543fe01`, 2026-07-29), y ningún mensaje de commit que mencione selección o ablación de paneles. El historial de git no podía resolver G1 por sí solo.
 
-Esta fase no añade una nueva búsqueda dentro del repositorio porque no hay nada nuevo que revisar: el historial ya se agotó. La búsqueda **fuera** del repositorio (notebooks históricos, correos, notas de reunión) sigue pendiente del equipo — ítem 1 de la sección "Pendiente del equipo" del plan. G1-C no se activa unilateralmente aquí porque el plan lo condiciona a que se agote esa ventana externa o a una autorización explícita del equipo; ninguna de las dos ha ocurrido todavía.
+**Confirmación directa del equipo (2026-08-07):** los paneles de ROI fueron seleccionados antes de los experimentos, con base en las redes funcionales que el propio manuscrito ya menciona en §2.2 (DMN, ECN, SN, DAN, FST; Figure 1). Esto resuelve G1 como **G1-A** — evidencia suficiente de definición a priori, informada por literatura previa y juicio neuroanatómico experto — y no como G1-C.
 
-**Consecuencia práctica:** la Fase 3 (edición de terminología ROI en Methods/Results) permanece bloqueada hasta que se resuelva G1.
+**Consecuencia práctica:** la Fase 3 ya se ejecutó con la narrativa G1-A (ver `docs/finalization/f3_terminologia/`). Se retiró `derived by progressive ablation` de Methods §2.1 y `ablation-derived` de Results §3.1, y se separó explícitamente la procedencia de los paneles (a priori, por literatura) de la del entrenamiento del modelo (desarrollado en NYU) en Methods §2.6 (párr. 26) y Results §3.2 (párr. 55), conforme a §1.2 más abajo.
 
 ---
 
@@ -65,10 +65,10 @@ Texto para Methods:
 
 | Punto | Estado |
 |---|---|
-| G1 (procedencia ROI) | **Abierto** — pendiente de evidencia externa o autorización de G1-C |
+| G1 (procedencia ROI) | **G1-A — cerrado**, confirmación directa del equipo (2026-08-07) |
 | Procedencia de hiperparámetros | **Documentada** — congelados 8 días antes del lote, idénticos entre sitios |
 | G2 (`class_weight` Peking) | **PASS** — prespecificado, documentado 2 días antes de la corrida |
 | Referencias pendientes | Ver Fase 6 |
 | Inventario de covariables (G3/G4) | Ver §F2 |
 
-**Por lo anterior, la Fase 3 (edición de Methods/Results sobre terminología ROI) sigue bloqueada por G1.** El resto de la Fase 1 queda cerrado.
+**Fase 1 cerrada por completo.** La Fase 3 (edición de Methods/Results sobre terminología ROI) ya se ejecutó — ver `docs/finalization/f3_terminologia/informe_f3.md`.

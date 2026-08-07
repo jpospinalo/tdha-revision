@@ -58,16 +58,11 @@ Si el equipo localiza una métrica comparable para los otros tres sitios, este p
 
 > *All analyses used the AAL116 anatomical atlas and four fixed ROI panels (12, 18, 39, 116 regions); no data-driven parcellation or ROI selection was performed within the reported analysis. Site-specific differences in TR and acquisition duration were accommodated through site-specific windowing parameters (see Table 3), which is itself a source of cross-site heterogeneity in the resulting representations.*
 
-## 9. Procedencia de los paneles ROI — depende del cierre de G1
+## 9. Procedencia de los paneles ROI — G1 cerrado como G1-A
 
-**G1 sigue abierto** (ver `docs/finalization/f1_gates.md`, §1.1). El texto final de Limitations sobre este punto depende de qué salida se active:
+**Cerrado (2026-08-07):** confirmación directa del equipo — los paneles se seleccionaron antes de los experimentos, con base en las redes funcionales que el manuscrito ya describe en §2.2 (DMN, ECN, SN, DAN, FST). Ver `docs/finalization/f1_gates.md` §1.1.
 
-- Si **G1-A** (evidencia suficiente de definición a priori): no se necesita lenguaje de limitación adicional más allá del §9 general de no-optimización retroactiva.
-- Si **G1-C** (procedencia no reconstruible): Limitations debe incluir explícitamente:
-
-  > *Four fixed ROI panels were evaluated and were not reselected during the multisite evaluation. Because contemporaneous records did not permit complete reconstruction of the historical derivation of the reduced panels, we do not interpret their evaluation at NYU as independent confirmation of ROI selection.*
-
-**No redactar este punto de forma definitiva hasta que G1 se resuelva.** Este documento entrega ambas variantes para que quien escriba Limitations no tenga que esperar a una segunda entrega.
+No se necesita lenguaje de limitación adicional sobre la procedencia de los paneles más allá del §9 general de no-optimización retroactiva (ya cubierto en el punto 8). Methods y Results ya se corrigieron para reflejar esto (Fase 3, ver `docs/finalization/f3_terminologia/informe_f3.md`): se retiró `ablation-derived`/`derived by progressive ablation` y se separó explícitamente la procedencia de los paneles (a priori) de la del entrenamiento del modelo (desarrollado en NYU).
 
 ## 10. Lenguaje a evitar en Discussion/Limitations/Conclusions
 
