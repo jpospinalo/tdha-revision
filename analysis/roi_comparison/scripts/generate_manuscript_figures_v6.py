@@ -44,7 +44,11 @@ original unweighted Peking runs remain on disk as provenance only. NYU,
 NeuroIMAGE, and OHSU reviewer_sensitivity runs are unaffected and unchanged.
 """
 from pathlib import Path
+import atexit
 import glob
+import os
+import shutil
+import tempfile
 
 import matplotlib
 matplotlib.use("Agg")
@@ -61,6 +65,24 @@ TABLES_DIR = OUT_DIR / "tables"
 FIG_DIR = OUT_DIR / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 RUNS_DIR = REPO_ROOT / "results" / "runs" / "12"
+
+# Baseline de regresión para el chequeo "las filas pre-existentes de v5 no
+# cambiaron" (ver main()). No es figure4_v5_audit.csv: ese archivo nunca se
+# comprometió a git (verificado con `git log --all` y `git rev-list --all
+# --objects`, 2026-08-07) y desapareció del working tree en la limpieza del
+# repositorio del 2026-08-06 (c2c78f0) sin que este chequeo se hubiera
+# actualizado. Este CSV lo sustituye: son las 28 filas "pre-existentes"
+# (ROI panel x3, Static connectivity, LSTM-128, Window 140/12, Window
+# 120/24 -- para los 4 sitios, con las filas restringidas a NYU/Peking
+# marcadas not_evaluated en NeuroIMAGE/OHSU) extraídas directamente del
+# figure4_v6_audit.csv canónico vigente, que por construcción las reproduce
+# con los mismos valores que v5 (ver docstring del módulo). No son valores
+# reconstruidos a mano: se derivaron programáticamente filtrando las 5
+# condiciones que v6 añadió (Static connectivity (DeepSets)/(LSTM),
+# GRU-151, Window 60/12 BrainNetCNN/GRU).
+REGRESSION_REFERENCE = (
+    REPO_ROOT / "analysis" / "roi_comparison" / "config" / "figure4_v5_regression_reference.csv"
+)
 
 # ---------------------------------------------------------------------------
 # Figure-only display labels (extends v5's FIGURE_LABELS)
@@ -371,7 +393,7 @@ def _y_positions_panel_a():
     return positions, header_y, span
 
 
-def build_figure_sensitivity():
+def build_figure_sensitivity(png_path, svg_path, pdf_path):
     records_a = _load_panel_a_deltas()
     audit_rows = []
 
@@ -449,9 +471,6 @@ def build_figure_sensitivity():
               fontsize=8.9, ha="center", va="top")
 
     EXPORT_DPI = 320
-    png_path = FIG_DIR / "figure4_v6_sensitivity.png"
-    svg_path = FIG_DIR / "figure4_v6_sensitivity.svg"
-    pdf_path = FIG_DIR / "figure4_v6_sensitivity.pdf"
     fig.savefig(png_path, dpi=EXPORT_DPI, pad_inches=0.03)
     fig.savefig(svg_path, pad_inches=0.03)
     fig.savefig(pdf_path, pad_inches=0.03)
@@ -460,27 +479,61 @@ def build_figure_sensitivity():
 
 
 def main():
-    audit, png, svg, pdf, xr = build_figure_sensitivity()
-    audit.to_csv(TABLES_DIR / "figure4_v6_audit.csv", index=False)
+    final_csv = TABLES_DIR / "figure4_v6_audit.csv"
+    final_png = FIG_DIR / "figure4_v6_sensitivity.png"
+    final_svg = FIG_DIR / "figure4_v6_sensitivity.svg"
+    final_pdf = FIG_DIR / "figure4_v6_sensitivity.pdf"
+
+    # Todo se calcula y serializa primero en un directorio de staging dentro
+    # de outputs/ (mismo patrón que run_statistical_analysis.py), y solo se
+    # promueve a las rutas finales (os.replace) si la comprobación de
+    # regresión contra REGRESSION_REFERENCE pasa. Así nunca queda una
+    # escritura parcial en las rutas canónicas si la validación falla.
+    staging_dir = Path(tempfile.mkdtemp(prefix=".staging-", dir=str(OUT_DIR)))
+    # Si el proceso termina antes de la promoción final (excepción, assert
+    # fallido, SystemExit), este staging queda huérfano; el atexit lo limpia
+    # siempre, incluso si nunca se llega a la promoción.
+    atexit.register(lambda: shutil.rmtree(staging_dir, ignore_errors=True))
+    (staging_dir / "tables").mkdir(parents=True, exist_ok=True)
+    (staging_dir / "figures").mkdir(parents=True, exist_ok=True)
+    staging_csv = staging_dir / "tables" / final_csv.name
+    staging_png = staging_dir / "figures" / final_png.name
+    staging_svg = staging_dir / "figures" / final_svg.name
+    staging_pdf = staging_dir / "figures" / final_pdf.name
+
+    audit, png, svg, pdf, xr = build_figure_sensitivity(staging_png, staging_svg, staging_pdf)
+    audit.to_csv(staging_csv, index=False)
 
     # Numeric check: every PRE-EXISTING (site, condition) pair must be
     # byte-identical to v5 -- this script must only ADD rows, never change
-    # the value of an existing one.
-    off = pd.read_csv(TABLES_DIR / "figure4_v5_audit.csv")
+    # the value of an existing one. Baseline: REGRESSION_REFERENCE (see
+    # comment at its definition for why it is not figure4_v5_audit.csv).
+    off = pd.read_csv(REGRESSION_REFERENCE)
     merged = audit.merge(off, on=["site", "condition"], suffixes=("_v6", "_v5"))
+    assert len(merged) == len(off), (
+        f"esperaba encontrar las {len(off)} filas de REGRESSION_REFERENCE en el audit "
+        f"recién calculado, encontré {len(merged)} -- ¿cambió algún nombre de condición/sitio?"
+    )
     for col in ["point", "ci_low", "ci_high"]:
         diff = (merged[f"{col}_v6"].fillna(0) - merged[f"{col}_v5"].fillna(0)).abs().max()
         print(f"Max abs diff vs v5 on shared rows, {col}: {diff}")
         assert diff < 1e-12, f"PRE-EXISTING ROW CHANGED -- HALT ({col})"
-    assert set(merged["status_v6"]) == set(merged["status_v5"]) or (merged["status_v6"] == merged["status_v5"]).all()
+    assert (merged["status_v6"] == merged["status_v5"]).all(), "PRE-EXISTING ROW STATUS CHANGED -- HALT"
 
     n_new_evaluated = len(audit) - len(merged)
-    print(f"Total rows: {len(audit)} (v5 had {len(off)}); new rows: {len(audit) - len(off.merge(audit[['site','condition']].drop_duplicates(), on=['site','condition']))}")
+    print(f"Total rows: {len(audit)} (reference had {len(off)}); new rows: {len(audit) - len(off.merge(audit[['site','condition']].drop_duplicates(), on=['site','condition']))}")
     print("Evaluated:", (audit["status"] == "evaluated").sum(), " Not evaluated:", (audit["status"] == "not_evaluated").sum())
-    print("Outputs:", png, svg, pdf)
+
+    # Validación superada: promover staging -> rutas canónicas finales.
+    os.replace(staging_csv, final_csv)
+    os.replace(staging_png, final_png)
+    os.replace(staging_svg, final_svg)
+    os.replace(staging_pdf, final_pdf)
+    shutil.rmtree(staging_dir, ignore_errors=True)
+    print("Outputs:", final_png, final_svg, final_pdf)
 
     from PIL import Image
-    im = Image.open(png)
+    im = Image.open(final_png)
     w, h = im.size
     print(f"PNG: {w}x{h}px, effective dpi at 6.5in display width = {w/6.5:.1f}")
 
