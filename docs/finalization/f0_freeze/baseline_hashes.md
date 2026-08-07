@@ -1,0 +1,26 @@
+# F0 — Congelación del baseline
+
+Fecha: 2026-08-07T02:58:37Z
+HEAD: 4c15d39eee2b38839627124418f12e336d906685
+Rama: paper/finalization-2026-08
+
+## analysis_manifest.json
+- reconciliation_status: PASS (16/16)
+
+## SHA-256 de artefactos inmutables (§3 del plan)
+```
+eb7675377cec20c28691d27d7e763243de7ad02918ac25e7232a9ad76fb6a88a  data/atlas/roi_sets.json
+2b9d852c4f21d2b11dbdcdd3cc88b82864989e9a87f385ed4211d22a9ffd7a34  analysis/roi_comparison/config/analysis_config.json
+34cd68d346328194b9ccf4e6941a3e6836d47bde1f4cfa915826d230dd75cc72  analysis/roi_comparison/config/run_manifest.csv
+91281b13cc0e0ccd97242e6ceec8524ae483f4bb2711c8340d86af916ea6e28e  analysis/roi_comparison/outputs/tables/descriptive_performance.csv
+b8dfd72bb2a67459170efa628a416edc28d48542a28eb77d01626b752e852aea  analysis/roi_comparison/outputs/tables/primary_12_vs_116.csv
+02460d7666abe51f8427e7a69c098f0400690e480b3d8056721cc402da9d21a0  analysis/roi_comparison/outputs/tables/figure4_v6_audit.csv
+a8f2809e72a4a3331fa3550749fba5cd288e467e5907a043349c9a75b7873c0d  analysis/roi_comparison/outputs/tables/algorithm_comparison_deepsets_audit.csv
+dc436761e70caca91af60c80b7bf15829143892a5b81154694e7119e74fd59f4  analysis/roi_comparison/outputs/tables/manuscript_bootstrap_10k.csv
+5291f3f256e749e21f337abb553b9946b7df5554432454fd6bf7aecf47b61476  analysis/roi_comparison/outputs/analysis_manifest.json
+cd71522e040f62cb556bb992f7f9590461de89d74c6f998e21b9acc77e653ae7  docs/manuscrito_revisado/Manuscript_Methods_Results_English_Working_v9_9.docx
+1a8fcd6f312913f9e0ee425f23fa19f36e9740e037e0d2211e21bd325ae54584  data/bold/NYU.joblib
+02fe4c8d3cb4ad1b56c4f667b1626a7e26be394d22fb51181785786406873af6  data/bold/NeuroIMAGE.joblib
+43e6f02920d66bd8836b68440bad0d41fa8229d6c7fc687be0528072970029a0  data/bold/OHSU.joblib
+191b53a860b3a750921bdf5e2ac02d8c9d5da361425c01afe4131e20d93eca6e  data/bold/Peking.joblib
+```
