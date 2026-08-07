@@ -1,5 +1,12 @@
 # Guía de experimentación colaborativa (notebook)
 
+> **Guía histórica / de desarrollo.** Este documento describe el flujo de trabajo del
+> notebook y ejemplos de configuración usados durante el desarrollo del pipeline. Algunos
+> de sus ejemplos (p. ej. `N_SPLITS=5` para ciertos sitios) no coinciden con la
+> configuración realmente usada en la campaña oficial del paper, que usa 10 pliegues × 5
+> repeticiones en los cuatro sitios. Para la configuración de referencia del manuscrito,
+> ver [`docs/paper_reference_configuration.md`](paper_reference_configuration.md).
+
 Cómo usar `tdha_experimentos.ipynb` para correr, validar, descargar y subir una corrida
 en Colab, y qué hacer cuando algo falla a mitad de camino. Para el detalle de cada
 representación, arquitectura o parámetro, ver `methodology.md`; esta guía cubre el flujo

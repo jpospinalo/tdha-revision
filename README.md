@@ -183,6 +183,17 @@ deterministas, a costa de perder el camino rápido de cuDNN.
 | `labels` | `(n,)` int — 0 control, 1 TDAH |
 | `roi_names` | 116 nombres, en el orden del eje 1 de `bold` |
 
+> **Esta tabla describe el comportamiento genérico del runner sin argumentos
+> explícitos (legado/histórico), no necesariamente la configuración usada en la
+> campaña del paper.** Dos de sus valores de "ventanas" (Peking, NeuroIMAGE) no
+> coinciden con el conteo real de ventanas verificado en los `config.json` de
+> las corridas oficiales, y OHSU **sí** se evaluó con ventaneado en la campaña
+> oficial (6 ventanas), no solo de forma estática. Para la configuración
+> realmente usada en el paper —ventana 120 s / paso 12 s en los cuatro sitios,
+> con 19 · 29 · 33 · 6 ventanas resultantes en NYU · Peking · NeuroIMAGE · OHSU,
+> y 10 pliegues × 5 repeticiones en los cuatro— ver
+> [`docs/paper_reference_configuration.md`](docs/paper_reference_configuration.md).
+
 | Sitio | Sujetos | Control / TDAH | TR (s) | Puntos | Escaneo (s) | Ventana por defecto |
 |---|---|---|---|---|---|---|
 | NYU | 177 | 87 / 90 | 2.00 | 172 | 344 | 120 s → 19 ventanas |
@@ -192,7 +203,8 @@ deterministas, a costa de perder el camino rápido de cuDNN.
 
 La ventana física por defecto es 120 s (supera el piso de ~111 s de la conectividad
 dinámica para el filtrado a 0.009 Hz de ATHENA). Advertencias que el script también emite
-en tiempo de ejecución:
+en tiempo de ejecución (comportamiento genérico del runner, no necesariamente el usado
+en la campaña oficial del paper):
 
 - **OHSU** dura 185 s: demasiado corto para una ventana válida, así que su default es la
   representación **estática**. Bajar `--n-splits` a 5.
