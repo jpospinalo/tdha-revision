@@ -31,6 +31,17 @@ aggregated by repetition and bootstrap CIs use the same participant-level,
 class-stratified, paired-by-subject resampling (10,000 resamples, NumPy
 PCG64, seed 42) as every other number in Table 5 / Figure 3 -- see
 Statistical Analysis in Methods. No retraining, no new resampling method.
+
+Provenance update (2026-08-07): Peking's six reviewer_sensitivity runs
+(static LSTM, static DeepSets, GRU 120/12, GRU 60/12, DeepSets 120/12,
+BrainNetCNN 60/12) were originally executed without --class-weight,
+violating Peking's prespecified class_weight=True policy (Gate G2). They
+were superseded by six corrected runs tagged
+reviewer_sensitivity_weighted_fix, sharing the identical
+split_fingerprint=1e9626ad3839ff46 (same partitions, only class_weight
+changed). This script now selects the *_weighted_fix runs for Peking; the
+original unweighted Peking runs remain on disk as provenance only. NYU,
+NeuroIMAGE, and OHSU reviewer_sensitivity runs are unaffected and unchanged.
 """
 from pathlib import Path
 import glob
@@ -216,21 +227,32 @@ def _new_condition_records():
         "NYU": _find1(f"{R}/NYU_rois12_w60s6_brainnetcnn_control_baseline_v13_*"),
         "Peking": _find1(f"{R}/Peking_rois12_w60s6_brainnetcnn_control_baseline_v13_*"),
     }
+    # NOTE (2026-08-07, Peking class-weight correction): the six Peking
+    # reviewer_sensitivity runs originally lacked --class-weight, violating
+    # the prespecified site policy (class_weight=True for Peking; see Gate
+    # G2, docs/finalization/f1_gates.md). They were superseded by six
+    # corrected runs tagged reviewer_sensitivity_weighted_fix (same
+    # split_fingerprint=1e9626ad3839ff46, i.e. identical partitions -- only
+    # class_weight changed). The historical (unweighted) Peking runs are
+    # retained in results/runs/ for provenance but must never be selected
+    # here: the patterns below pin Peking explicitly to the weighted_fix
+    # tag so _find1's single-match assertion cannot silently resolve to the
+    # superseded run. NYU is not affected and keeps the original pattern.
     gru_w120 = {
         "NYU": _find1(f"{R}/NYU_rois12_w60s6_gru_reviewer_sensitivity_*"),
-        "Peking": _find1(f"{R}/Peking_rois12_w60s6_gru_reviewer_sensitivity_*"),
+        "Peking": _find1(f"{R}/Peking_rois12_w60s6_gru_reviewer_sensitivity_weighted_fix_*"),
     }
     gru_w60 = {
         "NYU": _find1(f"{R}/NYU_rois12_w30s6_gru_reviewer_sensitivity_*"),
-        "Peking": _find1(f"{R}/Peking_rois12_w30s6_gru_reviewer_sensitivity_*"),
+        "Peking": _find1(f"{R}/Peking_rois12_w30s6_gru_reviewer_sensitivity_weighted_fix_*"),
     }
     bnn_w60 = {
         "NYU": _find1(f"{R}/NYU_rois12_w30s6_brainnetcnn_reviewer_sensitivity_*"),
-        "Peking": _find1(f"{R}/Peking_rois12_w30s6_brainnetcnn_reviewer_sensitivity_*"),
+        "Peking": _find1(f"{R}/Peking_rois12_w30s6_brainnetcnn_reviewer_sensitivity_weighted_fix_*"),
     }
     lstm_static = {
         "NYU": _find1(f"{R}/NYU_rois12_static_lstm_reviewer_sensitivity_*"),
-        "Peking": _find1(f"{R}/Peking_rois12_static_lstm_reviewer_sensitivity_*"),
+        "Peking": _find1(f"{R}/Peking_rois12_static_lstm_reviewer_sensitivity_weighted_fix_*"),
     }
     lstm_w120 = {
         "NYU": _find1(f"{R}/NYU_rois12_w60s6_lstm_rev32_lstm128_ordered_*"),
@@ -238,11 +260,11 @@ def _new_condition_records():
     }
     deepsets_static = {
         "NYU": _find1(f"{R}/NYU_rois12_static_deepsets_reviewer_sensitivity_*"),
-        "Peking": _find1(f"{R}/Peking_rois12_static_deepsets_reviewer_sensitivity_*"),
+        "Peking": _find1(f"{R}/Peking_rois12_static_deepsets_reviewer_sensitivity_weighted_fix_*"),
     }
     deepsets_w120 = {
         "NYU": _find1(f"{R}/NYU_rois12_w60s6_deepsets_reviewer_sensitivity_*"),
-        "Peking": _find1(f"{R}/Peking_rois12_w60s6_deepsets_reviewer_sensitivity_*"),
+        "Peking": _find1(f"{R}/Peking_rois12_w60s6_deepsets_reviewer_sensitivity_weighted_fix_*"),
     }
 
     records = {}

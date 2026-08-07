@@ -32,6 +32,11 @@ Idéntica a la del resto del manuscrito (ver Methods, Statistical Analysis):
 Delta reportado: DeepSets − BrainNetCNN, ambos con representación estática y
 panel de 12 ROI (representación emparejada; solo cambia el algoritmo).
 
+Provenance (2026-08-07): la corrida DeepSets estática de Peking usada aquí
+es la corregida reviewer_sensitivity_weighted_fix (class_weight=True, por
+política prespecificada del sitio); la corrida histórica sin weighting
+queda solo como provenance. NYU/NeuroIMAGE/OHSU no cambian.
+
 Salida
 ------
 analysis/roi_comparison/outputs/tables/algorithm_comparison_deepsets_audit.csv
@@ -58,7 +63,22 @@ SITES = ["NYU", "Peking", "NeuroIMAGE", "OHSU"]
 # Corridas estáticas de 12 ROI. Los nombres de las corridas de BrainNetCNN no son
 # homogéneos entre sitios (etiquetas históricas distintas); se resuelven por glob
 # explícito y se exige coincidencia única.
-DEEPSETS_STATIC = "{site}_rois12_static_deepsets_reviewer_sensitivity_*"
+#
+# NOTA (2026-08-07, corrección class_weight Peking): la corrida DeepSets
+# estática de Peking fue originalmente ejecutada sin --class-weight,
+# violando la política prespecificada del sitio (class_weight=True, Gate
+# G2). Fue sustituida por una corrida corregida etiquetada
+# reviewer_sensitivity_weighted_fix (mismo split_fingerprint
+# =1e9626ad3839ff46, mismas particiones, solo cambia class_weight). Peking
+# se fija explícitamente a ese tag para que no pueda coincidir con la
+# corrida histórica superseded. NYU, NeuroIMAGE y OHSU no están afectados
+# y conservan el patrón original.
+DEEPSETS_STATIC = {
+    "NYU": "NYU_rois12_static_deepsets_reviewer_sensitivity_*",
+    "Peking": "Peking_rois12_static_deepsets_reviewer_sensitivity_weighted_fix_*",
+    "NeuroIMAGE": "NeuroIMAGE_rois12_static_deepsets_reviewer_sensitivity_*",
+    "OHSU": "OHSU_rois12_static_deepsets_reviewer_sensitivity_*",
+}
 BNN_STATIC = {
     "NYU": "NYU_rois12_static_brainnetcnn_rev32_static_r12_*",
     "Peking": "Peking_rois12_static_brainnetcnn_rev32_lstm128_ordered_*",
@@ -136,7 +156,7 @@ def sha256(path: Path) -> str:
 def main():
     rows = []
     for site in SITES:
-        a = find_run(DEEPSETS_STATIC.format(site=site))
+        a = find_run(DEEPSETS_STATIC[site])
         b = find_run(BNN_STATIC[site])
         auc_a, auc_b, delta, lo, hi = paired_bootstrap(a, b)
         rows.append({
