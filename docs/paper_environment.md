@@ -110,17 +110,24 @@ de Table 5 viene de C.
 
 El hardware (CPU vs. GPU/T4) y las versiones menores de NumPy/TensorFlow/Keras
 entre A y B pueden producir diferencias numéricas pequeñas (redondeo de punto
-flotante, no diferencias de metodología). El chequeo interno de
-`generate_manuscript_figures_v6.py` que compararía filas contra
-`figure4_v5_audit.csv` no puede ejecutarse actualmente: ese archivo nunca se
-comprometió a git y se perdió en la limpieza del repositorio del 2026-08-06
-(`c2c78f0`). El script sigue escribiendo su CSV de salida correctamente antes
-de llegar a esa verificación (confirmado: el CSV es byte-idéntico al
-canónico cuando no depende de una corrida corregida); la comparación
-fila-por-fila contra el estado previo se hizo manualmente vía `git diff`
-durante la corrección de class_weight de Peking (2026-08-07) en su lugar.
-Pendiente para el equipo, fuera de esta corrección: reconstruir o retirar
-esa verificación interna.
+flotante, no diferencias de metodología).
+
+**Reproducibilidad de Figure 3 (resuelto 2026-08-07).** El histórico
+`figure4_v5_audit.csv` no se conservó en el repositorio (nunca se comprometió
+a git; se perdió del working tree en la limpieza del 2026-08-06, `c2c78f0`,
+sin que el chequeo interno de `generate_manuscript_figures_v6.py` se
+actualizara). Ahora existe un fixture de regresión versionado,
+`analysis/roi_comparison/config/figure4_v5_regression_reference.csv`, que
+conserva las 28 filas sitio-condición pre-existentes que ese chequeo debe
+proteger. `generate_manuscript_figures_v6.py` calcula sus salidas candidatas
+en un directorio de staging, valida las filas protegidas contra ese fixture
+y, solo si la validación pasa, promueve los archivos candidatos a sus rutas
+canónicas de forma atómica (`os.replace`, mismo patrón que
+`run_statistical_analysis.py`). Verificado en copia limpia del repositorio:
+la ejecución termina con código 0 y reproduce `figure4_v6_audit.csv` y
+`figure4_v6_sensitivity.png` byte-idénticos a los canónicos (el `.svg`/`.pdf`
+difieren solo en metadata no determinista de matplotlib — timestamp e IDs
+internos, no datos). Detalle completo en el commit `abd32eb`.
 
 ## Nota sobre `requirements.txt`
 

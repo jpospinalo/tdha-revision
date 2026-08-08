@@ -228,19 +228,22 @@ qué 120 s), el número de ventanas resultante por sitio es:
 | NYU | 120 s | 19 ventanas |
 | Peking | 120 s | 29 ventanas |
 | NeuroIMAGE | 120 s | 33 ventanas |
-| OHSU | 120 s | estática (185 s de escaneo es insuficiente para una ventana de 120 s con margen) |
+| OHSU | 120 s | 6 ventanas |
 
-Estos números (19/29/33) son los que efectivamente usó la campaña del paper para NYU,
-Peking y NeuroIMAGE — ver el aviso más arriba y
-[`docs/paper_reference_configuration.md`](docs/paper_reference_configuration.md) para la
-configuración exacta, incluyendo que OHSU **sí** se evaluó con ventaneado (6 ventanas) en
-esa campaña, a diferencia de la recomendación genérica de esta sección.
+Estos cuatro números (19/29/33/6) son exactamente los que usó la campaña del paper en
+NYU, Peking, NeuroIMAGE y OHSU respectivamente — ver
+[`docs/paper_reference_configuration.md`](docs/paper_reference_configuration.md) §3 para
+la configuración exacta. OHSU **no** es estática por defecto ni por imposibilidad
+técnica: se evaluó windowed en la campaña oficial, igual que los otros tres sitios.
 
 La ventana física de 120 s se recomienda porque supera el piso de ~111 s de la
 conectividad dinámica para el filtrado a 0.009 Hz de ATHENA — pero pasarla requiere los
-flags explícitos; no es lo que ocurre si se omiten. Advertencias que el script también
-emite en tiempo de ejecución (comportamiento genérico del runner, no necesariamente el
-usado en la campaña oficial del paper):
+flags explícitos; no es lo que ocurre si se omiten. Consideraciones por sitio (notas de
+desarrollo/históricas sobre tamaño de muestra y desbalance — la campaña vigente del paper
+usa `--n-splits 10 --n-repeats 5` en los **cuatro** sitios, OHSU y NeuroIMAGE incluidos;
+ver [`docs/paper_reference_configuration.md`](docs/paper_reference_configuration.md) §4.
+El script no emite estas notas en tiempo de ejecución; son orientación para quien diseñe
+una corrida nueva, no advertencias del propio `run_experiment.py`):
 
 - **OHSU** dura 185 s. **No hay ningún fallback automático a la representación
   estática en el código** — si no se pasa `--representation static`
@@ -248,9 +251,11 @@ usado en la campaña oficial del paper):
   (con `--window-seconds 120 --step-seconds 12` da 6 ventanas; es lo que hizo
   la campaña del paper). Su escaneo corto sí es un motivo metodológico
   razonable para preferir `static` si se quiere evitar pocas ventanas, pero
-  eso hay que pedirlo, no ocurre solo. Considerar bajar `--n-splits` a 5.
-- **NeuroIMAGE** tiene 39 sujetos; con 10 pliegues la validación queda en ~4 sujetos.
-  Conviene `--n-splits 5`.
+  eso hay que pedirlo, no ocurre solo.
+- **NeuroIMAGE** tiene 39 sujetos; con 10 pliegues cada pliegue externo queda en ~4
+  sujetos de validación. Es una limitación de precisión real (ver
+  `docs/limitations.md`), no un motivo para usar un protocolo distinto del resto de
+  sitios — el paper usa los mismos 10 pliegues × 5 repeticiones aquí también.
 - **Peking** está desbalanceado; usar `--class-weight` y mirar AUC y especificidad.
 
 Los datos provienen del repositorio público ADHD-200, preprocesados con el pipeline
