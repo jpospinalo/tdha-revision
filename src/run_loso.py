@@ -871,6 +871,7 @@ def run_formal(
     args: argparse.Namespace,
     master: pd.DataFrame,
     feature_matrix: np.ndarray,
+    feature_hashes: Mapping[str, str],
     split: Mapping[str, np.ndarray],
     identity: Mapping[str, Any],
     identity_hash: str,
@@ -909,11 +910,25 @@ def run_formal(
             "design.json congelado; el código cambió después del freeze."
         )
     # Los 8 hashes de feature están indexados por sitio, no por held-out; se
-    # valida contra TODOS los sitios de entrenamiento y el held-out para este roi_set.
+    # valida contra TODOS los sitios de entrenamiento y el held-out para este
+    # roi_set, comparando VALOR contra valor (no solo que la clave exista):
+    # Section 8 exige verificar estos hashes antes de entrenar, y solo tienen
+    # sentido si design.json se congeló en el MISMO entorno formal que corre
+    # esta corrida (Section 8/29 — no se comparan entre distintos stacks NumPy).
+    frozen_feature_hashes = design.get("feature_matrix_sha256", {})
     for site in SITES:
         key = f"{site}_{args.roi_set}"
-        if key not in design.get("feature_matrix_sha256", {}):
+        if key not in frozen_feature_hashes:
             raise SystemExit(f"STOP: falta el hash de feature congelado para {key}.")
+        if frozen_feature_hashes[key] != feature_hashes.get(key):
+            raise SystemExit(
+                f"STOP: hash de feature para {key} no coincide con el design.json "
+                f"congelado (congelado={frozen_feature_hashes[key]}, "
+                f"observado={feature_hashes.get(key)}). design.json debe congelarse "
+                "en el MISMO entorno formal que ejecuta las 48 corridas (Section "
+                "8/29 del plan) — no se compara entre stacks NumPy distintos. "
+                "Regenere design.json desde este mismo entorno antes de continuar."
+            )
 
     n_features = feature_matrix.shape[1]
     fit_idx, inner_idx, test_idx = split["fit"], split["inner_val"], split["test"]
@@ -998,6 +1013,7 @@ def run_formal(
         "split_manifest_path": str(SPLIT_MANIFEST_PATH.relative_to(REPO_ROOT)),
         "split_manifest_file_sha256": split_manifest_hash,
         "roi_indices_hash": identity["roi_indices_hash"],
+        "feature_matrix_sha256": {k: v for k, v in feature_hashes.items() if k.endswith(f"_{args.roi_set}")},
         "bold_sha256": identity["bold_sha256"],
         "training_source_git_sha": identity["training_source_git_sha"],
         "runner_sha256": identity["runner_sha256"],
@@ -1212,7 +1228,9 @@ def main(argv: Sequence[str] | None = None) -> str | None:
     if args.smoke == "preflight":
         return run_real_preflight(args, master, feature_matrix, split)
 
-    return run_formal(args, master, feature_matrix, split, identity, identity_hash, run_id, rotation_fp)
+    return run_formal(
+        args, master, feature_matrix, feature_hashes, split, identity, identity_hash, run_id, rotation_fp,
+    )
 
 
 if __name__ == "__main__":

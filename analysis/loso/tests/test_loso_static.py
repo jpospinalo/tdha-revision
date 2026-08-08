@@ -562,5 +562,66 @@ class T30HistoricalIsolation(unittest.TestCase):
         self.assertNotIn("'results/runs'", source)
 
 
+class T31FeatureHashGate(unittest.TestCase):
+    """Regresión: run_formal() debe comparar VALOR contra valor los hashes de
+    feature del design.json congelado, no solo verificar que la clave exista
+    (bug real encontrado en la primera corrida formal: design.json se había
+    congelado en un entorno NumPy distinto del que corrió la corrida)."""
+
+    def test_mismatched_feature_hash_stops_before_training(self) -> None:
+        tmp_root = Path(tempfile.mkdtemp(prefix="t31_"))
+        try:
+            design_dir = tmp_root / "_design"
+            design_dir.mkdir()
+            split_manifest = design_dir / "loso_static_v1_splits.csv"
+            split_manifest.write_text("held_out_site\nNYU\n")
+            design_json = design_dir / "loso_static_v1_design.json"
+
+            master = _master()
+            split = L.build_rotation_split("NYU", master)
+            rotation_fp = L.rotation_split_fingerprint(split)
+            payloads = _payloads()
+            feature_matrix, real_feature_hashes = L.build_feature_matrix("12", payloads, master)
+
+            wrong_hashes = dict(real_feature_hashes)
+            wrong_hashes["NYU_12"] = "0" * 16  # deliberadamente incorrecto
+
+            identity = L.build_identity(
+                held_out_site="NYU", roi_set="12", model="brainnetcnn", model_seed=42,
+                rotation_fp=rotation_fp, formal_env_signature="fake-env",
+            )
+            design_json.write_text(json.dumps({
+                "training_source_git_sha": identity["training_source_git_sha"],
+                "feature_matrix_sha256": wrong_hashes,
+            }))
+
+            args = SimpleNamespace(held_out_site="NYU", roi_set="12", model="brainnetcnn",
+                                    model_seed=42, resume=False)
+            identity_hash = L.config_hash(identity)
+            run_id = "t31-should-not-be-created"
+
+            original_design_path = L.DESIGN_JSON_PATH
+            original_split_path = L.SPLIT_MANIFEST_PATH
+            original_output_root = L.FORMAL_OUTPUT_ROOT
+            L.DESIGN_JSON_PATH = design_json
+            L.SPLIT_MANIFEST_PATH = split_manifest
+            L.FORMAL_OUTPUT_ROOT = tmp_root
+            try:
+                with self.assertRaises(SystemExit) as ctx:
+                    L.run_formal(
+                        args, master, feature_matrix, real_feature_hashes, split,
+                        identity, identity_hash, run_id, rotation_fp,
+                    )
+                self.assertIn("no coincide con el design.json", str(ctx.exception))
+            finally:
+                L.DESIGN_JSON_PATH = original_design_path
+                L.SPLIT_MANIFEST_PATH = original_split_path
+                L.FORMAL_OUTPUT_ROOT = original_output_root
+
+            self.assertFalse((tmp_root / run_id).exists())
+        finally:
+            shutil.rmtree(tmp_root, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()
