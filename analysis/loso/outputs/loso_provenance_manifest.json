@@ -1,0 +1,599 @@
+{
+  "campaign_id": "loso_static_v1",
+  "training_source_git_sha": "428cbc18f9b7e099d56bed91acd2fbc4f18ee6e8",
+  "original_analysis_source_git_sha": "01517e1719d68a16305a9cbbc6de4e4f61476339",
+  "closeout_analysis_source_git_sha": "0b8230f89901265e1790f5a33957f9df2cf89833",
+  "formal_run_count": 48,
+  "brainnet_run_count": 40,
+  "logistic_run_count": 8,
+  "training_environment_signature": "0951e380a4901bc2",
+  "training_environment": {
+    "python": "3.13.2",
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "numpy": "2.5.1",
+    "pandas": "3.0.5",
+    "scikit_learn": "1.8.0",
+    "tensorflow": "2.21.0",
+    "keras": "3.15.1",
+    "gpu": "sin GPU"
+  },
+  "original_analysis_environment_partial": {
+    "numpy": "2.2.6",
+    "sklearn": "1.7.2",
+    "note": "solo se registraron estas versiones en la corrida original; no se inventan las demás (Sección 33.2)."
+  },
+  "closeout_analysis_environment": {
+    "python": "3.10.12",
+    "platform": "Linux-6.8.0-124-generic-aarch64-with-glibc2.35",
+    "numpy": "2.2.6",
+    "pandas": "2.3.3",
+    "sklearn": "1.7.2",
+    "scipy": "1.15.3"
+  },
+  "design": {
+    "path": "results/loso/_design/loso_static_v1_design.json",
+    "file_sha256": "55c4b1c9528fd6a844af4da2ef8dd49d1a5b9a2945c65a301d04a5b78d19aab4",
+    "semantic_sha256": "b978090960db5799915ea550aa9469ba8d2cceb07cf155c27f7bd78b6ee2f2cb",
+    "historical_file_sha256_prefix16": "55c4b1c9528fd6a8"
+  },
+  "split_manifest": {
+    "path": "results/loso/_design/loso_static_v1_splits.csv",
+    "file_sha256": "700a32d3797264dabd375555383a5416f1de2e8873ce328856ca931393852e50",
+    "historical_file_sha256_prefix16": "700a32d3797264da"
+  },
+  "analysis_config": {
+    "path": "analysis/loso/config/loso_analysis_config.json",
+    "file_sha256": "006f28a73e0f85ffa792abcc8d6b5313512c04fbba22aeeba7c747f3a500b89b",
+    "semantic_sha256": "c4065247cc3e318043700cc074ce8ae18efcfe25844893edbd405ff666acccc7"
+  },
+  "implementation_spec": {
+    "path": "analysis/loso/IMPLEMENTATION_SPEC.md",
+    "file_sha256": "4061359685b8739b6efc11df4754363c540418555d42db5ca9b0475e58601ede"
+  },
+  "inputs": {
+    "BOLD": {
+      "NYU": {
+        "full_sha256": "1a8fcd6f312913f9e0ee425f23fa19f36e9740e037e0d2211e21bd325ae54584",
+        "historical_prefix16": "1a8fcd6f312913f9"
+      },
+      "Peking": {
+        "full_sha256": "191b53a860b3a750921bdf5e2ac02d8c9d5da361425c01afe4131e20d93eca6e",
+        "historical_prefix16": "191b53a860b3a750"
+      },
+      "NeuroIMAGE": {
+        "full_sha256": "02fe4c8d3cb4ad1b56c4f667b1626a7e26be394d22fb51181785786406873af6",
+        "historical_prefix16": "02fe4c8d3cb4ad1b"
+      },
+      "OHSU": {
+        "full_sha256": "43e6f02920d66bd8836b68440bad0d41fa8229d6c7fc687be0528072970029a0",
+        "historical_prefix16": "43e6f02920d66bd8"
+      }
+    },
+    "atlas": {
+      "roi_sets.json": {
+        "full_sha256": "eb7675377cec20c28691d27d7e763243de7ad02918ac25e7232a9ad76fb6a88a",
+        "historical_prefix16": "eb7675377cec20c2"
+      },
+      "aal116.csv": {
+        "full_sha256": "4125f6a131e63f93809752e879bdfed586c60f55b9a2086e36a260803f65e29c",
+        "historical_prefix16": "4125f6a131e63f93"
+      }
+    },
+    "roi_indices": {
+      "12": {
+        "full_sha256": "640bfb198d6edcddbf70220f563553d5072ea52686d09d4494e57307ec3ef91e",
+        "historical_prefix16": "640bfb198d6edcdd"
+      },
+      "116": {
+        "full_sha256": "b761f1f690ecb0af7ec17dc78b466b57b15a19107d9dac195322a4ffa4b27b82",
+        "historical_prefix16": "b761f1f690ecb0af"
+      }
+    },
+    "feature_matrices": {
+      "NYU_12": {
+        "historical_prefix16_only": "de2d20a056b63755",
+        "note": "no recomputado: depende de NumPy/BLAS (Sección 26/Gate Q)."
+      },
+      "Peking_12": {
+        "historical_prefix16_only": "fd29f6b3db7238dc",
+        "note": "no recomputado: depende de NumPy/BLAS (Sección 26/Gate Q)."
+      },
+      "NeuroIMAGE_12": {
+        "historical_prefix16_only": "3d08ed8357f1f028",
+        "note": "no recomputado: depende de NumPy/BLAS (Sección 26/Gate Q)."
+      },
+      "OHSU_12": {
+        "historical_prefix16_only": "fa7d89c5d7adc483",
+        "note": "no recomputado: depende de NumPy/BLAS (Sección 26/Gate Q)."
+      },
+      "NYU_116": {
+        "historical_prefix16_only": "692c7f8304eca51c",
+        "note": "no recomputado: depende de NumPy/BLAS (Sección 26/Gate Q)."
+      },
+      "Peking_116": {
+        "historical_prefix16_only": "a7b5c7831cf033db",
+        "note": "no recomputado: depende de NumPy/BLAS (Sección 26/Gate Q)."
+      },
+      "NeuroIMAGE_116": {
+        "historical_prefix16_only": "d1dad93f827c5437",
+        "note": "no recomputado: depende de NumPy/BLAS (Sección 26/Gate Q)."
+      },
+      "OHSU_116": {
+        "historical_prefix16_only": "aad10ce336211441",
+        "note": "no recomputado: depende de NumPy/BLAS (Sección 26/Gate Q)."
+      }
+    }
+  },
+  "code": {
+    "run_loso.py": {
+      "full_sha256": "b1924379ea31ddc4eacbb7938bd51f07ca08b60f32658321b298aae82de009c7",
+      "historical_prefix16": "b1924379ea31ddc4"
+    },
+    "run_loso_campaign.py": {
+      "full_sha256": "628c7b6598f21cadc006f7cd77468d4ece39a82106a2d88a685ff7dff4cfc7a3"
+    },
+    "data.py": {
+      "full_sha256": "845dfa9c50f977fdb697f1326169622481a40126764e6c9618b2017ee850be94",
+      "historical_prefix16": "845dfa9c50f977fd"
+    },
+    "kerasmodels/brainnetcnn.py": {
+      "full_sha256": "cc31f7a7349e4339d4c0d4469fb72f26c1746f3fa6b5e125ebfc12e55087bf10",
+      "historical_prefix16": "cc31f7a7349e4339"
+    },
+    "analyze_loso_static.py": {
+      "full_sha256": "8cdfb12f547c3c84fe37379ae51e017f89fe0f305710daf94e90a53421be167d"
+    },
+    "loso_test_files": {
+      "test_loso_analysis_audit.py": {
+        "full_sha256": "51e025d432defbdccd618a14542086e6ca4ddd53c39913bc9913884c91de4f66"
+      },
+      "test_loso_static.py": {
+        "full_sha256": "66743ad77bde5955b11590c76d76b9e029aecba2e4603b30a070918384ef5ed2"
+      }
+    }
+  },
+  "formal_runs": [
+    {
+      "run_id": "loso_static_v1_holdout-NYU_roi-116_brainnetcnn_seed-42_ffcb20e1",
+      "identity_hash": "ffcb20e1",
+      "config_file_sha256": "24ad6984cd9d924a6e89f93278581df096efbd4df273a67d53429478abc8614b",
+      "config_semantic_sha256": "0c82d89feb2728f2cd7dfd3f70f947b5763d7104bdbec09bbd7a4e8dd266b92f",
+      "predictions_file_sha256": "904f1dd23a1eff9a6931c72ae1f2bb4235a0ab72b2a740c4da04345f920bd4de",
+      "split_membership_file_sha256": "5216b6d8bb517edd0aac812aa6fef02ebf7e44d278cedb9c5dd2cb1dc8de15fd",
+      "metrics_test_file_sha256": "5775bd5ff5a82b1e07b37e7ec6aedbd1bf5c9cb14e5917b93f2964eee51409d4"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NYU_roi-116_brainnetcnn_seed-43_ae4d0ccb",
+      "identity_hash": "ae4d0ccb",
+      "config_file_sha256": "79011a2208bf5d24191827784f014e6f2d30c4fbc94fd3d13208178bdee9419a",
+      "config_semantic_sha256": "e95611eab6e6923b2b0671a6c60b8aadb3155e0e1bc06aecd3953fb5aba7a4ca",
+      "predictions_file_sha256": "4c414643d43a8b6a3863c835c5ae917aa4ec3817af49d538b080e3027789ce28",
+      "split_membership_file_sha256": "5216b6d8bb517edd0aac812aa6fef02ebf7e44d278cedb9c5dd2cb1dc8de15fd",
+      "metrics_test_file_sha256": "a4746df7363f2477f9bea1e6fd13fc88470776f398a5694a47d3d5419175ce60"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NYU_roi-116_brainnetcnn_seed-44_c45c1bf5",
+      "identity_hash": "c45c1bf5",
+      "config_file_sha256": "28299dbe1e3122f75d07b180c9cca2e8f82e7da1134927c0a2bb22fac452e89d",
+      "config_semantic_sha256": "f90edb94bd3cc7232ce81bfb90465c340d7c10b3bbd84b12cd0462c30e0de3bf",
+      "predictions_file_sha256": "595ba0ace77151e1ec94289d1b335a4a3e25bd30af6a91a99fac88fd941e1d66",
+      "split_membership_file_sha256": "5216b6d8bb517edd0aac812aa6fef02ebf7e44d278cedb9c5dd2cb1dc8de15fd",
+      "metrics_test_file_sha256": "f75207563b1db07a46791b93b441f7a74124d332dee0b2b7ca0a700426ea449e"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NYU_roi-116_brainnetcnn_seed-45_a149bc34",
+      "identity_hash": "a149bc34",
+      "config_file_sha256": "2a8ac68be4f8528d4dfaf0f2bab6b9cf78d537ecbf0ad85983f32649c922caa1",
+      "config_semantic_sha256": "3093637d3cb6f507c9f71e52ca304dce771163dd78fa5c92768c49afe3f022aa",
+      "predictions_file_sha256": "8ebc81031221e173f72aae2a87ca9659426655e92210e1a435de4678841f5fe2",
+      "split_membership_file_sha256": "5216b6d8bb517edd0aac812aa6fef02ebf7e44d278cedb9c5dd2cb1dc8de15fd",
+      "metrics_test_file_sha256": "8199e48b2bffdf1cb6a48f7d6e90b0289e329b7de4dc120e6cc8797d67caf01a"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NYU_roi-116_brainnetcnn_seed-46_cce028a4",
+      "identity_hash": "cce028a4",
+      "config_file_sha256": "103acbcd7accab882386ad60d3bbdab319c7669365086a5f10de23326eeabcbc",
+      "config_semantic_sha256": "c5b378e8c8aabe9632b0bd948b1a8b2b1082d2301dc419130438a24f66997130",
+      "predictions_file_sha256": "09c34624c9c0a8f238b8b61312a5f4defdc749ed77efc41337fba3471487b00e",
+      "split_membership_file_sha256": "5216b6d8bb517edd0aac812aa6fef02ebf7e44d278cedb9c5dd2cb1dc8de15fd",
+      "metrics_test_file_sha256": "a569fa9bbd924ce75c32019965eee1cba6f99b7c9ec7bd7f7424341ba2283dbd"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NYU_roi-116_logreg_seed-deterministic_20f4ca6d",
+      "identity_hash": "20f4ca6d",
+      "config_file_sha256": "b8d19c7b390651307972f7417ce23d7a50a4e67be8a672cec18ddd256cfe7bc4",
+      "config_semantic_sha256": "872e3c39da2ae80e4d82936a9f5953ddb8e0a8c6a31e39a1d83f499b5ed588dc",
+      "predictions_file_sha256": "f86a733eb4bd3352f20317943217a9a9ff03ecea1adb26688a92f2fe48c39cc2",
+      "split_membership_file_sha256": "5216b6d8bb517edd0aac812aa6fef02ebf7e44d278cedb9c5dd2cb1dc8de15fd",
+      "metrics_test_file_sha256": "0d4e8dea7eff6a572e5aadea0bf51aff535d92fc12e5295d68835c90d0cf0c10"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NYU_roi-12_brainnetcnn_seed-42_3e255d4b",
+      "identity_hash": "3e255d4b",
+      "config_file_sha256": "9e7e078b9a160b69e7bad17a3178e0e798e2837361e7d6a65ee251e7a10715d4",
+      "config_semantic_sha256": "009862db51504e48920288308683e412e475bd12095f907cb2bdb9b8bab7ef9e",
+      "predictions_file_sha256": "ba9b6c225d4357e0d5362520f79cb7487003f1aa284d5661b92d5076af64f5a9",
+      "split_membership_file_sha256": "5216b6d8bb517edd0aac812aa6fef02ebf7e44d278cedb9c5dd2cb1dc8de15fd",
+      "metrics_test_file_sha256": "0641c930cf256509ae07aea28aabf384badd91ca8b1ba0ddefab1c3112f2a107"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NYU_roi-12_brainnetcnn_seed-43_09a85c15",
+      "identity_hash": "09a85c15",
+      "config_file_sha256": "543e799f11c2bdc5991568f5fe75e1367077ae03f1a1c8a0dc9b7e7e680a4c09",
+      "config_semantic_sha256": "54f6946fa245fead5119690f4425e27005457c29e54c209e5975a1c343f79f39",
+      "predictions_file_sha256": "c8700435e08af2ed4e1d0e35647be8548a1cf52cff796da084555657f5644c57",
+      "split_membership_file_sha256": "5216b6d8bb517edd0aac812aa6fef02ebf7e44d278cedb9c5dd2cb1dc8de15fd",
+      "metrics_test_file_sha256": "15ee1a23a7e7dba00ace75c83b3b122963f5d19e890d115c644d50f7139daf90"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NYU_roi-12_brainnetcnn_seed-44_7537a829",
+      "identity_hash": "7537a829",
+      "config_file_sha256": "578f2783aabdc242eb67345f0b2b61dfda34b079de7bcb5ca08e2809cfc617e1",
+      "config_semantic_sha256": "8ee4fa1bf593c1f8209ca37d27b760208b243d2387684333bbf99cac3491e3b6",
+      "predictions_file_sha256": "6a028e40515b09e8067a9314e52c67db22349227c5970a263eb54ea51b08af85",
+      "split_membership_file_sha256": "5216b6d8bb517edd0aac812aa6fef02ebf7e44d278cedb9c5dd2cb1dc8de15fd",
+      "metrics_test_file_sha256": "3dfdd9710b8c8c5fcd68fd05156dd2e15613419315b79354804de30787de94c5"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NYU_roi-12_brainnetcnn_seed-45_2b3f1b3c",
+      "identity_hash": "2b3f1b3c",
+      "config_file_sha256": "329b19cc1a4e000fb7fd40c96917a504765357486961b80769be94e41c887c6f",
+      "config_semantic_sha256": "36d47bae51f300db2ea2542dc8c724f624be9ed825ba4a33914db78b2bcf5d9b",
+      "predictions_file_sha256": "74ccf0a269b2727206bff2dbeba38d5b9d68e7afd957c6f209dc95055547a26e",
+      "split_membership_file_sha256": "5216b6d8bb517edd0aac812aa6fef02ebf7e44d278cedb9c5dd2cb1dc8de15fd",
+      "metrics_test_file_sha256": "e0ff7165f9cd5cf5afe79225089014e53de24157c7f6debecf10bf22e8db1afc"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NYU_roi-12_brainnetcnn_seed-46_2cd7f5d8",
+      "identity_hash": "2cd7f5d8",
+      "config_file_sha256": "ab037e6939254e613fb5cde9585e49127f2d717be1856d024b6183dc1a63aeb0",
+      "config_semantic_sha256": "93340c13889c90f2baf43d8af692f9eb365ef4c62083f1e67b97c63270daff7d",
+      "predictions_file_sha256": "520b2ba7a616077c88741062b71b10e14e9f242a4eda6277f4d3718d2b89f483",
+      "split_membership_file_sha256": "5216b6d8bb517edd0aac812aa6fef02ebf7e44d278cedb9c5dd2cb1dc8de15fd",
+      "metrics_test_file_sha256": "f3f73affab9fbcf439cc97eb8b5a5287ca129e0a5908d786db90b7801fa9b2e2"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NYU_roi-12_logreg_seed-deterministic_afe9d796",
+      "identity_hash": "afe9d796",
+      "config_file_sha256": "209ea8549979e833c14bd954530f51e256c76da05572839da87f8153a7312752",
+      "config_semantic_sha256": "a4f9806707193da097c2d9fb2da398eb6e951c0c00b1219e7faffb92d338ea10",
+      "predictions_file_sha256": "6f7d0430565301569750643e8c20edb740534b2771a6a1a2befea221c41a8c9e",
+      "split_membership_file_sha256": "5216b6d8bb517edd0aac812aa6fef02ebf7e44d278cedb9c5dd2cb1dc8de15fd",
+      "metrics_test_file_sha256": "bdef67ec139359241dd000e2e47ae531237ccb653229d74bc3e3fcb6e65a9c18"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NeuroIMAGE_roi-116_brainnetcnn_seed-42_cf109664",
+      "identity_hash": "cf109664",
+      "config_file_sha256": "de9d2404293a6f88a4940a1d45b866afaba6d7c089815e32288884e0a3398856",
+      "config_semantic_sha256": "a3084191457df16b520ef1d36e85f94adb3a7a9edb5ef96fbf1f64f0727a41f3",
+      "predictions_file_sha256": "6ce07b36cd36d5882c860e324fb9fa47d966e9ea6ad3bb7964eb33a7c4d269de",
+      "split_membership_file_sha256": "706478a346000d4a6c69eecff01655fbf531306668b0adfc32610e9f2053be05",
+      "metrics_test_file_sha256": "8ee41a44e3cdd111ec02696a47e7db93efe703e5e069c4da226ec31c76b0c555"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NeuroIMAGE_roi-116_brainnetcnn_seed-43_121642f8",
+      "identity_hash": "121642f8",
+      "config_file_sha256": "50d3bb9df1b1995090c3255ac99e4e97e6e7c0627712ce5087b0cee97540584b",
+      "config_semantic_sha256": "3ecb574cc480097515fe55af50bca0db967de8a8980a986eebd573d732a8ef13",
+      "predictions_file_sha256": "846b09610f4cb7f1832acfd74e9b484dcb93b9773c890599e127deed5f565838",
+      "split_membership_file_sha256": "706478a346000d4a6c69eecff01655fbf531306668b0adfc32610e9f2053be05",
+      "metrics_test_file_sha256": "fe960143f6c4c2701ede48b38042640471e26e03ad969ccc5173ad09609d1023"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NeuroIMAGE_roi-116_brainnetcnn_seed-44_23a43ce4",
+      "identity_hash": "23a43ce4",
+      "config_file_sha256": "8902167b25adf6dd62404c1a07a2c231baf6abadb12a390c7dc6d9a64ffbad37",
+      "config_semantic_sha256": "f79d4ba69228b47de214909dd449e0882c26fe9182ecb4248b6e7dedd31dfd41",
+      "predictions_file_sha256": "4c21d33bb0e445d682356d5e4cbafcc8c48577071498fa1d246489bb0060f3f2",
+      "split_membership_file_sha256": "706478a346000d4a6c69eecff01655fbf531306668b0adfc32610e9f2053be05",
+      "metrics_test_file_sha256": "f2c9624b07b79ae7b00fe0387f9bae5c076984f626e7f19e5eb9c150494a7fca"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NeuroIMAGE_roi-116_brainnetcnn_seed-45_239b8d7a",
+      "identity_hash": "239b8d7a",
+      "config_file_sha256": "3e2a612ef330914ecfc9531be6606a9be14992adfd04d6f2c6281c813dc9a629",
+      "config_semantic_sha256": "eb173388213b4e8f5c631048eea8982990b6e4faee3453a7e3d91083d7eaa7f9",
+      "predictions_file_sha256": "22f0264074d048b91b63aa1befbb77b0c4c0b6ae0b414cffd966bc12d95af2d7",
+      "split_membership_file_sha256": "706478a346000d4a6c69eecff01655fbf531306668b0adfc32610e9f2053be05",
+      "metrics_test_file_sha256": "2aafacdc38111ceba4f9c3f761b711b644beb70281e7f8a08aa1f0313431b0ef"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NeuroIMAGE_roi-116_brainnetcnn_seed-46_f529bebd",
+      "identity_hash": "f529bebd",
+      "config_file_sha256": "ce3f391101d57605c6036f02122defa52efa836b558583a67d57a4735533009c",
+      "config_semantic_sha256": "3fe7b53d2196738010f4734b75fc49c472a96a1e36b40951a862e188d749838e",
+      "predictions_file_sha256": "3303a7cd1eaf0c5f0aae13614aee552cfb7b41a906568737558d02da34e775f7",
+      "split_membership_file_sha256": "706478a346000d4a6c69eecff01655fbf531306668b0adfc32610e9f2053be05",
+      "metrics_test_file_sha256": "4098ad55c8f6d5eb7e8a6c573710b02cb86cad3098452a56cf5d3b5f90ca50d4"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NeuroIMAGE_roi-116_logreg_seed-deterministic_452b5808",
+      "identity_hash": "452b5808",
+      "config_file_sha256": "d57e51d6d6aa59fb5be90093187df6eb451b0dabf90160a44e1ea244b97132c6",
+      "config_semantic_sha256": "6a4064acc05ddb67287c206fc1730298b236286231620f1b7ca20dc1324e9d5e",
+      "predictions_file_sha256": "65f0e13b358196490dd0a0d5d6666e67af42df4df884b5a25b998bfa8d0bc121",
+      "split_membership_file_sha256": "706478a346000d4a6c69eecff01655fbf531306668b0adfc32610e9f2053be05",
+      "metrics_test_file_sha256": "6a767493607bd364b8d62de0b90e421b714d33fb982ee967524c73591492b5cd"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NeuroIMAGE_roi-12_brainnetcnn_seed-42_95806bf5",
+      "identity_hash": "95806bf5",
+      "config_file_sha256": "0248a9e16daa941f5605243eb66ae833c67264d283ba7dd844db9d0a2e87f047",
+      "config_semantic_sha256": "95163c9f826bb0650f969dab1cd33b42f8f7c1c0a8c7231931d278caa18f6ee3",
+      "predictions_file_sha256": "1911e333fbb27104a2cc102d3c34a4d74d0081068f4c31982cfb45ed7514692a",
+      "split_membership_file_sha256": "706478a346000d4a6c69eecff01655fbf531306668b0adfc32610e9f2053be05",
+      "metrics_test_file_sha256": "0ab13d3d074ad0f2510403f428cb779a7bfa25182fd0cc5c6cef8e0626a767d7"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NeuroIMAGE_roi-12_brainnetcnn_seed-43_668e4760",
+      "identity_hash": "668e4760",
+      "config_file_sha256": "0e7c5e389996458124d358906dd18a262942a990164a62a05bd10ddb8b4243cb",
+      "config_semantic_sha256": "41b2b54740266f21620061e56004573eacebe4d7439c0a2beabff652799d7f36",
+      "predictions_file_sha256": "406ba8efafac7348a3bdbede622f41e218d5d050d882dfd8eab28cfda79fe650",
+      "split_membership_file_sha256": "706478a346000d4a6c69eecff01655fbf531306668b0adfc32610e9f2053be05",
+      "metrics_test_file_sha256": "a733d2c63aff5970400ce4aa1c82d333af44e028c188bdc93a3a86fb5b846241"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NeuroIMAGE_roi-12_brainnetcnn_seed-44_86ea1788",
+      "identity_hash": "86ea1788",
+      "config_file_sha256": "ba39f48bc783b9b2d594361b8671badf7c3e2b75b3c315d9becadc2cd75c0857",
+      "config_semantic_sha256": "7479289a3336064cfe98ad04ffdf58d56340d2daca175f30c78cf3332377a099",
+      "predictions_file_sha256": "e719633ca5945ad1418afd3ba44780ee0607058ee44150acb442fc9c32a27b97",
+      "split_membership_file_sha256": "706478a346000d4a6c69eecff01655fbf531306668b0adfc32610e9f2053be05",
+      "metrics_test_file_sha256": "b22ad52930a352b34e3b5a517093eab1ce5cad534b9c61bbbbe5d3af517ab460"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NeuroIMAGE_roi-12_brainnetcnn_seed-45_d8886810",
+      "identity_hash": "d8886810",
+      "config_file_sha256": "e393aa24173876172e4174aa789fbfb4b2e9cf17945b7908ba6f611051307f59",
+      "config_semantic_sha256": "43082cfd7c9d3ef26dec2d2341d8eec7f07eec97c6e1503e0a259efcfff6b646",
+      "predictions_file_sha256": "409ad33df44266b7a82ec7edfd86b14a4e4631ceb0b8e014ff550d74e29fa882",
+      "split_membership_file_sha256": "706478a346000d4a6c69eecff01655fbf531306668b0adfc32610e9f2053be05",
+      "metrics_test_file_sha256": "fd4e08de544f6bf7f2e22e44ca4d4f15033731f5adf87cf56eafe53b6c1a9112"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NeuroIMAGE_roi-12_brainnetcnn_seed-46_09f1c0ac",
+      "identity_hash": "09f1c0ac",
+      "config_file_sha256": "17e2288aa9e6af8964f720a9a5df6c1edbdf2059707f798a9db208fba6fa7e9c",
+      "config_semantic_sha256": "823abcfc929799e6a2ea5ce98ad165cfd768d68d7b7db917c461f12d83b92630",
+      "predictions_file_sha256": "0236d260724c22a9c6b156c5c55baeeced24afc05286c0a9247a0089ee0a96a4",
+      "split_membership_file_sha256": "706478a346000d4a6c69eecff01655fbf531306668b0adfc32610e9f2053be05",
+      "metrics_test_file_sha256": "a403e3d829bee9dfbd5a2a1b2fdc5f0e0827bde1ab207def23f648907ebda37c"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-NeuroIMAGE_roi-12_logreg_seed-deterministic_26063416",
+      "identity_hash": "26063416",
+      "config_file_sha256": "efd82738de99db3b32bca93b5b8b41ee75dc3425e31ec1df5d2d274acfc12519",
+      "config_semantic_sha256": "2fe0e5e8785c7ad92fe1c9957314e05146594ee4791127394d95d0f913ab6446",
+      "predictions_file_sha256": "26284864a8cfd61bdf85416060fafaa09b87204363bddab44a4d35c819b28e40",
+      "split_membership_file_sha256": "706478a346000d4a6c69eecff01655fbf531306668b0adfc32610e9f2053be05",
+      "metrics_test_file_sha256": "c557be8b0dd984851ecd0fa6a6387134097930c66a5146294d813d914de94b71"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-OHSU_roi-116_brainnetcnn_seed-42_3f6a0b44",
+      "identity_hash": "3f6a0b44",
+      "config_file_sha256": "1cfea83de4d5b1b422bfea2b7f564a6f2d20cf2f96f3e02d400ae4cd5f8d46e8",
+      "config_semantic_sha256": "43f6a0442faf9dd24e0f535ec7c708b276aad87b629ff5ea413a7caa81a5bdaa",
+      "predictions_file_sha256": "431f6cd3e2a2f82304405cb3147039ec39f2882f24e8583271289aba9e75312d",
+      "split_membership_file_sha256": "b7cb35fd6218a9f3c7d5de931442093e9898b51191234c2f229c4b715f552215",
+      "metrics_test_file_sha256": "c5e48b7f57cf6c0aca18ee040ae04126ed842140ff580cdc996ba4fad8b79e84"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-OHSU_roi-116_brainnetcnn_seed-43_b859581c",
+      "identity_hash": "b859581c",
+      "config_file_sha256": "066f10cc95740ac0f183d202ac7711a0116c37d6e78a27b10f7aa27905bf47a7",
+      "config_semantic_sha256": "7967e20532098c0be22a53747ed27d14109ebaa06894e16cc62b465d3fdcf1fe",
+      "predictions_file_sha256": "334f17f3f6634db65c48f446d490200036b2f7285f30cdef354adbf77ee495e8",
+      "split_membership_file_sha256": "b7cb35fd6218a9f3c7d5de931442093e9898b51191234c2f229c4b715f552215",
+      "metrics_test_file_sha256": "c09669ef7dea1848f12b21a0ec1361d967491e8e1f26570bb401f11e17c0d58e"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-OHSU_roi-116_brainnetcnn_seed-44_691173b5",
+      "identity_hash": "691173b5",
+      "config_file_sha256": "68f8dc6996b237da9bcbeed72ed752b420ab490d1b2d8d053faa335d09de13b3",
+      "config_semantic_sha256": "0013217780857248aa6a94fe22f3a9b4fd0c6a8993b3676fe362ae0e6f6c96c3",
+      "predictions_file_sha256": "d0b275a026592bedced202022eff22e7264ecf8443f9e3148e9a671d74995e09",
+      "split_membership_file_sha256": "b7cb35fd6218a9f3c7d5de931442093e9898b51191234c2f229c4b715f552215",
+      "metrics_test_file_sha256": "4a1eb65b7d2f1305b0dd8b3d26b77f523add35d0e29dd0d1472c1b36e98824bc"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-OHSU_roi-116_brainnetcnn_seed-45_bd87c205",
+      "identity_hash": "bd87c205",
+      "config_file_sha256": "5faa0b67ef6d0b2fa43e2e7d585e7abec7207b1067374e7f799002adc86d5187",
+      "config_semantic_sha256": "d63d0b9789e6c4fb30a8bc4fd035b9774016db808528fe144ce52261ad16859f",
+      "predictions_file_sha256": "2f408535a55367b53235683ad51e41c4fa411246cf60c8214b35fe71c513825b",
+      "split_membership_file_sha256": "b7cb35fd6218a9f3c7d5de931442093e9898b51191234c2f229c4b715f552215",
+      "metrics_test_file_sha256": "012aefa1b3a4bb3556ccebf3a3a8f525eac8f414264644f0afee618eeb50fb97"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-OHSU_roi-116_brainnetcnn_seed-46_75f1a570",
+      "identity_hash": "75f1a570",
+      "config_file_sha256": "e96c27fcb312998e936d920485badec564bcd5352d2ca8ea4f8c2b44f9db478d",
+      "config_semantic_sha256": "c6d601c40ebea4764c2ff86123172cda82e40ddd8f97199803c78e01ba75114f",
+      "predictions_file_sha256": "feb0fbe30a2dcccd384de21af7ef06e564dd72054e1d90a733c63d358f4f0456",
+      "split_membership_file_sha256": "b7cb35fd6218a9f3c7d5de931442093e9898b51191234c2f229c4b715f552215",
+      "metrics_test_file_sha256": "2474921603fe2e64f10ecabc7ae14225d25638bf14ed558d214016e99d8d2f52"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-OHSU_roi-116_logreg_seed-deterministic_04e53e15",
+      "identity_hash": "04e53e15",
+      "config_file_sha256": "62deed08b17c8bcd3f951dc760ab70371010e7b6c81b17fd78a1f0e61cbd2c43",
+      "config_semantic_sha256": "605b4a13d138d906f0324d6fcee3eaabf40ed902938c136b4d9d6871b53b5a8c",
+      "predictions_file_sha256": "f5db27f61e45524b670bc3d7e29c2118af347883218e684d87fba864b94a3257",
+      "split_membership_file_sha256": "b7cb35fd6218a9f3c7d5de931442093e9898b51191234c2f229c4b715f552215",
+      "metrics_test_file_sha256": "50ee8700c02c52be07063eca6552ec2243f07f8c6969606e7f284e249b5fb72b"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-OHSU_roi-12_brainnetcnn_seed-42_beb5a933",
+      "identity_hash": "beb5a933",
+      "config_file_sha256": "9999e28bc0c715c1ffd9d9e31aedd6ebcc3103def68e57990e849b51e8a5f8af",
+      "config_semantic_sha256": "556ed5f74c1ca9fae755a50a0bac8bb45404ab40fc32f18e02602336dd0f97f4",
+      "predictions_file_sha256": "d0fd593fff14c0d5aa9c52bace22251c6ed5d85676423fbbd0609918d0ff2ded",
+      "split_membership_file_sha256": "b7cb35fd6218a9f3c7d5de931442093e9898b51191234c2f229c4b715f552215",
+      "metrics_test_file_sha256": "f023b658ac3624776f8d8f9c378d3ecf08783a37ec95f3b9025d027329ef1648"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-OHSU_roi-12_brainnetcnn_seed-43_c9f94de9",
+      "identity_hash": "c9f94de9",
+      "config_file_sha256": "3c5905e46f333ac242daf53e89db4ba5185b039be1510cc8d84b74da120e360c",
+      "config_semantic_sha256": "729cbeb73f3addfec0a1605e45018c8bd60c008c407d7ce3465ca087d71f3a0b",
+      "predictions_file_sha256": "2f6371ca200891a4b94b8f8544ba3527edef625e809c170689141f157de74b02",
+      "split_membership_file_sha256": "b7cb35fd6218a9f3c7d5de931442093e9898b51191234c2f229c4b715f552215",
+      "metrics_test_file_sha256": "5205d9f7de0cf8535ca847fc7be1baa1497ac468c200fa9fb1fb6fd543160b90"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-OHSU_roi-12_brainnetcnn_seed-44_7650e303",
+      "identity_hash": "7650e303",
+      "config_file_sha256": "445bd38ed36d243192452d40ab70e6907fad12adc4ff55b4e169d9e52dfac291",
+      "config_semantic_sha256": "1c42b84f5db81f9158c96060a376a440c42c2dd8030d6307aa7df1c2051db704",
+      "predictions_file_sha256": "94713f410b63cc099ba7bd2d676660683c0b819f457adcc7f231866e3af322af",
+      "split_membership_file_sha256": "b7cb35fd6218a9f3c7d5de931442093e9898b51191234c2f229c4b715f552215",
+      "metrics_test_file_sha256": "0e0f42030dca01ece7ab2fe937388ab0cfc9839546f277174494b20976c15c04"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-OHSU_roi-12_brainnetcnn_seed-45_751e089e",
+      "identity_hash": "751e089e",
+      "config_file_sha256": "99a97672d5abf5fed4e419b08e97ec967710dae24820e648bb467254e1db54f8",
+      "config_semantic_sha256": "b43c2b302109cdb9f0652c492afc3dc42fcec4e25d9a62de99b2c71f3a70a5a4",
+      "predictions_file_sha256": "b7b435162139ae2d509b9cfd6a099fc323d663095d6cfd9407dafa52fa931dca",
+      "split_membership_file_sha256": "b7cb35fd6218a9f3c7d5de931442093e9898b51191234c2f229c4b715f552215",
+      "metrics_test_file_sha256": "84d1ee2eb42d0bff4fbc24822d3411839ce5e50d48103428e36b46733159287a"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-OHSU_roi-12_brainnetcnn_seed-46_d9fad943",
+      "identity_hash": "d9fad943",
+      "config_file_sha256": "3632f5b6ed2da5e2561c16602dd446df60951f1e653b73d6c30cafd542fb3474",
+      "config_semantic_sha256": "9364e3243d19e19e4cd1c12132c534ce9ab9908c4934c16f45d1c0f4d622288d",
+      "predictions_file_sha256": "93806fe68f45555e79c02978861be4f6c502739b6f08de738fd967000543d7f1",
+      "split_membership_file_sha256": "b7cb35fd6218a9f3c7d5de931442093e9898b51191234c2f229c4b715f552215",
+      "metrics_test_file_sha256": "b3157a672a58f02851cb46da8beb1be0e065b0a66e54b373a9f7acb968fd1c69"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-OHSU_roi-12_logreg_seed-deterministic_151cac2d",
+      "identity_hash": "151cac2d",
+      "config_file_sha256": "39325022d92d976cb8e6b37cd3a937ac383901c3ed1029d36981d18ebb7a43f6",
+      "config_semantic_sha256": "7ba32508ddbb6e02a2d34162d507eab4a13ac08577203e0cfa82673ed7983cce",
+      "predictions_file_sha256": "0a4af8329e8cde51195d5e2a48084eab7498b642930c6a92c330d2f7367ac558",
+      "split_membership_file_sha256": "b7cb35fd6218a9f3c7d5de931442093e9898b51191234c2f229c4b715f552215",
+      "metrics_test_file_sha256": "08e47ff3f71d32dc2ef2d6d6b4e090f293a6b46ccad10a013fa5371b7680ea18"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-Peking_roi-116_brainnetcnn_seed-42_21dcfd51",
+      "identity_hash": "21dcfd51",
+      "config_file_sha256": "043bdadcb8cf15980ee027453913e0e10840d6f882dc402d0b90dabbe51d6b51",
+      "config_semantic_sha256": "0ae223592baef61d703d917dd26b5db53f4dac38dc5d015a19ef0f2fc4d4f8a5",
+      "predictions_file_sha256": "6fed5bd7d6b70037faf47e6ce289eb4139e5a2cad9a8ef4704bc845d3ac77ba0",
+      "split_membership_file_sha256": "5d8a49d460b1eb66a14ce8468c78816da66fa75ad6080a0e9bb957e71f8478cf",
+      "metrics_test_file_sha256": "4e8d1b0b2e3070de42bba8af3f131f3112a8f21da4a88ffb4b350efe4de90b68"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-Peking_roi-116_brainnetcnn_seed-43_b2c61984",
+      "identity_hash": "b2c61984",
+      "config_file_sha256": "8fc9eb2a92ce2accee0085375dea52e28698347fddb6d30c2e81836b0f9bb3a6",
+      "config_semantic_sha256": "64fdecbd3b5c6d1042cbb7b3e218bc95d1f950a3683ce67fda16330003762fea",
+      "predictions_file_sha256": "ba48af670fda144c8292e42692e84a021cb2717683983dff06d067b60e1eee51",
+      "split_membership_file_sha256": "5d8a49d460b1eb66a14ce8468c78816da66fa75ad6080a0e9bb957e71f8478cf",
+      "metrics_test_file_sha256": "23f987bc78f9490ceef5887a36e9032eb866b88d65ced6bb5f4294142d1c3044"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-Peking_roi-116_brainnetcnn_seed-44_74de95a3",
+      "identity_hash": "74de95a3",
+      "config_file_sha256": "3dc5ffe1de84ae770c6440132729321791840d138b9b91823f457ab5b561b8e8",
+      "config_semantic_sha256": "42ab43087e3fd3f9a42c0fddd0d224ffdb06f16c6eecb6e661ba05feaa9aa45e",
+      "predictions_file_sha256": "904402ea6ae7ea5a0c18119b58fafa6ea66665dfa0416a89278367c538aeb53f",
+      "split_membership_file_sha256": "5d8a49d460b1eb66a14ce8468c78816da66fa75ad6080a0e9bb957e71f8478cf",
+      "metrics_test_file_sha256": "d23cd04174ad427ed83ed1088ecd12066aa6a2a5080ff7e669427b4dc4ba8e11"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-Peking_roi-116_brainnetcnn_seed-45_f31475f1",
+      "identity_hash": "f31475f1",
+      "config_file_sha256": "534dc26c9a12a98a19a59f02c2d63ebba2701dcba3d10ed5527d2bbc3d0de4a1",
+      "config_semantic_sha256": "26c7842f056759a7291eaec9ce537696060b2d2d05fa610536acbd8fc2cdd561",
+      "predictions_file_sha256": "42555e695b8804592fb260cced8e7d2fdf20b7852279072d46006445e1d9400a",
+      "split_membership_file_sha256": "5d8a49d460b1eb66a14ce8468c78816da66fa75ad6080a0e9bb957e71f8478cf",
+      "metrics_test_file_sha256": "4121431c77d4912333048abb2e46a12dedcb0df68e7a7b9b7c6dbfafffd38c3c"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-Peking_roi-116_brainnetcnn_seed-46_63b132cd",
+      "identity_hash": "63b132cd",
+      "config_file_sha256": "645862b25d63f980457facdb3832726c40d359e797412f90387d59f00bdb9edb",
+      "config_semantic_sha256": "865fc9c8c5403987f47ec964a69ea911d787049e76f53279102cbd9e24ba59ac",
+      "predictions_file_sha256": "1ba917613bdccd8a4e6ea8b95807798112365d1cf83053e01903785da3632d89",
+      "split_membership_file_sha256": "5d8a49d460b1eb66a14ce8468c78816da66fa75ad6080a0e9bb957e71f8478cf",
+      "metrics_test_file_sha256": "9185546cf51bd22747b07b528ace30933c3a2faded1bdede2e1d1323781b563b"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-Peking_roi-116_logreg_seed-deterministic_5f0a23b3",
+      "identity_hash": "5f0a23b3",
+      "config_file_sha256": "28b1f62a4e5a2a8518c8a17e59fd6427c35643d3fa37c6edb48240696afdbdf0",
+      "config_semantic_sha256": "68dfefe54ddca98a7ec95a5c92d1bf13e66e336080128d6e418fb440ad004bab",
+      "predictions_file_sha256": "956ef247a4bb57d24d9522adffc09b8c890965d085b25bfb60f8e9240b750b51",
+      "split_membership_file_sha256": "5d8a49d460b1eb66a14ce8468c78816da66fa75ad6080a0e9bb957e71f8478cf",
+      "metrics_test_file_sha256": "6c8e59be1de01ad14a158012da2a45c898bfd4ee60eeb7551ba6783a390e35b4"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-Peking_roi-12_brainnetcnn_seed-42_9765b3ad",
+      "identity_hash": "9765b3ad",
+      "config_file_sha256": "49f2975db3a890cedea8f163795af46b777eebc663f2cca3069efb87ed8bc135",
+      "config_semantic_sha256": "9200526658e1743091d66414db8e1ad93ad27a6254da339e27d772bf4b015ce6",
+      "predictions_file_sha256": "2239acf0a5a1cc8891f338abe7cf6c5cddc821b3ad5965ab047d27d32432dd3d",
+      "split_membership_file_sha256": "5d8a49d460b1eb66a14ce8468c78816da66fa75ad6080a0e9bb957e71f8478cf",
+      "metrics_test_file_sha256": "1e686e244a0c72d796f325f41177e01e7a378ed163f40ab4e301abb459d5db56"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-Peking_roi-12_brainnetcnn_seed-43_f4760753",
+      "identity_hash": "f4760753",
+      "config_file_sha256": "3d89014a257694a03fed238d3efd8c760d78cfce7af6e3f9e25acf042f21af89",
+      "config_semantic_sha256": "9fe3903b924089416544c6da6574838c8a694e90df1b9d775066b577795b051c",
+      "predictions_file_sha256": "6ac1c58edeea541ded3490097a5fa02ee22cf226dec30210a1a95496ce5d9211",
+      "split_membership_file_sha256": "5d8a49d460b1eb66a14ce8468c78816da66fa75ad6080a0e9bb957e71f8478cf",
+      "metrics_test_file_sha256": "5b76dd9cfed997e96d861c004bb56849fd3ed6997f6e9996b9e72316d115106a"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-Peking_roi-12_brainnetcnn_seed-44_a12a742c",
+      "identity_hash": "a12a742c",
+      "config_file_sha256": "f6eccc7ea0333130c1e0efa48b6336186a6892c3a7f6c561d75dcb8011fcaee4",
+      "config_semantic_sha256": "9878e68cd9f86c193883ffd7da89b1e19053fd16611018b577a0068862457563",
+      "predictions_file_sha256": "5441fab54813fd657e06afde442277f8b764a4c38685155ed6fc3db3f65e3863",
+      "split_membership_file_sha256": "5d8a49d460b1eb66a14ce8468c78816da66fa75ad6080a0e9bb957e71f8478cf",
+      "metrics_test_file_sha256": "2d9d7bc9498d385586753b32797e815ece6beeea0b331c26177f2df8b96c3d79"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-Peking_roi-12_brainnetcnn_seed-45_c8a946f3",
+      "identity_hash": "c8a946f3",
+      "config_file_sha256": "3409b3513b36b3ace02e6736452695c7f695e16f43564cd15e67b0b1bf991144",
+      "config_semantic_sha256": "44bcdf00fccd4ec8c9c6f3bd62386df88444ddefb74f1471ee39f8bdf509ef18",
+      "predictions_file_sha256": "442ce38c8062f8a31b1190b039dbbddd5fe0832f0d82b1289030b99402dcb6d9",
+      "split_membership_file_sha256": "5d8a49d460b1eb66a14ce8468c78816da66fa75ad6080a0e9bb957e71f8478cf",
+      "metrics_test_file_sha256": "c8f925cdaafba06817c7b3f17257f260a1942c0b38b98b4d7172c006ed718c24"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-Peking_roi-12_brainnetcnn_seed-46_3ce46c36",
+      "identity_hash": "3ce46c36",
+      "config_file_sha256": "b370af8a34e23264358450a39d153f51b29f3ddc902db908925434467ed2b290",
+      "config_semantic_sha256": "121e7cd16192825635f744f845faa5303e5f80a8f3c7900170f278e2eeedd370",
+      "predictions_file_sha256": "5cc0ced63df5d0bc05cd1b3f5c0d8f407da21b1ea83aad6fe29109ef7368276e",
+      "split_membership_file_sha256": "5d8a49d460b1eb66a14ce8468c78816da66fa75ad6080a0e9bb957e71f8478cf",
+      "metrics_test_file_sha256": "8471241f5fc056ce39f7e124c9fdbdc1770ed08b200c3768057c78378ad10570"
+    },
+    {
+      "run_id": "loso_static_v1_holdout-Peking_roi-12_logreg_seed-deterministic_8a9d3964",
+      "identity_hash": "8a9d3964",
+      "config_file_sha256": "fe92bcfa1bb990c905c93ded6dffb760978377feffb413bd105b888272f9a7e7",
+      "config_semantic_sha256": "98803e4c220f4c9e614a75c6e45abe36f73fcf3fecfa8b31d507c62949e04c77",
+      "predictions_file_sha256": "2ade19e39728a39c9f61cb7d722082bb317b4fe93ab7d291d7b7b07391dd3a8d",
+      "split_membership_file_sha256": "5d8a49d460b1eb66a14ce8468c78816da66fa75ad6080a0e9bb957e71f8478cf",
+      "metrics_test_file_sha256": "491c1129dcfacde77bc8b7a1e9f1412623ee33bb6bd5fbdafd0fc1cb60cf2e49"
+    }
+  ],
+  "analysis_outputs": {
+    "LOSO_STATIC_V1_REPORT.md": "c8fd68cf17b854c4d4db479d080554b54e0d20111a2dcbb5fbc1b0f833944a1b",
+    "loso_bootstrap_manifest.json": "dccebb8b8ed11ec449968196805880e489a5fc12c18ea3ec71721f60aa8421ec",
+    "loso_contrasts.csv": "490b41412651c1ec0fcf040be1d387045ec6e61fe724b71fe9ff4d02f2609f09",
+    "loso_convergence_summary.csv": "092a06ac404ec3e4eb4c983c2690da2e128a6e5c2a9d92ff2b1c336e34923846",
+    "loso_manifest.json": "07d3f8482306785e2e7bbf82e0406dafbf16ce9e48330d7ab78f5fbecfdd6d86",
+    "loso_metrics_by_run.csv": "553901e8545803d8829e4e17ee26f5cd3b89e62ec7b4705fb4d9fe8cb3223ea9",
+    "loso_metrics_summary.csv": "60626c822ff92c905bdc143b9f590e70150f8ca89cf1e5bdd1ba59ed69ea2340",
+    "loso_predictions_long.csv": "fb84d519ca916b9e20469e1c65133c6cff3c36059981295aded750eea17d1b40"
+  }
+}
