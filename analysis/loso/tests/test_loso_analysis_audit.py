@@ -325,6 +325,7 @@ class A16NewFullShaFieldsAre64Hex(unittest.TestCase):
         provenance = A.build_provenance_manifest(
             runs=runs, design=design, manifest=manifest,
             closeout_analysis_source_git_sha="f" * 40,
+            original_analysis_source_git_sha="e" * 40,
             original_bootstrap_manifest=None,
             output_dir_for_hashing=A.OUTPUT_DIR,
         )
@@ -352,6 +353,7 @@ class A17LegacyPrefix16Preserved(unittest.TestCase):
         provenance = A.build_provenance_manifest(
             runs=runs, design=design, manifest=manifest,
             closeout_analysis_source_git_sha="f" * 40,
+            original_analysis_source_git_sha="e" * 40,
             original_bootstrap_manifest=None,
             output_dir_for_hashing=A.OUTPUT_DIR,
         )
@@ -371,6 +373,7 @@ class A18FeatureFullHashIsNotFabricated(unittest.TestCase):
         provenance = A.build_provenance_manifest(
             runs=runs, design=design, manifest=manifest,
             closeout_analysis_source_git_sha="f" * 40,
+            original_analysis_source_git_sha="e" * 40,
             original_bootstrap_manifest=None,
             output_dir_for_hashing=A.OUTPUT_DIR,
         )

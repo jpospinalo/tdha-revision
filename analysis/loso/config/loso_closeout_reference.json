@@ -1,0 +1,21 @@
+{
+  "campaign_id": "loso_static_v1",
+  "primary_baseline_git_ref": "loso-static-v1-complete",
+  "primary_baseline_git_commit": "8924dfa9b93a7099b1244066e706148538889ae5",
+  "v31_baseline_git_commit": "8c062355b275f85fa4a69e5f269961b0d14669a3",
+  "original_analysis_source_git_sha": "428cbc18f9b7e099d56bed91acd2fbc4f18ee6e8",
+  "primary_regression_reference": {
+    "metrics_by_run": "analysis/loso/config/loso_primary_regression_reference/loso_metrics_by_run_reference.csv",
+    "metrics_summary": "analysis/loso/config/loso_primary_regression_reference/loso_metrics_summary_primary_reference.csv",
+    "contrasts": "analysis/loso/config/loso_primary_regression_reference/loso_contrasts_reference.csv"
+  },
+  "v31_regression_reference": {
+    "metrics_summary": "analysis/loso/config/loso_v31_regression_reference/loso_metrics_summary_v31_reference.csv",
+    "convergence_summary": "analysis/loso/config/loso_v31_regression_reference/loso_convergence_summary_v31_reference.csv"
+  },
+  "metrics_by_run_reference_file_sha256": "553901e8545803d8829e4e17ee26f5cd3b89e62ec7b4705fb4d9fe8cb3223ea9",
+  "metrics_summary_primary_reference_file_sha256": "23bd0428fc24a57f803279916f17184736ad22f3a532bedbf2c194873826eda6",
+  "contrasts_reference_file_sha256": "49210f3a3c9a8bfaa1dd82987ee891de5397f5b59f871467c0a63e8f89f2cef1",
+  "metrics_summary_v31_reference_file_sha256": "84e8d901794277a195571aa7fba8d1c495ad250f058298bba6153c9df54c7fe4",
+  "convergence_summary_v31_reference_file_sha256": "4d42d38361692386172372b95c3db05ea878fae7ec68152df46e6ae8beeb382a"
+}

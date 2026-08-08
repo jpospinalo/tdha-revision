@@ -13,12 +13,17 @@ resultados (contrato de ``analysis/loso/README.md``).
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
+import os
 import platform
+import re
 import shutil
+import subprocess
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -40,6 +45,14 @@ CODE_ROOT = REPO_ROOT / "src"
 ATLAS_DIR = REPO_ROOT / "data" / "atlas"
 BOLD_DIR = REPO_ROOT / "data" / "bold"
 LOSO_TEST_DIR = REPO_ROOT / "analysis" / "loso" / "tests"
+CLOSEOUT_REFERENCE_PATH = REPO_ROOT / "analysis" / "loso" / "config" / "loso_closeout_reference.json"
+PRIMARY_REGRESSION_REFERENCE_DIR = REPO_ROOT / "analysis" / "loso" / "config" / "loso_primary_regression_reference"
+V31_REGRESSION_REFERENCE_DIR = REPO_ROOT / "analysis" / "loso" / "config" / "loso_v31_regression_reference"
+
+# D1/Sección 19 (microcierre v31->v32): tolerancia del regression gate
+# obligatorio. Solo se aplica a valores flotantes; enteros/categorías exigen
+# igualdad exacta (una diferencia entera real siempre será >> 1e-9).
+SCIENTIFIC_REGRESSION_TOL = 1e-9
 
 SITES = ["NYU", "Peking", "NeuroIMAGE", "OHSU"]
 ROI_SETS = ["12", "116"]
@@ -133,6 +146,92 @@ def load_design_and_splits() -> tuple[dict[str, Any], pd.DataFrame]:
     design = json.loads(L.DESIGN_JSON_PATH.read_text(encoding="utf-8"))
     splits_df = pd.read_csv(L.SPLIT_MANIFEST_PATH)
     return design, splits_df
+
+
+# ---------------------------------------------------------------------------
+# D2 (microcierre v31->v32, Secciones 8/13): lineage estable del análisis
+# ORIGINAL. Nunca se deriva del bootstrap manifest actualmente en disco
+# (mutable entre closeouts sucesivos) — siempre del tag Git inmutable
+# ``loso-static-v1-complete`` + de la referencia versionada congelada en
+# ``loso_closeout_reference.json``.
+# ---------------------------------------------------------------------------
+
+
+def load_closeout_reference(path: Path = CLOSEOUT_REFERENCE_PATH) -> dict[str, Any]:
+    """Fuente estable de ``original_analysis_source_git_sha`` y de las rutas
+    a los fixtures de regresión versionados. Se autovalida: si cualquiera de
+    los 5 fixtures referenciados fue modificado desde que se congeló su hash
+    aquí, STOP (no se recomputan ni se aceptan silenciosamente)."""
+
+    if not path.exists():
+        raise SystemExit(
+            f"STOP: falta {path}; no se puede determinar original_analysis_source_git_sha "
+            "de forma estable ni ejecutar el regression gate (Gate U). Ejecute la fase de "
+            "creación de referencias (CP3 del microcierre) antes de correr el analyzer."
+        )
+    ref = json.loads(path.read_text(encoding="utf-8"))
+    required = {
+        "campaign_id", "primary_baseline_git_ref", "primary_baseline_git_commit",
+        "v31_baseline_git_commit", "original_analysis_source_git_sha",
+        "primary_regression_reference", "v31_regression_reference",
+    }
+    missing = required - set(ref)
+    if missing:
+        raise SystemExit(f"STOP: loso_closeout_reference.json incompleto: faltan {sorted(missing)}.")
+
+    fixture_hash_fields = {
+        "metrics_by_run_reference_file_sha256": ref["primary_regression_reference"]["metrics_by_run"],
+        "metrics_summary_primary_reference_file_sha256": ref["primary_regression_reference"]["metrics_summary"],
+        "contrasts_reference_file_sha256": ref["primary_regression_reference"]["contrasts"],
+        "metrics_summary_v31_reference_file_sha256": ref["v31_regression_reference"]["metrics_summary"],
+        "convergence_summary_v31_reference_file_sha256": ref["v31_regression_reference"]["convergence_summary"],
+    }
+    for hash_field, rel_path in fixture_hash_fields.items():
+        recorded = ref.get(hash_field)
+        if not recorded or len(recorded) != 64:
+            raise SystemExit(
+                f"STOP: {hash_field} ausente o no es un SHA-256 de 64 hex en loso_closeout_reference.json."
+            )
+        fixture_path = REPO_ROOT / rel_path if not Path(rel_path).is_absolute() else Path(rel_path)
+        if not fixture_path.exists():
+            raise SystemExit(f"STOP: falta el fixture de regresión {fixture_path}.")
+        current = _full_sha256_file(fixture_path)
+        if current != recorded:
+            raise SystemExit(
+                f"STOP: {fixture_path} fue modificado desde que se congeló su hash en "
+                f"loso_closeout_reference.json (recorded={recorded}, current={current}). "
+                "Los fixtures de regresión no se editan manualmente ni se recomputan en silencio."
+            )
+    return ref
+
+
+def load_original_bootstrap_manifest_from_tag(closeout_reference: Mapping[str, Any]) -> dict[str, Any]:
+    """El bootstrap manifest 'original' se lee SIEMPRE del tag Git inmutable
+    (nunca del archivo mutable actualmente en ``analysis/loso/outputs/``),
+    para que ``original_analysis_source_git_sha`` sea estable a través de
+    closeouts sucesivos (D2). La fuente Git es la autoridad: si el valor
+    leído del tag no coincide con el congelado en el reference JSON, STOP."""
+
+    ref_name = closeout_reference["primary_baseline_git_ref"]
+    rel_path = "analysis/loso/outputs/loso_bootstrap_manifest.json"
+    try:
+        raw = subprocess.check_output(
+            ["git", "show", f"{ref_name}:{rel_path}"], cwd=str(REPO_ROOT), stderr=subprocess.PIPE, text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(
+            f"STOP: no se pudo leer {rel_path} desde el tag inmutable {ref_name!r}: {exc.stderr}"
+        ) from exc
+    manifest = json.loads(raw)
+    tag_sha = manifest.get("analysis_source_git_sha")
+    expected_sha = closeout_reference["original_analysis_source_git_sha"]
+    if tag_sha != expected_sha:
+        raise SystemExit(
+            f"STOP: analysis_source_git_sha dentro del tag {ref_name!r} ({tag_sha}) no coincide "
+            f"con original_analysis_source_git_sha en loso_closeout_reference.json ({expected_sha}). "
+            "La fuente Git es la autoridad; no se sustituye manualmente."
+        )
+    return manifest
 
 
 def load_analysis_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
@@ -1026,6 +1125,7 @@ def build_bootstrap_manifest(
     analysis_config: Mapping[str, Any], predictions_long_hash: str, summary_hash: str,
     *, predictions_long_path: Path | None = None, summary_path: Path | None = None,
     closeout_analysis_source_git_sha: str | None = None,
+    original_analysis_source_git_sha: str | None = None,
 ) -> dict[str, Any]:
     import sklearn
 
@@ -1053,7 +1153,11 @@ def build_bootstrap_manifest(
         manifest["input_predictions_file_sha256"] = _full_sha256_file(predictions_long_path)
     if summary_path is not None:
         manifest["output_summary_file_sha256"] = _full_sha256_file(summary_path)
+    # D2/Sección 14 (microcierre): el legacy analysis_source_git_sha sigue
+    # significando closeout_analysis_source_git_sha (Sección 44); original_*
+    # se agrega explícito, estable, NUNCA derivado de este mismo archivo.
     manifest["closeout_analysis_source_git_sha"] = closeout_analysis_source_git_sha
+    manifest["original_analysis_source_git_sha"] = original_analysis_source_git_sha
     manifest["analyzer_file_sha256"] = _full_sha256_file(
         REPO_ROOT / "analysis" / "loso" / "scripts" / "analyze_loso_static.py"
     )
@@ -1080,6 +1184,7 @@ def build_provenance_manifest(
     design: Mapping[str, Any],
     manifest: Mapping[str, Any],
     closeout_analysis_source_git_sha: str | None,
+    original_analysis_source_git_sha: str | None,
     original_bootstrap_manifest: Mapping[str, Any] | None,
     output_dir_for_hashing: Path,
 ) -> dict[str, Any]:
@@ -1166,10 +1271,13 @@ def build_provenance_manifest(
 
     return {
         "campaign_id": "loso_static_v1",
+        # D2 (microcierre v31->v32): las tres fuentes de SHA son
+        # conceptualmente distintas y NUNCA se infieren una de otra:
+        #   training  -> código que produjo las 48 corridas (design.json)
+        #   original  -> análisis pre-closeout recuperado del tag Git inmutable
+        #   closeout  -> commit del analyzer corregido que produce este cierre
         "training_source_git_sha": design.get("training_source_git_sha"),
-        "original_analysis_source_git_sha": (
-            original_bootstrap_manifest.get("analysis_source_git_sha") if original_bootstrap_manifest else None
-        ),
+        "original_analysis_source_git_sha": original_analysis_source_git_sha,
         "closeout_analysis_source_git_sha": closeout_analysis_source_git_sha,
         "formal_run_count": manifest["n_runs"],
         "brainnet_run_count": n_bnn,
@@ -1225,18 +1333,77 @@ def build_provenance_manifest(
     }
 
 
+def build_completeness_gate_rows(
+    *, predictions_long: pd.DataFrame, metrics_summary: pd.DataFrame, contrasts: pd.DataFrame,
+    gate_u_result: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """D4 (Secciones 32-33 del microcierre): Gates R/S/T/U con evidencia real
+    — nunca sustituidos por narrativa (Sección 31)."""
+
+    n_bnn = int((predictions_long["model"] == "brainnetcnn").sum())
+    n_log = int((predictions_long["model"] == "logreg").sum())
+    total = len(predictions_long)
+    r_ok = n_bnn == 4650 and n_log == 930 and total == 5580
+    return [
+        _gate_row(
+            "R", "Prediction completeness: BrainNetCNN=4650, logistic=930, total=5580",
+            "4650/930/5580", f"{n_bnn}/{n_log}/{total}", "PASS" if r_ok else "FAIL",
+        ),
+        _gate_row(
+            "S", "Metrics-summary completeness: 16 filas",
+            "16", str(len(metrics_summary)), "PASS" if len(metrics_summary) == 16 else "FAIL",
+        ),
+        _gate_row(
+            "T", "Contrast completeness: 12 filas",
+            "12", str(len(contrasts)), "PASS" if len(contrasts) == 12 else "FAIL",
+        ),
+        _gate_row(
+            "U", "Scientific regression U1-U5 vs tag pre-closeout (loso-static-v1-complete) "
+            "y estado v31 auditado (PRE_FIX_HEAD)",
+            "48/48; 16/16; 12/12; 16/16; 8/8",
+            f"{gate_u_result['u1']}; {gate_u_result['u2']}; {gate_u_result['u3']}; "
+            f"{gate_u_result['u4']}; {gate_u_result['u5']}",
+            # Si el flujo llegó hasta aquí es porque run_regression_gate_u() ya
+            # pasó (de lo contrario habría levantado SystemExit antes) — nunca
+            # se muestra U como PASS sin haberlo ejecutado (Sección 20).
+            "PASS",
+        ),
+    ]
+
+
+PENDING_QA_ROWS: tuple[tuple[str, str, str], ...] = (
+    ("V", "Raw LOSO integrity (sha256sum -c sobre resultados/loso/ congelados antes del microcierre)", "ALL OK"),
+    ("W", "Historical repository integrity (sha256sum -c sobre src/data/results-runs/results-archive/"
+          "roi_comparison/docs/READMEs/requirements)", "ALL OK"),
+    ("X", "Complete LOSO test-suite certification (unittest, entorno con TensorFlow/Keras)", "failures=0, errors=0"),
+)
+
+
 def build_qa_doc(
     *, gate_rows: Sequence[Mapping[str, Any]], provenance_manifest_file_sha256: str,
 ) -> str:
-    """CP12 (Sección 41): tabla de gates + hash del provenance manifest."""
+    """D4 (Sección 31/CP7 del microcierre): tabla formal completa A-X — nunca
+    sustituida por narrativa. Los gates A-U se calculan y verifican DENTRO de
+    este mismo proceso, antes de cualquier promoción (si llegamos a escribir
+    este documento es porque A-U ya pasaron). Los gates V/W/X requieren pasos
+    externos al proceso del analyzer (hash de la campaña cruda, hash del
+    repositorio histórico, suite de tests en un entorno con TensorFlow) y se
+    dejan explícitamente como PENDING aquí; se completan de forma
+    determinista, después de la promoción, vía ``--finalize-qa`` — nunca se
+    muestran como PASS sin evidencia real (Sección 37/38)."""
 
     lines = [
         "# LOSO_STATIC_V1_QA",
         "",
-        "Tabla de auditoría de cierre (`fix/loso-static-v1-analysis-closeout`). "
-        "Generada únicamente después de que los Gates A-Q (Sección 27, CP2 PASS) "
-        "pasaron sobre las 48 corridas formales reales. No reentrena, no cambia "
-        "splits, no cambia AUC/CI/contrastes primarios.",
+        "Tabla de auditoría A-X (microcierre v31->v32, Secciones 31-38). Los "
+        "gates A-U se generan y verifican dentro de este mismo proceso, ANTES "
+        "de cualquier promoción de outputs — si esta tabla existe con A-U en "
+        "PASS es porque esos gates realmente se ejecutaron y pasaron sobre las "
+        "48 corridas formales reales. Los gates V/W/X dependen de pasos "
+        "externos al proceso (hashes de campaña cruda/repositorio histórico, "
+        "suite de tests en un entorno con TensorFlow) y quedan PENDING hasta "
+        "ejecutar `analyze_loso_static.py --finalize-qa` con los logs reales "
+        "de esos pasos — nunca se declaran PASS sin evidencia.",
         "",
         "| Gate | Description | Expected | Observed | Status |",
         "|:---|:---|:---|:---|:---|",
@@ -1245,17 +1412,101 @@ def build_qa_doc(
         lines.append(
             f"| {row['gate']} | {row['description']} | {row['expected']} | {row['observed']} | {row['status']} |"
         )
+    for gate, description, expected in PENDING_QA_ROWS:
+        lines.append(f"| {gate} | {description} | {expected} | PENDING | PENDING |")
     lines += [
-        "",
-        "Adicionalmente (verificado en CP14-CP20, fuera de esta tabla de gates "
-        "por-corrida): X test suite (35 tests históricos + tests de auditoría "
-        "nuevos), V raw LOSO hash protection, W historical repo hash protection — "
-        "ver `git diff`/`sha256sum -c` registrados en el commit de cierre.",
         "",
         f"`loso_provenance_manifest_file_sha256`: `{provenance_manifest_file_sha256}`",
         "",
     ]
     return "\n".join(lines)
+
+
+def _parse_sha256sum_check_log(path: Path) -> tuple[str, str]:
+    """Parsea la salida de ``sha256sum -c <manifest>`` (una línea ``archivo: OK``
+    por archivo verificado; ``archivo: FAILED`` si cambió)."""
+
+    text = Path(path).read_text(encoding="utf-8")
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        raise SystemExit(f"STOP: log de integridad vacío o ilegible: {path}")
+    ok_lines = [ln for ln in lines if ln.rstrip().endswith(": OK")]
+    failed_lines = [ln for ln in lines if "FAILED" in ln]
+    total = len(lines)
+    status = "PASS" if not failed_lines and len(ok_lines) == total else "FAIL"
+    observed = f"{len(ok_lines)}/{total} OK"
+    if failed_lines:
+        observed += f"; {len(failed_lines)} FAILED"
+    return status, observed
+
+
+def _parse_unittest_log(path: Path) -> tuple[str, str]:
+    """Parsea la salida de ``python -m unittest discover -v``."""
+
+    text = Path(path).read_text(encoding="utf-8")
+    run_match = re.search(r"Ran (\d+) tests?", text)
+    tests_run = int(run_match.group(1)) if run_match else None
+    fail_match = re.search(r"FAILED \(([^)]*)\)", text)
+    ok_present = bool(re.search(r"(?:^|\n)OK(?:\s*\(skipped=\d+\))?\s*(?:\n|$)", text))
+    failures = errors = skipped = 0
+    if fail_match:
+        detail = fail_match.group(1)
+        f_m = re.search(r"failures=(\d+)", detail)
+        e_m = re.search(r"errors=(\d+)", detail)
+        s_m = re.search(r"skipped=(\d+)", detail)
+        failures = int(f_m.group(1)) if f_m else 0
+        errors = int(e_m.group(1)) if e_m else 0
+        skipped = int(s_m.group(1)) if s_m else 0
+    else:
+        s_m = re.search(r"OK \(skipped=(\d+)\)", text)
+        skipped = int(s_m.group(1)) if s_m else 0
+    status = "PASS" if (ok_present and failures == 0 and errors == 0 and tests_run) else "FAIL"
+    observed = f"tests_run={tests_run}, failures={failures}, errors={errors}, skipped={skipped}"
+    return status, observed
+
+
+def _replace_qa_row(text: str, gate: str, *, description: str, expected: str, observed: str, status: str) -> str:
+    new_row = f"| {gate} | {description} | {expected} | {observed} | {status} |"
+    pattern = re.compile(rf"^\| {re.escape(gate)} \|.*\|[ \t]*$", re.MULTILINE)
+    if not pattern.search(text):
+        raise SystemExit(f"STOP: no se encontró la fila del gate {gate!r} en LOSO_STATIC_V1_QA.md.")
+    return pattern.sub(new_row, text, count=1)
+
+
+def finalize_qa(
+    *, raw_integrity_log: Path, historical_integrity_log: Path, tests_log: Path, output_dir: Path = OUTPUT_DIR,
+) -> None:
+    """CP8/Sección 38 (microcierre): finalización DETERMINISTA de V/W/X desde
+    logs ya producidos externamente. No recalcula ningún output científico —
+    solo lee 3 archivos de texto y reescribe 3 filas de una tabla markdown ya
+    promovida (Sección 38: "not manual free-text editing")."""
+
+    qa_path = output_dir / "LOSO_STATIC_V1_QA.md"
+    if not qa_path.exists():
+        raise SystemExit(f"STOP: no existe {qa_path}; corra primero el analyzer sin --finalize-qa.")
+    text = qa_path.read_text(encoding="utf-8")
+
+    v_status, v_observed = _parse_sha256sum_check_log(raw_integrity_log)
+    text = _replace_qa_row(
+        text, "V",
+        description="Raw LOSO integrity (sha256sum -c sobre resultados/loso/ congelados antes del microcierre)",
+        expected="ALL OK", observed=v_observed, status=v_status,
+    )
+    w_status, w_observed = _parse_sha256sum_check_log(historical_integrity_log)
+    text = _replace_qa_row(
+        text, "W",
+        description="Historical repository integrity (sha256sum -c sobre src/data/results-runs/results-archive/"
+                    "roi_comparison/docs/READMEs/requirements)",
+        expected="ALL OK", observed=w_observed, status=w_status,
+    )
+    x_status, x_observed = _parse_unittest_log(tests_log)
+    text = _replace_qa_row(
+        text, "X",
+        description="Complete LOSO test-suite certification (unittest, entorno con TensorFlow/Keras)",
+        expected="failures=0, errors=0", observed=x_observed, status=x_status,
+    )
+    qa_path.write_text(text, encoding="utf-8")
+    print(f"QA finalizada: V={v_status} ({v_observed}) | W={w_status} ({w_observed}) | X={x_status} ({x_observed})")
 
 
 # ---------------------------------------------------------------------------
@@ -1462,10 +1713,145 @@ def assert_primary_outputs_unchanged(
     if list(b.index) != list(c.index):
         raise SystemExit(f"STOP: {label} — el conjunto de llaves difiere entre baseline y candidate.")
     for col in value_cols:
-        diff = (b[col].astype(float) - c[col].astype(float)).abs()
+        b_col = b[col].astype(float)
+        c_col = c[col].astype(float)
+        both_nan = b_col.isna() & c_col.isna()
+        nan_mismatch = b_col.isna() ^ c_col.isna()
+        if nan_mismatch.any():
+            bad_idx = nan_mismatch[nan_mismatch].index.tolist()
+            raise SystemExit(
+                f"STOP: {label} — NaN en un lado y valor real en el otro para la columna "
+                f"'{col}' en las llaves {bad_idx}."
+            )
+        diff = (b_col - c_col).abs().where(~both_nan, 0.0)
         if (diff > tol).any():
             bad = diff[diff > tol].to_dict()
             raise SystemExit(f"STOP: {label} cambió en columna '{col}' más allá de tol={tol}: {bad}")
+
+
+def _load_regression_reference_csv(rel_path: str) -> pd.DataFrame:
+    path = REPO_ROOT / rel_path if not Path(rel_path).is_absolute() else Path(rel_path)
+    if not path.exists():
+        raise SystemExit(f"STOP: falta el fixture de regresión {path}.")
+    df = pd.read_csv(path)
+    if "roi_set" in df.columns:
+        # pandas infiere roi_set como int64 al leer el CSV congelado (bare
+        # 12/116 sin comillas); en el resto del pipeline roi_set es siempre
+        # str ("12"/"116"). Normalizar aquí evita un falso STOP por llaves
+        # que difieren solo en tipo, no en valor.
+        df["roi_set"] = df["roi_set"].astype(str)
+    return df
+
+
+def run_regression_gate_u(
+    *,
+    metrics_by_run: pd.DataFrame,
+    metrics_summary: pd.DataFrame,
+    contrasts: pd.DataFrame,
+    convergence_summary: pd.DataFrame,
+    closeout_reference: Mapping[str, Any],
+) -> dict[str, str]:
+    """D1/CP5 (Secciones 17-20 del microcierre): Gate U, obligatorio ANTES de
+    promover cualquier output. Cinco comparaciones contra fixtures
+    VERSIONADOS (nunca contra ``/tmp``, nunca contra memoria de una corrida
+    previa): U1-U3 contra el tag Git inmutable pre-closeout
+    (``loso-static-v1-complete``); U4-U5 contra el estado v31 ya auditado
+    (``PRE_FIX_HEAD``). Si cualquiera falla, se levanta ``SystemExit`` desde
+    ``assert_primary_outputs_unchanged`` y no se construye ni promueve ningún
+    output (Sección 17: "No promoción antes de U")."""
+
+    primary_ref = closeout_reference["primary_regression_reference"]
+    v31_ref = closeout_reference["v31_regression_reference"]
+    key_cols_summary = ["held_out_site", "roi_set", "model"]
+
+    # Normalizar roi_set a str en las 4 candidate frames: si alguna llega
+    # recién leída de CSV (en vez de construida vía build_metrics_by_run()/
+    # build_metrics_summary(), que ya lo hacen str), pandas la infiere como
+    # int64 y produce un falso "las llaves difieren" contra la referencia.
+    metrics_by_run = metrics_by_run.copy()
+    metrics_summary = metrics_summary.copy()
+    convergence_summary = convergence_summary.copy()
+    for frame in (metrics_by_run, metrics_summary, convergence_summary):
+        if "roi_set" in frame.columns:
+            frame["roi_set"] = frame["roi_set"].astype(str)
+
+    # U1 — metrics-by-run: 48/48, todas las columnas científicas históricas
+    # presentes en el fixture (no limitado a AUC, Sección 18/U1).
+    ref_by_run = _load_regression_reference_csv(primary_ref["metrics_by_run"])
+    if len(ref_by_run) != 48 or len(metrics_by_run) != 48:
+        raise SystemExit(
+            f"STOP U1: se esperaban 48/48 filas de metrics_by_run; "
+            f"reference={len(ref_by_run)} candidate={len(metrics_by_run)}."
+        )
+    value_cols_by_run = [
+        col for col in (
+            "loss", "accuracy", "balanced_accuracy", "precision", "recall", "specificity",
+            "f1", "f1_macro", "auc", "true_positives", "true_negatives", "false_positives", "false_negatives",
+        ) if col in ref_by_run.columns and col in metrics_by_run.columns
+    ]
+    assert_primary_outputs_unchanged(
+        baseline=ref_by_run, candidate=metrics_by_run,
+        key_cols=["held_out_site", "roi_set", "model", "model_seed", "run_id"],
+        value_cols=value_cols_by_run, tol=SCIENTIFIC_REGRESSION_TOL,
+        label="Gate U1 (metrics_by_run vs tag pre-closeout loso-static-v1-complete)",
+    )
+
+    # U2 — primary condition summary: 16/16.
+    ref_summary_primary = _load_regression_reference_csv(primary_ref["metrics_summary"])
+    if len(ref_summary_primary) != 16:
+        raise SystemExit(f"STOP U2: fixture primario tiene {len(ref_summary_primary)} filas; se esperaban 16.")
+    assert_primary_outputs_unchanged(
+        baseline=ref_summary_primary, candidate=metrics_summary, key_cols=key_cols_summary,
+        value_cols=["auc_point", "auc_ci_low", "auc_ci_high", "seed_sd", "seed_min", "seed_max"],
+        tol=SCIENTIFIC_REGRESSION_TOL,
+        label="Gate U2 (AUC/CI primario vs tag pre-closeout loso-static-v1-complete)",
+    )
+
+    # U3 — contrasts: 12/12.
+    ref_contrasts = _load_regression_reference_csv(primary_ref["contrasts"])
+    if len(ref_contrasts) != 12:
+        raise SystemExit(f"STOP U3: fixture de contrastes tiene {len(ref_contrasts)} filas; se esperaban 12.")
+    assert_primary_outputs_unchanged(
+        baseline=ref_contrasts, candidate=contrasts,
+        key_cols=["contrast", "held_out_site", "condition_a", "condition_b"],
+        value_cols=["delta_point", "delta_ci_low", "delta_ci_high"], tol=SCIENTIFIC_REGRESSION_TOL,
+        label="Gate U3 (contrastes vs tag pre-closeout loso-static-v1-complete)",
+    )
+
+    # U4 — v31 secondary metrics: 16/16.
+    ref_summary_v31 = _load_regression_reference_csv(v31_ref["metrics_summary"])
+    if len(ref_summary_v31) != 16:
+        raise SystemExit(f"STOP U4: fixture v31 de summary tiene {len(ref_summary_v31)} filas; se esperaban 16.")
+    assert_primary_outputs_unchanged(
+        baseline=ref_summary_v31, candidate=metrics_summary, key_cols=key_cols_summary,
+        value_cols=[
+            "balanced_accuracy_point", "balanced_accuracy_seed_sd",
+            "f1_macro_point", "f1_macro_seed_sd",
+            "sensitivity_point", "sensitivity_seed_sd",
+            "specificity_point", "specificity_seed_sd",
+        ],
+        tol=SCIENTIFIC_REGRESSION_TOL, label="Gate U4 (secondary metrics vs estado v31 auditado)",
+    )
+
+    # U5 — v31 convergence: 8/8.
+    ref_convergence_v31 = _load_regression_reference_csv(v31_ref["convergence_summary"])
+    if len(ref_convergence_v31) != 8:
+        raise SystemExit(f"STOP U5: fixture v31 de convergence tiene {len(ref_convergence_v31)} filas; se esperaban 8.")
+    key_cols_convergence = ["held_out_site", "roi_set"]
+    value_cols_convergence = [c for c in ref_convergence_v31.columns if c not in key_cols_convergence]
+    assert_primary_outputs_unchanged(
+        baseline=ref_convergence_v31, candidate=convergence_summary, key_cols=key_cols_convergence,
+        value_cols=value_cols_convergence, tol=SCIENTIFIC_REGRESSION_TOL,
+        label="Gate U5 (convergence vs estado v31 auditado)",
+    )
+
+    return {
+        "u1": f"{len(ref_by_run)}/{len(ref_by_run)}",
+        "u2": f"{len(ref_summary_primary)}/{len(ref_summary_primary)}",
+        "u3": f"{len(ref_contrasts)}/{len(ref_contrasts)}",
+        "u4": f"{len(ref_summary_v31)}/{len(ref_summary_v31)}",
+        "u5": f"{len(ref_convergence_v31)}/{len(ref_convergence_v31)}",
+    }
 
 
 FINAL_OUTPUT_NAMES = (
@@ -1475,13 +1861,163 @@ FINAL_OUTPUT_NAMES = (
     "loso_provenance_manifest.json", "LOSO_STATIC_V1_QA.md",
 )
 
+PROMOTION_JOURNAL_GLOB = ".promotion-journal-*.json"
 
-def main(argv: Sequence[str] | None = None) -> int:
-    del argv
+
+def check_no_stale_promotion_journal(output_dir: Path = OUTPUT_DIR) -> None:
+    """D3/Sección 29 (microcierre): si un run anterior fue interrumpido a
+    mitad de la promoción, queda un journal ``.promotion-journal-*.json`` sin
+    limpiar. No continuar silenciosamente sobre un estado potencialmente
+    parcial: STOP con instrucciones de recuperación manual."""
+
+    stale = sorted(output_dir.glob(PROMOTION_JOURNAL_GLOB))
+    if stale:
+        names = ", ".join(p.name for p in stale)
+        raise SystemExit(
+            "STOP: existe un promotion journal previo sin limpiar "
+            f"({names}) bajo {output_dir}. Esto indica que una corrida "
+            "anterior del analyzer fue interrumpida a mitad de la promoción "
+            "de outputs. Instrucciones de recuperación:\n"
+            "  1. Inspeccionar el journal (campo 'entries': cada uno tiene "
+            "existed_before/pre_sha256/backup_path/status).\n"
+            "  2. Para cada entry con status != 'replaced': el canonical "
+            "actual en analysis/loso/outputs/ debería seguir intacto (no se "
+            "tocó).\n"
+            "  3. Para cada entry con status == 'replaced': comparar el "
+            "SHA-256 del canonical actual contra pre_sha256; si difiere y no "
+            "es el resultado deseado, restaurar manualmente desde backup_path.\n"
+            "  4. Una vez verificado el estado, eliminar el/los archivos de "
+            "journal y los directorios .backup-* huérfanos antes de "
+            "reintentar."
+        )
+
+
+def _promote_outputs_with_rollback(
+    *, staging_dir: Path, output_dir: Path, final_names: Sequence[str],
+) -> None:
+    """D3 (Secciones 22-29 del microcierre): promoción como
+    **per-file atomic replacement con rollback transaccional a nivel de
+    proceso** — NO se afirma que el conjunto completo de archivos sea
+    filesystem-atómico (Sección 23); no es una transacción multiarchivo
+    nativa y no protege contra SIGKILL/corte de energía/corrupción de
+    filesystem (Sección 28), pero sí contra cualquier excepción capturable
+    durante el proceso.
+
+    Secuencia: backup verificado por hash MIENTRAS el canonical sigue
+    presente -> journal escrito -> ``os.replace()`` por archivo -> si algo
+    falla, rollback de todo lo ya reemplazado (restaurar backup y verificar
+    hash; eliminar archivos nuevos que no existían antes) -> journal
+    eliminado solo tras promoción y cleanup completos.
+    """
+
+    backup_dir = output_dir / f".backup-{uuid.uuid4().hex}"
+    backup_dir.mkdir()
+    journal_path = output_dir / f".promotion-journal-{uuid.uuid4().hex}.json"
+
+    def write_journal(entries: list[dict[str, Any]], status: str) -> None:
+        journal_path.write_text(
+            json.dumps({"status": status, "entries": entries}, indent=2, ensure_ascii=False), encoding="utf-8",
+        )
+
+    entries: list[dict[str, Any]] = []
+    try:
+        # 1) Backup CON el canonical todavía presente (Sección 25). Nunca
+        # usar os.replace(final, backup) aquí: eso dejaría el canonical
+        # ausente antes de empezar.
+        for name in final_names:
+            final_path = output_dir / name
+            existed_before = final_path.exists()
+            entry: dict[str, Any] = {
+                "name": name, "existed_before": existed_before,
+                "pre_sha256": None, "backup_path": None, "status": "pending",
+            }
+            if existed_before:
+                pre_sha256 = _full_sha256_file(final_path)
+                backup_path = backup_dir / name
+                shutil.copy2(final_path, backup_path)
+                backup_sha256 = _full_sha256_file(backup_path)
+                if backup_sha256 != pre_sha256:
+                    raise RuntimeError(f"el backup de {name} no coincide en hash con el canonical original")
+                entry["pre_sha256"] = pre_sha256
+                entry["backup_path"] = str(backup_path)
+            entries.append(entry)
+
+        # 2) Journal escrito ANTES de reemplazar ningún canonical (Sección 29).
+        write_journal(entries, "in_progress")
+
+        # 3) Reemplazo canonical: os.replace() por archivo (Sección 26).
+        for entry in entries:
+            name = entry["name"]
+            os.replace(staging_dir / name, output_dir / name)
+            entry["status"] = "replaced"
+            write_journal(entries, "in_progress")
+
+        write_journal(entries, "complete")
+    except Exception as exc:
+        # 4) Rollback (Sección 27): solo lo que YA fue reemplazado.
+        rollback_errors: list[str] = []
+        for entry in entries:
+            if entry["status"] != "replaced":
+                continue
+            name = entry["name"]
+            final_path = output_dir / name
+            if entry["existed_before"]:
+                shutil.copy2(entry["backup_path"], final_path)
+                restored_sha256 = _full_sha256_file(final_path)
+                if restored_sha256 != entry["pre_sha256"]:
+                    rollback_errors.append(
+                        f"{name}: hash restaurado {restored_sha256} != pre_sha256 {entry['pre_sha256']}"
+                    )
+            else:
+                if final_path.exists():
+                    final_path.unlink()
+        shutil.rmtree(backup_dir, ignore_errors=True)
+        journal_path.unlink(missing_ok=True)
+        if rollback_errors:
+            raise SystemExit(
+                "STOP CRÍTICO: la promoción falló Y el rollback no pudo verificar "
+                f"el hash restaurado de: {'; '.join(rollback_errors)}. Revisar manualmente "
+                f"analysis/loso/outputs/ antes de cualquier otra acción. Causa original: {exc}"
+            ) from exc
+        raise SystemExit(
+            f"STOP: falló la promoción de outputs ({exc}); se restauró el estado "
+            "anterior completo de todos los archivos gestionados (rollback verificado por hash)."
+        ) from exc
+    else:
+        shutil.rmtree(backup_dir, ignore_errors=True)
+        journal_path.unlink(missing_ok=True)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--finalize-qa", action="store_true",
+        help="Finaliza determinísticamente V/W/X en LOSO_STATIC_V1_QA.md ya promovido, "
+             "a partir de logs reales. No recalcula ningún output científico (Sección 38).",
+    )
+    parser.add_argument("--raw-integrity-log", type=Path, default=None,
+                         help="Log de 'sha256sum -c' sobre results/loso/ (requerido con --finalize-qa).")
+    parser.add_argument("--historical-integrity-log", type=Path, default=None,
+                         help="Log de 'sha256sum -c' sobre el repositorio histórico (requerido con --finalize-qa).")
+    parser.add_argument("--tests-log", type=Path, default=None,
+                         help="Log de 'python -m unittest discover -v' (requerido con --finalize-qa).")
+    return parser
+
+
+def run_analyzer() -> int:
+    """Camino principal (Secciones 9/17/41 del microcierre): load raw campaign
+    -> Gates A-Q -> compute staged candidates -> R/S/T -> Gate U (U1-U5) ->
+    candidate manifests/report/QA A-U -> validate staged set -> backup ->
+    per-file os.replace() con rollback -> cleanup. No hay promoción posible
+    antes de que U pase (Sección 17: "No promoción antes de U")."""
+
+    # D3/Sección 29: si quedó un journal de una corrida anterior interrumpida,
+    # STOP antes de tocar nada.
+    check_no_stale_promotion_journal()
 
     # closeout_analysis_source_git_sha se captura ANTES de crear cualquier
     # directorio de staging bajo OUTPUT_DIR, para no ensuciar "git status"
-    # con el propio directorio temporal de este proceso (Sección 31: el
+    # con el propio directorio temporal de este proceso (Sección 39: el
     # código de cierre debe estar commiteado ANTES de correr esto).
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from run_experiment import git_info
@@ -1497,19 +2033,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
 
-    # Provenance de la corrida ORIGINAL de análisis: se lee del bootstrap
-    # manifest actual (previo a esta corrida de cierre) ANTES de que este
-    # main() lo sobrescriba, para no perder ese dato histórico.
-    original_bootstrap_manifest = None
-    existing_bootstrap_path = OUTPUT_DIR / "loso_bootstrap_manifest.json"
-    if existing_bootstrap_path.exists():
-        original_bootstrap_manifest = json.loads(existing_bootstrap_path.read_text(encoding="utf-8"))
+    # D2: lineage estable — el original_analysis_source_git_sha NUNCA se
+    # deriva del bootstrap manifest actualmente en disco (mutable entre
+    # closeouts sucesivos). Se lee de una referencia versionada congelada
+    # desde el tag Git inmutable pre-closeout.
+    closeout_reference = load_closeout_reference()
+    original_bootstrap_manifest = load_original_bootstrap_manifest_from_tag(closeout_reference)
+    original_analysis_source_git_sha = closeout_reference["original_analysis_source_git_sha"]
 
     analysis_config = load_analysis_config()
     design, splits_df = load_design_and_splits()
     runs = discover_runs()
 
-    # CP2/Gates A-Q: auditoría fail-fast ANTES de calcular ningún output.
+    # Gates A-Q: auditoría fail-fast ANTES de calcular ningún output.
     gate_rows = run_closeout_audit(runs, design, splits_df)
 
     manifest = build_manifest(runs)
@@ -1519,7 +2055,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     contrasts = build_contrasts(predictions_long, analysis_config, bootstrap_state)
     convergence_summary = build_convergence_summary(runs)
 
-    # CP3: métricas secundarias, aditivas — no tocan auc_point/ci/seed_*.
+    # Métricas secundarias, aditivas — no tocan auc_point/ci/seed_*.
     secondary = build_secondary_metrics(metrics_by_run)
     metrics_summary = metrics_summary.merge(secondary, on=["held_out_site", "roi_set", "model"], how="left")
     if len(metrics_summary) != EXPECTED_METRICS_SUMMARY_ROWS:
@@ -1527,6 +2063,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"STOP: metrics_summary con secundarias tiene {len(metrics_summary)} filas; "
             f"se esperaban {EXPECTED_METRICS_SUMMARY_ROWS}."
         )
+
+    # D1/Gate U: regression gate OBLIGATORIO, ANTES de escribir nada a
+    # staging. Si cualquiera de U1-U5 falla, SystemExit aquí mismo — cero
+    # outputs se generan, cero promoción.
+    gate_u_result = run_regression_gate_u(
+        metrics_by_run=metrics_by_run, metrics_summary=metrics_summary, contrasts=contrasts,
+        convergence_summary=convergence_summary, closeout_reference=closeout_reference,
+    )
+    gate_rows = gate_rows + build_completeness_gate_rows(
+        predictions_long=predictions_long, metrics_summary=metrics_summary, contrasts=contrasts,
+        gate_u_result=gate_u_result,
+    )
 
     training_environment = runs[0]["config"].get("environment") if runs else None
     closeout_env = closeout_analysis_environment()
@@ -1551,6 +2099,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             predictions_long_path=staging_dir / "loso_predictions_long.csv",
             summary_path=staging_dir / "loso_metrics_summary.csv",
             closeout_analysis_source_git_sha=closeout_analysis_source_git_sha,
+            original_analysis_source_git_sha=original_analysis_source_git_sha,
         )
         bootstrap_manifest["analysis_source_git_sha"] = closeout_analysis_source_git_sha
         (staging_dir / "loso_bootstrap_manifest.json").write_text(
@@ -1561,9 +2110,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             manifest=manifest, metrics_summary=metrics_summary, contrasts=contrasts,
             convergence_summary=convergence_summary, design=design,
             training_environment=training_environment,
-            original_analysis_source_git_sha=(
-                original_bootstrap_manifest.get("analysis_source_git_sha") if original_bootstrap_manifest else None
-            ),
+            original_analysis_source_git_sha=original_analysis_source_git_sha,
             closeout_analysis_source_git_sha=closeout_analysis_source_git_sha,
             closeout_env=closeout_env,
         )
@@ -1581,45 +2128,68 @@ def main(argv: Sequence[str] | None = None) -> int:
         provenance_manifest = build_provenance_manifest(
             runs=runs, design=design, manifest=manifest,
             closeout_analysis_source_git_sha=closeout_analysis_source_git_sha,
+            original_analysis_source_git_sha=original_analysis_source_git_sha,
             original_bootstrap_manifest=original_bootstrap_manifest,
             output_dir_for_hashing=staging_dir,
         )
+        assert provenance_manifest["closeout_analysis_source_git_sha"] == closeout_analysis_source_git_sha
         (staging_dir / "loso_provenance_manifest.json").write_text(
             json.dumps(provenance_manifest, indent=2, ensure_ascii=False), encoding="utf-8"
         )
         provenance_file_sha256 = _full_sha256_file(staging_dir / "loso_provenance_manifest.json")
 
+        # D4: QA A-U con evidencia real; V/W/X quedan PENDING hasta --finalize-qa.
         qa_doc = build_qa_doc(gate_rows=gate_rows, provenance_manifest_file_sha256=provenance_file_sha256)
         (staging_dir / "LOSO_STATIC_V1_QA.md").write_text(qa_doc, encoding="utf-8")
 
-        # Promoción con backup temporal (Sección 50): si falla, se restaura el
-        # estado anterior completo y no se deja un conjunto parcial.
-        backups: dict[str, Path] = {}
-        try:
-            for name in FINAL_OUTPUT_NAMES:
-                final_path = OUTPUT_DIR / name
-                if final_path.exists():
-                    backup_path = staging_dir / f".backup-{name}"
-                    shutil.copy2(final_path, backup_path)
-                    backups[name] = backup_path
-            for name in FINAL_OUTPUT_NAMES:
-                final_path = OUTPUT_DIR / name
-                staged_path = staging_dir / name
-                if final_path.exists():
-                    final_path.unlink()
-                shutil.copy2(staged_path, final_path)
-        except Exception:
-            for name, backup_path in backups.items():
-                shutil.copy2(backup_path, OUTPUT_DIR / name)
-            raise SystemExit("STOP: falló la promoción de outputs; se restauró el estado anterior completo.")
+        for name in FINAL_OUTPUT_NAMES:
+            if not (staging_dir / name).exists():
+                raise SystemExit(f"STOP: {name} no se generó correctamente en staging antes de promover.")
+
+        # D3: promoción segura (backup verificado -> journal -> os.replace ->
+        # rollback transaccional a nivel de proceso si algo falla).
+        _promote_outputs_with_rollback(staging_dir=staging_dir, output_dir=OUTPUT_DIR, final_names=FINAL_OUTPUT_NAMES)
     finally:
         shutil.rmtree(staging_dir, ignore_errors=True)
 
     print(f"Analysis outputs escritos en {OUTPUT_DIR}")
+    print(f"training_source_git_sha={design.get('training_source_git_sha')}")
+    print(f"original_analysis_source_git_sha={original_analysis_source_git_sha}")
     print(f"closeout_analysis_source_git_sha={closeout_analysis_source_git_sha}")
+    print(f"Gate U: u1={gate_u_result['u1']} u2={gate_u_result['u2']} u3={gate_u_result['u3']} "
+          f"u4={gate_u_result['u4']} u5={gate_u_result['u5']}")
     for row in gate_rows:
         print(f"  Gate {row['gate']}: {row['status']} — {row['observed']}")
+    print(
+        "V/W/X quedan PENDING: correr sha256sum -c (raw+historical) y la suite "
+        "de tests, luego 'analyze_loso_static.py --finalize-qa "
+        "--raw-integrity-log <f> --historical-integrity-log <f> --tests-log <f>'."
+    )
     return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.finalize_qa:
+        missing = [
+            name for name, value in (
+                ("--raw-integrity-log", args.raw_integrity_log),
+                ("--historical-integrity-log", args.historical_integrity_log),
+                ("--tests-log", args.tests_log),
+            ) if value is None
+        ]
+        if missing:
+            raise SystemExit(f"STOP: --finalize-qa requiere {', '.join(missing)}.")
+        finalize_qa(
+            raw_integrity_log=args.raw_integrity_log,
+            historical_integrity_log=args.historical_integrity_log,
+            tests_log=args.tests_log,
+        )
+        return 0
+
+    return run_analyzer()
 
 
 if __name__ == "__main__":
