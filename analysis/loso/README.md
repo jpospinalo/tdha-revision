@@ -1,16 +1,18 @@
-# `analysis/loso/` — campaña `loso_static_v1` (implementada, 2026-08-07)
+# `analysis/loso/` — campaña `loso_static_v1` (implementada y auditada, 2026-08-08)
 
 Análisis leave-site-out (LOSO): evaluar la transferencia del clasificador
 entrenando en tres sitios y validando en el sitio excluido (rotando los
 cuatro), en vez de la validación cruzada interna por sitio usada en
-`results/runs/`. Implementado según
-`PLAN_FINAL_LOSO_STATIC_V1_IA_REVISADO.md`.
+`results/runs/`. El diseño completo y autocontenido está en
+`IMPLEMENTATION_SPEC.md` (dentro de este repositorio; no depende de ningún
+plan externo no versionado).
 
-**Estado: 48/48 corridas formales completas y auditadas.** Ver
-`outputs/LOSO_STATIC_V1_REPORT.md` para el reporte completo (diseño
-congelado, cohorte, entorno, AUC con 95% CI por las 16 condiciones, los 3
-contrastes preespecificados x 4 sitios, dispersión entre semillas y estado de
-QA).
+**Estado: 48/48 corridas formales completas; capa de análisis/auditoría/
+provenance cerrada.** Ver `outputs/LOSO_STATIC_V1_REPORT.md` (diseño,
+cohorte, entorno, AUC con 95% CI por las 16 condiciones, métricas
+secundarias, convergencia, los 3 contrastes preespecificados x 4 sitios,
+dispersión entre semillas) y `outputs/LOSO_STATIC_V1_QA.md` (tabla de
+auditoría Gates A-Q sobre las 48 corridas reales).
 
 **Esto NO decide si LOSO entra al cuerpo del paper o como material
 complementario.** Esa decisión se toma aparte, después de revisar
@@ -58,18 +60,36 @@ analysis/loso/                               estadística, manifests y reporte
                                              este directorio
 ```
 
+- `IMPLEMENTATION_SPEC.md`: especificación autocontenida del diseño que
+  realmente produjo las 48 corridas (no un diseño nuevo).
 - `config/loso_analysis_config.json`: especificación de análisis congelada
   ANTES de ver resultados reales (bootstrap 10,000 iteraciones PCG64 seed 42,
-  percentil 95% sin ajustar, metric-then-mean para BrainNetCNN).
+  percentil 95% sin ajustar, metric-then-mean para BrainNetCNN). **Congelada
+  retroactivamente: no se edita** ni siquiera durante el cierre de análisis.
 - `scripts/analyze_loso_static.py`: lee únicamente corridas formales ya
   almacenadas bajo `results/loso/<run_id>/`; no entrena, no selecciona
-  hiperparámetros, no ejecuta GPU, no modifica esos resultados.
-- `tests/test_loso_static.py`: 30 pruebas (T1-T30, más una de regresión T31)
-  contra fixtures sintéticas/toy — nunca contra `results/loso/` real.
+  hiperparámetros, no ejecuta GPU, no modifica esos resultados. Antes de
+  calcular cualquier output corre una auditoría fail-fast (Gates A-Q:
+  identidad de campaña, source SHA y environment de entrenamiento únicos,
+  fingerprint/membership de split, no-leakage, especificación científica,
+  ROI/arquitectura, esquema y rango de predicciones, reproducción
+  independiente de métricas, convergencia BrainNetCNN, configuración
+  logística, provenance de código/inputs, manejo correcto de feature
+  hashes) — si cualquier gate falla sobre las 48 corridas reales, se detiene
+  antes de escribir ningún archivo.
+- `tests/test_loso_static.py`: 30 pruebas históricas (T1-T30, más la de
+  regresión T31) contra fixtures sintéticas/toy — nunca contra
+  `results/loso/` real.
+- `tests/test_loso_analysis_audit.py`: 20 pruebas (A1-A20) de la auditoría de
+  cierre — ejercitan los Gates A-Q y las utilidades de provenance
+  mutando copias temporales de corridas reales (nunca `results/loso/` real).
 - `outputs/`: `loso_manifest.json`, `loso_predictions_long.csv` (5580 filas),
-  `loso_metrics_by_run.csv` (48), `loso_metrics_summary.csv` (16),
-  `loso_contrasts.csv` (12), `loso_bootstrap_manifest.json`,
-  `LOSO_STATIC_V1_REPORT.md`.
+  `loso_metrics_by_run.csv` (48), `loso_metrics_summary.csv` (16 — AUC
+  primario intocable + métricas secundarias aditivas), `loso_contrasts.csv`
+  (12), `loso_convergence_summary.csv` (8), `loso_bootstrap_manifest.json`,
+  `loso_provenance_manifest.json` (hashes de archivo completos vs.
+  semánticos vs. prefijos históricos de 16 caracteres, explícitamente
+  distinguidos), `LOSO_STATIC_V1_REPORT.md`, `LOSO_STATIC_V1_QA.md`.
 
 ### Prohibido dentro de `analysis/loso/`
 
