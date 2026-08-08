@@ -1449,8 +1449,16 @@ def assert_primary_outputs_unchanged(
     STOP. No promover."
     """
 
-    b = baseline.set_index(list(key_cols)).sort_index()
-    c = candidate.set_index(list(key_cols)).sort_index()
+    # NaN en una columna llave (p. ej. model_seed=NaN para logistic) rompe la
+    # igualdad de tuplas de índice aunque ambos lados tengan el mismo NaN;
+    # se reemplaza por un centinela solo para la comparación de llaves.
+    sentinel = "__NA_KEY_SENTINEL__"
+    b_keys = baseline[list(key_cols)].fillna(sentinel)
+    c_keys = candidate[list(key_cols)].fillna(sentinel)
+    b = baseline.copy(); b[list(key_cols)] = b_keys
+    c = candidate.copy(); c[list(key_cols)] = c_keys
+    b = b.set_index(list(key_cols)).sort_index()
+    c = c.set_index(list(key_cols)).sort_index()
     if list(b.index) != list(c.index):
         raise SystemExit(f"STOP: {label} — el conjunto de llaves difiere entre baseline y candidate.")
     for col in value_cols:
