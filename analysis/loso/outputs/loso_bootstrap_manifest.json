@@ -1,0 +1,13 @@
+{
+  "analysis_config_sha256": "dab77d70e91ffdc9",
+  "analysis_source_git_sha": "428cbc18f9b7e099d56bed91acd2fbc4f18ee6e8",
+  "numpy_version": "2.2.6",
+  "sklearn_version": "1.7.2",
+  "bootstrap_seed": 42,
+  "rng": "numpy_pcg64",
+  "iterations": 10000,
+  "percentile_method": "linear",
+  "subject_ordering": "subject_key_ascending",
+  "input_predictions_sha256": "fb84d519ca916b9e",
+  "output_summary_sha256": "8d1712eebdfe8ba4"
+}
