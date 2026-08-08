@@ -1,0 +1,19 @@
+{
+  "campaign_id": "loso_static_v1",
+  "site_order": ["NYU", "Peking", "NeuroIMAGE", "OHSU"],
+  "roi_order": [12, 116],
+  "models": ["brainnetcnn", "logreg"],
+  "brainnet_seeds": [42, 43, 44, 45, 46],
+  "primary_metric": "auc",
+  "brainnet_point_estimate": "mean_seed_specific_metric",
+  "brainnet_secondary_estimate": "mean_seed_specific_metric",
+  "classification_threshold": 0.5,
+  "bootstrap_iterations": 10000,
+  "bootstrap_seed": 42,
+  "bootstrap_rng": "numpy_pcg64",
+  "bootstrap_method": "paired_class_stratified_percentile",
+  "bootstrap_subject_order": "subject_key_ascending",
+  "bootstrap_seed_scope": "reset_per_site",
+  "ci_level": 0.95,
+  "ci_adjustment": "none_pointwise"
+}
