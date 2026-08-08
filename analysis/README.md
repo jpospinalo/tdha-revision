@@ -12,8 +12,13 @@ lee artefactos ya producidos por `src/run_experiment.py` y los analiza.
   congelado en `roi_comparison/analysis_plan.md` (versión 5.6). Ver
   `roi_comparison/README.md` para instrucciones de uso.
 
-- **`loso/`** — reservado para un futuro análisis leave-site-out. No está
-  implementado todavía; ver `loso/README.md`.
+- **`loso/`** — análisis leave-site-out. Campaña `loso_static_v1` (4 sitios
+  held-out x 2 ROI sets x {BrainNetCNN x 5 seeds, regresión logística} = 48
+  corridas formales, conectividad estática, sin harmonización ni ponderación
+  de clase/sitio) implementada y auditada el 2026-08-07. Ver `loso/README.md`
+  para el estado y `loso/outputs/LOSO_STATIC_V1_REPORT.md` para los
+  resultados. Todavía no forma parte del manuscrito — esa decisión se toma
+  aparte, después de la revisión científica de estos resultados.
 
 ## Alcance
 

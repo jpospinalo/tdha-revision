@@ -1,66 +1,87 @@
-# `analysis/loso/` (reservado, no implementado todavía)
+# `analysis/loso/` — campaña `loso_static_v1` (implementada, 2026-08-07)
 
-Este directorio está reservado para el análisis leave-site-out (LOSO):
-evaluar la transferencia del clasificador entrenando en unos sitios y
-validando en el sitio excluido, en vez de la validación cruzada interna por
-sitio usada en `results/runs/`.
+Análisis leave-site-out (LOSO): evaluar la transferencia del clasificador
+entrenando en tres sitios y validando en el sitio excluido (rotando los
+cuatro), en vez de la validación cruzada interna por sitio usada en
+`results/runs/`. Implementado según
+`PLAN_FINAL_LOSO_STATIC_V1_IA_REVISADO.md`.
 
-**Decisión del equipo (2026-08-07): LOSO se implementará.** Queda por decidir
-si entra al cuerpo del paper o como material complementario del envío —
-ninguna de las dos cosas está resuelta todavía. Hasta que esa decisión de
-alcance se cierre y arranque la implementación, este directorio sigue vacío:
-fija el contrato de dónde va ese trabajo, no ejecuta nada por sí mismo. Ver
-`docs/finalization/limitations_handoff.md` §1 (marcado parcialmente
-superseded por esta decisión) y `docs/Concepto_LOSO_armonizacion_multisitio.md`
-(histórico, no es la especificación de esta implementación).
+**Estado: 48/48 corridas formales completas y auditadas.** Ver
+`outputs/LOSO_STATIC_V1_REPORT.md` para el reporte completo (diseño
+congelado, cohorte, entorno, AUC con 95% CI por las 16 condiciones, los 3
+contrastes preespecificados x 4 sitios, dispersión entre semillas y estado de
+QA).
 
-No hay código ni resultados aquí todavía. Ninguna parte de
-`analysis/roi_comparison/` depende de este directorio ni asume que exista.
+**Esto NO decide si LOSO entra al cuerpo del paper o como material
+complementario.** Esa decisión se toma aparte, después de revisar
+científicamente estos resultados — no se ha tocado ningún artefacto del
+manuscrito (`README.md`, `docs/paper_reference_configuration.md`,
+`docs/paper_environment.md`, `docs/manuscrito_revisado/**`) para esta
+campaña.
 
-## Contrato (si una fase futura implementa LOSO)
+## Diseño (resumen; el detalle completo está en el plan y en
+`results/loso/_design/loso_static_v1_design.json`)
 
 ```text
-src/run_loso.py          entrenamiento (no existe todavía)
-        ↓
-results/loso/            corridas LOSO (no existe todavía)
-        ↓
-analysis/loso/            estadística, tablas, figuras y manifests derivados
-                          de esas corridas — este directorio
+4 sitios held-out (NYU, Peking, NeuroIMAGE, OHSU)
+x 2 ROI sets (12, 116)
+x {BrainNetCNN (5 seeds: 42-46), regresión logística L2 (determinista)}
+= 48 corridas formales
+
+Representación: estática únicamente (fisher_z=False, constant_policy="zero")
+Split: un único split fit/inner_val/test por sitio held-out, idéntico entre
+       ROI sets, seeds y modelo (StratifiedShuffleSplit test_size=0.15,
+       random_state=42, estratificado por sitio x diagnóstico)
+Sin harmonización, sin class_weight/site_weighting/sample_weight,
+sin ajuste de hiperparámetros
 ```
 
-- `src/`: entrenamiento. Un nuevo runner (`run_loso.py`), separado de
-  `run_experiment.py`, con su propio cargador multisitio y una partición
-  externa consciente del sitio (site-aware outer LOSO splitting, p. ej.
-  `LeaveOneGroupOut` — no existe hoy en el pipeline; el diseño concreto
-  de partición queda por cerrar, ver más abajo).
-- `results/loso/`: corridas LOSO, con la misma disciplina de `config.json`/
-  procedencia/hashes que `results/runs/`.
-- `analysis/loso/`: solo estadística derivada sobre esas corridas ya
-  almacenadas — igual que `analysis/roi_comparison/` respecto de
-  `results/runs/`.
+Caveat obligatorio: la configuración de BrainNetCNN se desarrolló/fijó
+históricamente usando NYU antes de la evaluación multisitio. La rotación con
+NYU held-out es una "development-site held-out re-evaluation", no una
+evaluación en un sitio totalmente ajeno al desarrollo del modelo.
+
+## Contrato (vigente)
+
+```text
+src/run_loso.py, src/run_loso_campaign.py   entrenamiento (aislado de
+                                             run_experiment.py, sin
+                                             modificarlo)
+        ↓
+results/loso/<run_id>/                      48 corridas formales, misma
+                                             disciplina de config.json/
+                                             procedencia/hashes que
+                                             results/runs/
+        ↓
+analysis/loso/                               estadística, manifests y reporte
+                                             derivados de esas corridas —
+                                             este directorio
+```
+
+- `config/loso_analysis_config.json`: especificación de análisis congelada
+  ANTES de ver resultados reales (bootstrap 10,000 iteraciones PCG64 seed 42,
+  percentil 95% sin ajustar, metric-then-mean para BrainNetCNN).
+- `scripts/analyze_loso_static.py`: lee únicamente corridas formales ya
+  almacenadas bajo `results/loso/<run_id>/`; no entrena, no selecciona
+  hiperparámetros, no ejecuta GPU, no modifica esos resultados.
+- `tests/test_loso_static.py`: 30 pruebas (T1-T30, más una de regresión T31)
+  contra fixtures sintéticas/toy — nunca contra `results/loso/` real.
+- `outputs/`: `loso_manifest.json`, `loso_predictions_long.csv` (5580 filas),
+  `loso_metrics_by_run.csv` (48), `loso_metrics_summary.csv` (16),
+  `loso_contrasts.csv` (12), `loso_bootstrap_manifest.json`,
+  `LOSO_STATIC_V1_REPORT.md`.
 
 ### Prohibido dentro de `analysis/loso/`
 
 - entrenar modelos;
 - seleccionar hiperparámetros;
 - ejecutar GPU;
-- modificar resultados;
+- modificar `results/loso/`;
 - duplicar la lógica del runner.
 
-### No crear todavía
+## Extensiones futuras (fuera de alcance de `loso_static_v1`)
 
-```text
-src/run_loso.py
-results/loso/
-analysis/loso/config/
-analysis/loso/scripts/
-analysis/loso/outputs/
-```
-
-La decisión de implementar LOSO ya está tomada, pero eso no autoriza por sí
-solo a crear estos archivos: falta resolver el alcance (paper vs.
-suplemento) y el diseño concreto (cargador multisitio, partición externa
-consciente del sitio — site-aware outer LOSO splitting, p. ej.
-`LeaveOneGroupOut` — sin cerrar aún cuál mecanismo exacto, tratamiento de
-BrainNetCNN windowed —ver la limitación de capacidad variable entre sitios
-en `docs/finalization/limitations_handoff.md` §2— antes de escribir código.
+Windowed BrainNetCNN LOSO, DeepSets/LSTM/GRU LOSO, ROI 18/39, harmonización,
+domain adaptation, site balancing, sensibilidad a class weighting,
+búsqueda de hiperparámetros — cada una requeriría su propio `campaign_id` y
+su propio plan, no una extensión silenciosa de este.
