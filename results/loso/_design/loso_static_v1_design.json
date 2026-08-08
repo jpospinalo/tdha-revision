@@ -1,0 +1,124 @@
+{
+  "campaign_id": "loso_static_v1",
+  "training_source_git_sha": "428cbc18f9b7e099d56bed91acd2fbc4f18ee6e8",
+  "analysis_source_git_sha": "428cbc18f9b7e099d56bed91acd2fbc4f18ee6e8",
+  "sites": [
+    "NYU",
+    "Peking",
+    "NeuroIMAGE",
+    "OHSU"
+  ],
+  "site_order": [
+    "NYU",
+    "Peking",
+    "NeuroIMAGE",
+    "OHSU"
+  ],
+  "roi_sets": [
+    "12",
+    "116"
+  ],
+  "models": [
+    "brainnetcnn",
+    "logreg"
+  ],
+  "brainnet_seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "split_seed": 42,
+  "inner_val_frac": 0.15,
+  "class_weight": false,
+  "site_weighting": false,
+  "sample_weight": false,
+  "harmonization": "none",
+  "representation": "static",
+  "fisher_z": false,
+  "constant_policy": "zero",
+  "participant_count": 465,
+  "site_class_counts": {
+    "NYU": {
+      "n": 177,
+      "control": 87,
+      "adhd": 90
+    },
+    "Peking": {
+      "n": 183,
+      "control": 109,
+      "adhd": 74
+    },
+    "NeuroIMAGE": {
+      "n": 39,
+      "control": 22,
+      "adhd": 17
+    },
+    "OHSU": {
+      "n": 66,
+      "control": 38,
+      "adhd": 28
+    }
+  },
+  "rotation_sizes": {
+    "NYU": {
+      "fit": 244,
+      "inner_val": 44,
+      "test": 177
+    },
+    "Peking": {
+      "fit": 239,
+      "inner_val": 43,
+      "test": 183
+    },
+    "NeuroIMAGE": {
+      "fit": 362,
+      "inner_val": 64,
+      "test": 39
+    },
+    "OHSU": {
+      "fit": 339,
+      "inner_val": 60,
+      "test": 66
+    }
+  },
+  "rotation_split_fingerprints": {
+    "NYU": "a669f6f562006b05",
+    "Peking": "49a5d76a6eef47ed",
+    "NeuroIMAGE": "778712835bf7a921",
+    "OHSU": "c563e4b93dd29ebc"
+  },
+  "split_manifest_path": "results/loso/_design/loso_static_v1_splits.csv",
+  "split_manifest_file_sha256": "700a32d3797264da",
+  "input_bold_sha256": {
+    "NYU": "1a8fcd6f312913f9",
+    "Peking": "191b53a860b3a750",
+    "NeuroIMAGE": "02fe4c8d3cb4ad1b",
+    "OHSU": "43e6f02920d66bd8"
+  },
+  "roi_sets_json_sha256": "eb7675377cec20c2",
+  "aal116_csv_sha256": "4125f6a131e63f93",
+  "roi_indices_sha256": {
+    "12": "640bfb198d6edcdd",
+    "116": "b761f1f690ecb0af"
+  },
+  "feature_matrix_sha256": {
+    "NYU_12": "de2d20a056b63755",
+    "Peking_12": "fd29f6b3db7238dc",
+    "NeuroIMAGE_12": "3d08ed8357f1f028",
+    "OHSU_12": "fa7d89c5d7adc483",
+    "NYU_116": "692c7f8304eca51c",
+    "Peking_116": "a7b5c7831cf033db",
+    "NeuroIMAGE_116": "d1dad93f827c5437",
+    "OHSU_116": "aad10ce336211441"
+  },
+  "training_environment_signature": "0951e380a4901bc2",
+  "bootstrap_configuration": {
+    "iterations": 10000,
+    "seed": 42,
+    "rng": "numpy_pcg64",
+    "method": "paired_class_stratified_percentile"
+  },
+  "analysis_configuration_sha256": "006f28a73e0f85ff"
+}

@@ -1,0 +1,2 @@
+loss,accuracy,balanced_accuracy,precision,recall,specificity,f1,f1_macro,auc,true_positives,true_negatives,false_positives,false_negatives
+0.2704400695473558,0.9790794979079498,0.98,0.957983193277311,1.0,0.96,0.9785407725321889,0.9790663046334414,0.9984561403508772,114,120,5,0
