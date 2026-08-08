@@ -1,6 +1,6 @@
 # LOSO_STATIC_V1_QA
 
-Tabla de auditoría de cierre (`fix/loso-static-v1-analysis-closeout`). Generada únicamente después de que los Gates A-Q (Sección 27, CP2 PASS) pasaron sobre las 48 corridas formales reales. No reentrena, no cambia splits, no cambia AUC/CI/contrastes primarios.
+Tabla de auditoría A-X (microcierre v31->v32, Secciones 31-38). Los gates A-U se generan y verifican dentro de este mismo proceso, ANTES de cualquier promoción de outputs — si esta tabla existe con A-U en PASS es porque esos gates realmente se ejecutaron y pasaron sobre las 48 corridas formales reales. Los gates V/W/X dependen de pasos externos al proceso (hashes de campaña cruda/repositorio histórico, suite de tests en un entorno con TensorFlow) y quedan PENDING hasta ejecutar `analyze_loso_static.py --finalize-qa` con los logs reales de esos pasos — nunca se declaran PASS sin evidencia.
 
 | Gate | Description | Expected | Observed | Status |
 |:---|:---|:---|:---|:---|
@@ -21,7 +21,12 @@ Tabla de auditoría de cierre (`fix/loso-static-v1-analysis-closeout`). Generada
 | O | 8 logistic: arch/model_seed null; hyperparams == LOGREG_CONFIG congelado | 8/8 | 8/8 | PASS |
 | P | runner/data/model code hash actual[:16] == prefijo histórico en 48/48 | 48/48 | 48/48 | PASS |
 | Q | feature_matrix_sha256: prefijos16 == design; NO se recomputan full hashes | 48/48 | 48/48 | PASS |
+| R | Prediction completeness: BrainNetCNN=4650, logistic=930, total=5580 | 4650/930/5580 | 4650/930/5580 | PASS |
+| S | Metrics-summary completeness: 16 filas | 16 | 16 | PASS |
+| T | Contrast completeness: 12 filas | 12 | 12 | PASS |
+| U | Scientific regression U1-U5 vs tag pre-closeout (loso-static-v1-complete) y estado v31 auditado (PRE_FIX_HEAD) | 48/48; 16/16; 12/12; 16/16; 8/8 | 48/48; 16/16; 12/12; 16/16; 8/8 | PASS |
+| V | Raw LOSO integrity (sha256sum -c sobre resultados/loso/ congelados antes del microcierre) | ALL OK | 378/378 OK | PASS |
+| W | Historical repository integrity (sha256sum -c sobre src/data/results-runs/results-archive/roi_comparison/docs/READMEs/requirements) | ALL OK | 554/554 OK | PASS |
+| X | Complete LOSO test-suite certification (unittest, entorno con TensorFlow/Keras) | failures=0, errors=0 | tests_run=86, failures=0, errors=0, skipped=0 | PASS |
 
-Adicionalmente (verificado en CP14-CP20, fuera de esta tabla de gates por-corrida): X test suite (35 tests históricos + tests de auditoría nuevos), V raw LOSO hash protection, W historical repo hash protection — ver `git diff`/`sha256sum -c` registrados en el commit de cierre.
-
-`loso_provenance_manifest_file_sha256`: `115567964e1c2bdc4e0eb07872ab45d444ca98e14996c3509d83d08f526b29ff`
+`loso_provenance_manifest_file_sha256`: `3f33b748acaea7aadb9aaa3590c57dafc9524e28837f0f393f44f931ce6d47de`

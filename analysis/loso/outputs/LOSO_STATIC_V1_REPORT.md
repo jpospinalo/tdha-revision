@@ -45,12 +45,12 @@ Estratificación inner: sitio x diagnóstico. `split_seed = 42`. Mismo split ent
 
 ### Original analysis
 
-- `original_analysis_source_git_sha`: `01517e1719d68a16305a9cbbc6de4e4f61476339`
+- `original_analysis_source_git_sha`: `428cbc18f9b7e099d56bed91acd2fbc4f18ee6e8`
 - Solo se registraron `numpy`/`scikit-learn` de este environment original (ver `loso_bootstrap_manifest.json` -> `original_analysis_environment_partial` en `loso_provenance_manifest.json`); no se inventan las demás versiones.
 
 ### Closeout analysis
 
-- `closeout_analysis_source_git_sha`: `0b8230f89901265e1790f5a33957f9df2cf89833`
+- `closeout_analysis_source_git_sha`: `be674c5373f4cf5b00105076c21ecaa4aa6e5998`
 - Closeout analysis environment:
   - python: 3.10.12
   - platform: Linux-6.8.0-124-generic-aarch64-with-glibc2.35

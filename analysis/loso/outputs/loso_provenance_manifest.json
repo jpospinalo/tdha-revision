@@ -1,8 +1,8 @@
 {
   "campaign_id": "loso_static_v1",
   "training_source_git_sha": "428cbc18f9b7e099d56bed91acd2fbc4f18ee6e8",
-  "original_analysis_source_git_sha": "01517e1719d68a16305a9cbbc6de4e4f61476339",
-  "closeout_analysis_source_git_sha": "0b8230f89901265e1790f5a33957f9df2cf89833",
+  "original_analysis_source_git_sha": "428cbc18f9b7e099d56bed91acd2fbc4f18ee6e8",
+  "closeout_analysis_source_git_sha": "be674c5373f4cf5b00105076c21ecaa4aa6e5998",
   "formal_run_count": 48,
   "brainnet_run_count": 40,
   "logistic_run_count": 8,
@@ -141,11 +141,14 @@
       "historical_prefix16": "cc31f7a7349e4339"
     },
     "analyze_loso_static.py": {
-      "full_sha256": "8cdfb12f547c3c84fe37379ae51e017f89fe0f305710daf94e90a53421be167d"
+      "full_sha256": "d51fa692f7004d9dd2db880bf0946a95e0bea6e4b54cc6d8a92f5007e7adc5b8"
     },
     "loso_test_files": {
       "test_loso_analysis_audit.py": {
-        "full_sha256": "51e025d432defbdccd618a14542086e6ca4ddd53c39913bc9913884c91de4f66"
+        "full_sha256": "fc1dc6d35068fb84013b0249f2e7e75c64add27053b04e5284186bce932112c1"
+      },
+      "test_loso_microcierre.py": {
+        "full_sha256": "88966e38c23941eb1c34acc0012668c6c832ede909a91c970a455f4e98785512"
       },
       "test_loso_static.py": {
         "full_sha256": "66743ad77bde5955b11590c76d76b9e029aecba2e4603b30a070918384ef5ed2"
@@ -587,8 +590,8 @@
     }
   ],
   "analysis_outputs": {
-    "LOSO_STATIC_V1_REPORT.md": "c8fd68cf17b854c4d4db479d080554b54e0d20111a2dcbb5fbc1b0f833944a1b",
-    "loso_bootstrap_manifest.json": "dccebb8b8ed11ec449968196805880e489a5fc12c18ea3ec71721f60aa8421ec",
+    "LOSO_STATIC_V1_REPORT.md": "394fcce99443ee9455f3a7b67eb73ccf19fc5f067512ab9e2e6297fdd36e8a20",
+    "loso_bootstrap_manifest.json": "ec15e6b3ebeb9dfa63728a971316942025e81d1ff2a666b68af89b55d3036daa",
     "loso_contrasts.csv": "490b41412651c1ec0fcf040be1d387045ec6e61fe724b71fe9ff4d02f2609f09",
     "loso_convergence_summary.csv": "092a06ac404ec3e4eb4c983c2690da2e128a6e5c2a9d92ff2b1c336e34923846",
     "loso_manifest.json": "07d3f8482306785e2e7bbf82e0406dafbf16ce9e48330d7ab78f5fbecfdd6d86",
