@@ -1,0 +1,5 @@
+held_out_site,held_out_n,held_out_control_n,held_out_adhd_n,source_sites,fit_n,inner_val_n,participant_characteristics_cross_reference
+NYU,177,87,90,"Peking, NeuroIMAGE, OHSU",244,44,NOT AVAILABLE IN FROZEN SCOPE
+Peking,183,109,74,"NYU, NeuroIMAGE, OHSU",239,43,NOT AVAILABLE IN FROZEN SCOPE
+NeuroIMAGE,39,22,17,"NYU, Peking, OHSU",362,64,NOT AVAILABLE IN FROZEN SCOPE
+OHSU,66,38,28,"NYU, Peking, NeuroIMAGE",339,60,NOT AVAILABLE IN FROZEN SCOPE

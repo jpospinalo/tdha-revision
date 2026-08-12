@@ -32,3 +32,13 @@ raw_data/
 # (huérfanos si una corrida se interrumpe a mitad de la promoción final;
 # nunca deberían contener una salida final, ver README del módulo)
 analysis/roi_comparison/outputs/.staging-*/
+
+# Node.js (usado solo para generar el Supplement LOSO vía el paquete `docx`;
+# reinstalable con `npm install` desde package.json/package-lock.json, nunca
+# se versiona el árbol instalado)
+node_modules/
+
+# Copia de resguardo local de la depuración final del repositorio (2026-08):
+# versiones intermedias del manuscrito, carpetas de trabajo y rondas de plan
+# superadas. Vive en disco por seguridad, nunca se sube al repositorio.
+_respaldo_pre_depuracion_no_versionado/

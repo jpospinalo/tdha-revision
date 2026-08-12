@@ -1,0 +1,35 @@
+claim_id,section,claim,canonical_source,source_rows_or_keys,caveat,manuscript_location,QA_status
+M01,Methods,"LOSO = leave-one-site-out, four rotations",results/loso/_design/loso_static_v1_design.json,site_order (4 sites),,clean para 37,PASS
+M02,Methods,4 rotations across the four observed sites,loso_static_v1_design.json,rotation_sizes (4 keys),boundary: four observed sites only,clean para 37,PASS
+M03,Methods,whole site excluded from LOSO-stage operations,src/run_loso.py build_rotation_split() + _validate_rotation_split(),lines 313-373,,clean para 37,PASS
+M04,Methods,source-only FIT/inner split,src/run_loso.py build_rotation_split(),StratifiedShuffleSplit on pool_idx (3 source sites),,clean para 37,PASS
+M05,Methods,"static FC, 12/116 ROI only",loso_static_v1_design.json,"representation='static'; roi_sets=['12','116']",,clean para 37,PASS
+M06,Methods,"66 / 6,670 edges upper-triangular",EXPECTED_FEATURES in src/run_loso.py,"{'12':66,'116':6670}; 12*11/2=66, 116*115/2=6670",,clean para 37,PASS
+M07,Methods,fisher_z = false,loso_static_v1_design.json,fisher_z: false,,clean para 37,PASS
+M08,Methods,no post hoc harmonization,loso_static_v1_design.json,harmonization: 'none',"describes procedure, not absence of site effects (D40)",clean para 37,PASS
+M09,Methods,no class / site / sample weighting,loso_static_v1_design.json,class_weight/site_weighting/sample_weight: false,,clean para 37,PASS
+M10,Methods,"BNN seeds 42-46, five runs per condition",loso_static_v1_design.json,"brainnet_seeds: [42,43,44,45,46]",,clean para 37,PASS
+M11,Methods,deterministic LOSO logistic comparator,src/run_loso.py LOGREG_CONFIG,"penalty=l2, C=1.0, solver=lbfgs, max_iter=2000","single deterministic fit, FIT-only",clean para 37,PASS
+M12,Methods,StandardScaler fit only on FIT,src/run_loso.py,scaler = StandardScaler().fit(X_fit),,clean para 37,PASS
+M13,Methods,NYU historical exposure caveat,clean para 26 (unedited) + results/README.md,NYU/12 ROI/windowed dev history,stated once in Methods (para 37) + Table 6 caption,clean para 37 + Table 6 caption,PASS
+M14,Methods,L2=0.05 / inter_dropout=0.6 retained over tested 0.01/0.3,results/README.md Historial NYU 12 ROIs,Que se probo table,"limited to these 2 hyperparameters, not all",clean para 37,PASS
+M15,Methods,static LOSO applied without retuning; Table 3 intro/caption scope aligned,clean para 27-28 (edited),Table 3 replacement strings verified byte-exact vs v9_9,no identical-full-architecture implication (D36),"clean para 27-28, 37",PASS
+M16,Methods,"site-specific AUC estimand (held-out site, trained on other three)",analysis/loso/scripts/analyze_loso_static.py condition_point_estimate(),,,clean para 43,PASS
+M17,Methods,"bootstrap conditionality (fixed source-site composition, frozen predictions)",analyze_loso_static.py compute_site_bootstrap(),,no retraining / alternative partitions,clean para 43,PASS
+M18,Methods,per-site seed reset and within-site resample reuse (pairing),analysis/loso/config/loso_analysis_config.json,bootstrap_seed_scope: reset_per_site,mandatory pairing sentence present verbatim,clean para 43,PASS
+M19,Methods,transportability limited to four observed sites,D33 / plan sec 2.2,,no future-cohort / broad generalizability claim,"clean para 37, 43, 76",PASS
+M20,Methods,not independent future-cohort testing,D33,,,clean para 37,PASS
+M21,Methods,harmonization statement does not deny site effects,D40,,,clean para 37,PASS
+R01,Results,range 44.4-63.9%,analysis/loso/outputs/loso_metrics_summary.csv,auc_point min/max,,clean para 76,PASS
+R02,Results,14/16 pointwise CI include 0.50,loso_metrics_summary.csv,"auc_ci_low/high vs 0.5, raw scale",,clean para 76,PASS
+R03,Results,exceptions NYU-BNN12 / OHSU-BNN12,loso_metrics_summary.csv,"rows held_out_site in {NYU,OHSU}, roi_set=12, model=brainnetcnn",,clean para 76,PASS
+R04,Results,"descriptive, not 16 hypothesis tests",D12/D37,,,clean para 76,PASS
+R05,Results,BNN116-12 negative at 4/4 sites,analysis/loso/outputs/loso_contrasts.csv,"contrast=dimensionality, delta_point<0 all 4",,clean para 78,PASS
+R06,Results,all 4 dimensionality CI include zero,loso_contrasts.csv,delta_ci_low<=0<=delta_ci_high,,clean para 78,PASS
+R07,Results,no dimensionality-specific retuning comparison (D36),D36,,does not compare separately optimized models,clean para 78,PASS
+R08,Results,model-family direction varies,loso_contrasts.csv,"contrast in {model_family_at_12,model_family_at_116}, delta_point signs mixed",,clean para 79,PASS
+R09,Results,all 8 model-family CI include zero,loso_contrasts.csv,"8 rows, delta_ci_low<=0<=delta_ci_high",,clean para 79,PASS
+R10,Results,no equivalence / noninferiority claim,D15,,,clean para 78-79,PASS
+R11,Results,no pooled estimate across sites,D7/D11,,stated explicitly in Table 6 caption,Table 6 caption,PASS
+R12,Results,no direct within-site<->LOSO change computed,D8,,estimand + representation + Peking class-weight differences,clean para 80,PASS
+R13,Results,conclusions limited to observed sites,D33,,,"clean para 76, 78-80",PASS

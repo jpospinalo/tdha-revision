@@ -55,10 +55,22 @@ Antes de proponer una nueva corrida, consulte el [registro breve de experimentac
 │   └── kerasmodels/          registro de arquitecturas
 ├── results/runs/             subcarpeta por ROI_SET (12/18/39/116), una carpeta por
 │                              corrida dentro de cada una
+├── results/archive/          corridas científicamente válidas pero ya no activas
+│                              (ver results/archive/README.md)
 └── docs/                     arquitectura, metodología, validación, límites y eficiencia
-                               del pipeline actual; además, auditoría histórica de un
+                               del pipeline actual; docs/manuscrito_revisado/ contiene el
+                               manuscrito vigente (versión "R8", correcciones LOSO/estilo
+                               ya integradas); además, auditoría histórica de un
                                manuscrito anterior (docs/auditoria-metricas.md)
 ```
+
+El manuscrito y su documentación de cierre viven en `docs/manuscrito_revisado/`. En una
+depuración del repositorio (2026-08, tag `pre-depuracion-final` marca el estado justo
+anterior) se retiraron las versiones intermedias de revisión del manuscrito (R1–R7 y la
+versión anterior a la integración LOSO) y varias rondas de plan ya superadas: eran
+borradores de trabajo que nunca se subieron al control de versiones, así que no quedan
+en el historial de git; quien las necesite debe pedirlas a quien ejecutó la depuración,
+que conserva una copia local fuera del repositorio.
 
 ## Por qué se versionan las señales y no los tensores
 

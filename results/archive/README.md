@@ -40,6 +40,22 @@ git — hacerlo habría revertido una decisión que el propio equipo ya tomó y 
 commit explícito. Esta carpeta de archivo contiene únicamente las dos corridas que sí
 existían físicamente en `results/runs/39` al momento de archivar.
 
+## Corridas archivadas — sensibilidad de arquitectura, NYU / 12 ROIs (depuración de repositorio, 2026-08-11)
+
+Cinco corridas del lote de sensibilidad de arquitectura (GRU/LSTM/DeepSets/BrainNetCNN, semilla 42, NYU, 12 ROIs). Se movieron aquí tras una auditoría cruzada exhaustiva contra todos los manifiestos de `analysis/roi_comparison/`, `analysis/loso/` y toda la documentación de `docs/`: son las únicas 5 de un total de 111 directorios de corrida en todo el repositorio (62 en `results/runs` + 49 en `results/loso`) sin ninguna cita externa — no aparecen en `run_manifest.csv`, `baseline_manifest.csv`, `algorithm_comparison_deepsets_audit.csv`, `figure4_v6_audit.csv` ni en `docs/paper_reference_configuration.md`.
+
+Su equivalente en Peking (mismo lote de sensibilidad de arquitectura) sí quedó documentado en `algorithm_comparison_deepsets_audit.csv` y en `docs/paper_reference_configuration.md` como parte de la cronología del bug de `class_weight`; el de NYU nunca se incorporó a ninguna tabla del manuscrito ni a ningún manifiesto formal. No están rotas ni son inválidas — simplemente no llegaron a citarse en ningún resultado publicado.
+
+| run_id | Modelo | Ventana | Semilla |
+|---|---|---|---|
+| `NYU_rois12_static_lstm_reviewer_sensitivity_6686b406` | LSTM | estática | 42 |
+| `NYU_rois12_w30s6_brainnetcnn_reviewer_sensitivity_642e1ea6` | BrainNetCNN | 30 TR / 60 s, paso 6 TR | 42 |
+| `NYU_rois12_w30s6_gru_reviewer_sensitivity_945b2b57` | GRU | 30 TR / 60 s, paso 6 TR | 42 |
+| `NYU_rois12_w60s6_deepsets_reviewer_sensitivity_c1063217` | DeepSets | 60 TR / 120 s, paso 6 TR | 42 |
+| `NYU_rois12_w60s6_gru_reviewer_sensitivity_0fa455ae` | GRU | 60 TR / 120 s, paso 6 TR | 42 |
+
+Movidas con `git mv` desde `results/runs/12/`; sus siete artefactos y hashes son idénticos a como estaban antes de moverse (verificado SHA-256 antes/después).
+
 ## Corrida histórica Peking–18 fuera de esta versión
 
 `Peking_rois18_w60s6_brainnetcnn_control_baseline_v13_b8e8a44d` (ablación con

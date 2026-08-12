@@ -1,8 +1,8 @@
 # Plan para responder los comentarios de los revisores
 
-**Versión:** 3.4 — **definitiva y congelada**
-**Fecha:** 30 de julio de 2026; enmienda del 1 de agosto de 2026; enmienda del 3 de agosto de 2026
-**Estado:** aprobado por el equipo. Campaña de diez corridas aprobada. Documento cerrado tras incorporar las tres correcciones finales de redacción de la v3.2, una enmienda puntual por instrucción de la revista, y la activación de la contingencia de baseline lineal prevista en §9.1.
+**Versión:** 3.6 — **definitiva y congelada**
+**Fecha:** 30 de julio de 2026; enmienda del 1 de agosto de 2026; enmienda del 3 de agosto de 2026; enmienda del 9 de agosto de 2026
+**Estado:** aprobado por el equipo. Campaña de diez corridas aprobada. Documento cerrado tras incorporar las tres correcciones finales de redacción de la v3.2, una enmienda puntual por instrucción de la revista, la activación de la contingencia de baseline lineal prevista en §9.1, y la reconciliación de gobernanza del 9 de agosto de 2026 con la integración de la campaña `loso_static_v1` en Methods y Results (enmienda v3.6; no existió una versión v3.5, y se documenta aquí ese salto para que no se asuma una versión intermedia perdida).
 
 Este es el **único documento de planificación vigente** para la respuesta a los revisores. Las versiones previas (v3.0) y el registro intermedio de la deliberación (evaluación de la v3.1) quedaron retiradas del repositorio una vez incorporadas aquí; el resumen de qué se corrigió en el cierre está en la nota de arriba.
 
@@ -12,9 +12,18 @@ Este es el **único documento de planificación vigente** para la respuesta a lo
 
 **Enmienda incorporada el 3 de agosto de 2026 (v3.4):** se activa la contingencia prevista en §9.1 para el baseline lineal. La infraestructura de partición (`build_split_plan`, `split_fingerprint`) y de inferencia bootstrap (`analysis/roi_comparison/`) ya existe y se reutiliza sin cambios, de modo que el costo señalado en la nota original de §9.1 —«integración de artefactos, pruebas y una versión nueva del pipeline»— ya no aplica en la magnitud descrita allí. Se añaden **dieciséis** corridas: regresión logística con penalización L2 fija (`C=1.0`, sin búsqueda de hiperparámetro), conectividad estática, cuatro sitios, **los cuatro grupos de ROIs (12, 18, 39, 116)**. Estandarización ajustada exclusivamente con el subconjunto `fit` de cada pliegue. Mismas particiones, semilla y `class_weight` por sitio que su comparador BrainNetCNN pareado, verificado por igualdad de `split_fingerprint`, `bold_hash` y `roi_indices_hash` antes de aceptar cualquier resultado.
 
-El comparador difiere por grupo de ROIs y debe declararse: para roi_set=12 existe una corrida BrainNetCNN `static` (las cuatro de §8.1), así que el contraste es de un solo factor —misma representación, cambia solo la arquitectura—. Para 18, 39 y 116 no existe corrida `static` en el repositorio y crearla reabriría la campaña de diez corridas ya cerrada; el comparador es entonces la corrida `ordered` ya usada como referencia primaria en la Tabla 6 (localizada vía `run_manifest.csv`), lo que introduce la misma confusión representación/arquitectura que el manuscrito ya declara para su propia dimensión «signal representation» (§2.6). Cada corrida registra en su `config.json` cuál de los dos comparadores usó (`comparator_representation`) y si hay confusión declarada (`representation_confound`).
+El comparador difiere por grupo de ROIs y debe declararse: para roi_set=12 existe una corrida BrainNetCNN `static` (las cuatro de §8.1), así que el contraste es de un solo factor —misma representación, cambia solo la arquitectura—. Para 18, 39 y 116 no existe corrida `static` en el repositorio y crearla reabriría la campaña de diez corridas ya cerrada; el comparador es entonces la corrida `ordered` ya usada como referencia primaria del comparador de paneles (fila localizada vía `run_manifest.csv`; ya no se llama «Tabla 6» en este documento, ver enmienda v3.6), lo que introduce la misma confusión representación/arquitectura que el manuscrito ya declara para su propia dimensión «signal representation» (§2.6). Cada corrida registra en su `config.json` cuál de los dos comparadores usó (`comparator_representation`) y si hay confusión declarada (`representation_confound`).
 
 Se reporta como quinta dimensión de sensibilidad (§2.6 del manuscrito), con el mismo procedimiento bootstrap pareado a 2.000 remuestreos que las demás dimensiones. El resultado se declara exploratorio —decidido después de conocer el resto de la campaña de diez corridas— y se reporta en cualquier dirección. Detalle de implementación en `docs/Guia_implementacion_baseline_ML.md`. Ver §9.1 y §8.4 para el texto actualizado de esta sección.
+
+**Enmienda incorporada el 9 de agosto de 2026 (v3.6).** Esta enmienda concilia este plan con una campaña científica independiente y ya congelada, `loso_static_v1` (leave-one-site-out, cuatro sitios, representación estática, 12 y 116 ROIs, tag `loso-static-v1-complete-v3`), que se integra en el manuscrito en una fase separada (`docs/manuscrito_revisado/loso_integration_v3_2_1/`) y que **no reabre, no modifica y no depende de** la campaña de diez corridas de este documento (§8) ni de su contingencia de baseline lineal (§9.1). Son dos campañas distintas, con estimandos distintos:
+
+- La campaña de este documento (§2–§13) evalúa desempeño **within-site** mediante validación cruzada repetida y estratificada dentro de cada uno de los cuatro sitios.
+- `loso_static_v1` evalúa desempeño **site-held-out**: para cada uno de los cuatro sitios observados, AUC en ese sitio completamente retenido, con el procedimiento congelado entrenado en los otros tres.
+
+Estos dos estimandos no son intercambiables, no se combinan numéricamente entre sí, y esta enmienda no autoriza calcular una diferencia within-site−LOSO. LOSO se describe siempre como evaluación site-held-out de transportability **a través de los cuatro sitios observados** — nunca como validación externa confirmatoria, testing en una cohorte futura independiente, ni prueba de generalización o utilidad clínica. El caveat histórico de NYU (§4.1, §4.2 de este documento) aplica también a LOSO: NYU tuvo exposición histórica durante el desarrollo de la configuración de BrainNetCNN, por lo que su resultado LOSO tampoco es development-independent. TRIPOD-Cluster se usa únicamente como crosswalk interno dirigido para verificar la completitud del reporte por sitio; no autoriza pooling, tests de heterogeneidad ni ningún análisis nuevo. El alcance de la integración LOSO se limita a Methods, Statistical Analysis, Results, una nueva Table 6 y su Supplement — no toca Abstract, Introduction, Discussion, Limitations, Conclusion, Highlights ni Title.
+
+Las referencias históricas de §9.2 y de D10 en §12 que niegan LOSO o `static` con 116 ROIs se conservan sin reescritura, porque describían correctamente el alcance vigente de la campaña de diez corridas cuando se cerró la v3.4; se anotan en su lugar, con referencia a esta enmienda, para que no se lean como una negación vigente de la existencia de `loso_static_v1`, que es una campaña aparte, ejecutada y congelada por separado. Las dos referencias de este documento a «la Tabla 6» (§8.1, §9.1) designaban una fila de referencia dentro de `run_manifest.csv` de la campaña de diez corridas, no la Table 6 del manuscrito integrado; se reformulan abajo para no colisionar con la nueva Table 6 LOSO del manuscrito.
 
 Esta versión integra la v3.1 y la evaluación posterior. La enmienda del 3 de agosto **sí añade ocho corridas** al proyecto, bajo la contingencia ya prevista en §9.1; no reabre ninguna de las diez corridas de la campaña original ni su calendario, que siguen cerrados en los términos de §8.4. Los demás cambios respecto de la v3.1 son de formulación, de ubicación de resultados y de precisión en las declaraciones.
 
@@ -423,7 +432,7 @@ la corrida BrainNetCNN pareada, verificado por igualdad de `split_fingerprint`, 
 | Grupo de ROIs | Comparador | Confusión |
 |---|---|---|
 | 12 | Corrida BrainNetCNN `static` (§8.1) | Ninguna: un solo factor cambia (arquitectura) |
-| 18, 39, 116 | Corrida BrainNetCNN `ordered`, la referencia primaria de la Tabla 6 (vía `run_manifest.csv`) | Representación y arquitectura cambian a la vez, igual que la dimensión «signal representation» de §2.6 |
+| 18, 39, 116 | Corrida BrainNetCNN `ordered`, la referencia primaria del comparador de paneles (vía `run_manifest.csv`; ya no «Tabla 6», ver enmienda v3.6) | Representación y arquitectura cambian a la vez, igual que la dimensión «signal representation» de §2.6 |
 
 No existe corrida `static` de BrainNetCNN para 18, 39 ni 116: las cuatro corridas `static` de §8.1
 se limitaron a 12 ROIs. Generarlas ahí exigiría corridas nuevas de BrainNetCNN, lo que reabriría la
@@ -443,6 +452,8 @@ siguen fuera de alcance por las mismas razones allí expuestas.
 ### 9.2 Otros experimentos excluidos
 
 GRU y Transformer; comparación exhaustiva de arquitecturas; `ordered` frente a `permuted`; `static` con 116 ROIs; LOSO o transporte entre sitios; otro atlas; curvas de aprendizaje por submuestreo; nueva búsqueda de hiperparámetros; nuevas variantes de Fisher, *shrinkage* o regularización ya exploradas.
+
+**Nota de la enmienda v3.6 (9 de agosto de 2026).** «`static` con 116 ROIs» y «LOSO o transporte entre sitios» quedaban excluidos **de la campaña de diez corridas de este documento (§8)**, no de forma global: ambos se ejecutaron después, como campaña separada y ya congelada (`loso_static_v1`, tag `loso-static-v1-complete-v3`), que se integra en el manuscrito por fuera de este plan. Esta lista no se reescribe porque describía correctamente el alcance vigente cuando se cerró la v3.4.
 
 Motivo general: no responden una inquietud prioritaria mejor que los diez experimentos definidos, o requieren un diseño adicional que no cabe con seguridad en esta revisión. **No afirmar que BrainNetCNN sea invariante a cualquier permutación de canales**: no se ha verificado y no es una pregunta necesaria para las afirmaciones actuales.
 
@@ -519,10 +530,11 @@ Reescribir título, resumen, *Highlights*, Métodos, Resultados, Discusión y Co
 | D7 | Alcance de LSTM y sensibilidad | NYU y Peking; alcance exploratorio, con estimaciones principales en la tabla compacta del texto principal y detalle en suplemento |
 | D8 | Protocolo de la LSTM | Arquitectura original con protocolo actual estandarizado |
 | D9 | Condiciones de sensibilidad | 140/12 s y 120/24 s |
-| D10 | Baseline lineal | No implementar; conservar la nota de contingencia |
+| D10 | Baseline lineal | No implementar; conservar la nota de contingencia. *(Nota v3.6, 9 de agosto de 2026: esta fila se refiere al baseline lineal within-site de §9.1, cuya contingencia fue activada el 3 de agosto de 2026 según la nota al inicio del documento; esa discrepancia editorial es anterior a esta enmienda y queda documentada aquí sin corregirse, por estar fuera del alcance de la reconciliación LOSO. No debe confundirse con el comparador de regresión logística LOSO — configuración distinta, determinista, FIT-only, ya implementada y congelada como parte de `loso_static_v1`.)* |
 | D11 | Brecha train−val | Párrafo en texto principal; tabla y curvas en suplemento |
 | D12 | Resultados históricos | Excluir todas las métricas; conservar solo contexto |
 | D13 | Campaña cerrada | Aprobar diez corridas y prohibir ajuste adaptativo posterior |
+| D14 | Reconciliación de gobernanza con `loso_static_v1` (enmienda v3.6, 9 de agosto de 2026) | Aprobada: LOSO es una campaña independiente y congelada, integrada en el manuscrito por fuera de este plan (`docs/manuscrito_revisado/loso_integration_v3_2_1/`); no reabre ni modifica la campaña de diez corridas de este documento ni su calendario |
 
 ---
 
