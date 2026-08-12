@@ -1,11 +1,14 @@
 # Configuración de referencia del manuscrito
 
-**Fuente canónica única** para la configuración experimental reportada en
-`Manuscript_Methods_Results_English_Working_v9_9.docx`. Si algo en el README,
-en las guías de experimentación, o en la memoria de alguien del equipo
-contradice este documento, **este documento tiene prioridad** para lo que
-respecta al paper: el README describe el comportamiento general del runner,
-que incluye defaults legado no usados en la campaña oficial.
+**Fuente canónica única** para la configuración experimental reportada en el
+manuscrito vigente, `docs/manuscrito_revisado/Manuscript_Methods_Results_English_Working_v9_10_LOSO_V3_2_1_R8_clean.docx`
+(la campaña base descrita aquí no cambió al pasar de la generación `v9_9` a
+la integración LOSO `v9_10`; solo se añadieron las secciones LOSO — ver
+`analysis/loso/README.md`). Si algo en el README, en las guías de
+experimentación, o en la memoria de alguien del equipo contradice este
+documento, **este documento tiene prioridad** para lo que respecta al
+paper: el README describe el comportamiento general del runner, que
+incluye defaults legado no usados en la campaña oficial.
 
 ---
 
